@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import Ajv from "ajv";
 import type {
 	LayoutOperator,
 	NodeRecord,
@@ -27,6 +31,21 @@ type AnyNode = {
 	children?: AnyNode[];
 	target?: string;
 };
+
+const schemaPath = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"../scene.schema.json",
+);
+const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
+const ajv = new Ajv();
+const validateFn = ajv.compile(schema);
+
+export function validate(data: unknown): void {
+	if (!validateFn(data)) {
+		const msg = ajv.errorsText(validateFn.errors) || "invalid scene";
+		throw new Error(msg);
+	}
+}
 
 export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	const nodes: NodeRecord[] = [];
@@ -73,7 +92,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				height: (props.height as number | undefined) ?? 0,
 				fill: props.fill as string | undefined,
 				stroke: props.stroke as string | undefined,
-				strokeWidth: props["stroke-width"] as number | undefined,
+				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else if (n.type === "Background") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
@@ -86,7 +105,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				height: 0,
 				fill: props.fill as string | undefined,
 				stroke: props.stroke as string | undefined,
-				strokeWidth: props["stroke-width"] as number | undefined,
+				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else if (n.type === "Circle") {
 			const props = (n.props ?? {}) as Record<string, unknown>;

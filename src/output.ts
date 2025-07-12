@@ -43,7 +43,7 @@ function textNode(
 	dy: number,
 ): string {
 	const t = n.text ?? "";
-	return `<text id="${id}" x="${box.x + dx}" y="${box.y + dy}"${attrs(n)}>${t}</text>\n`;
+	return `<text id="${id}" x="${box.x + dx}" y="${box.y + dy}" dominant-baseline="hanging"${attrs(n)}>${t}</text>\n`;
 }
 
 function arrow(
@@ -61,7 +61,14 @@ function arrow(
 	const y1 = a.y + dy + a.height + margin;
 	const x2 = b.x + dx + b.width / 2;
 	const y2 = b.y + dy - margin;
-	return `<line id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${attrs(n)} marker-end="url(#arrowhead)"/>\n`;
+	const dxv = x2 - x1;
+	const dyv = y2 - y1;
+	const len = Math.hypot(dxv, dyv);
+	const head = 6;
+	const ratio = len > 0 ? (len - head) / len : 0;
+	const sx2 = x1 + dxv * ratio;
+	const sy2 = y1 + dyv * ratio;
+	return `<line id="${id}" x1="${x1}" y1="${y1}" x2="${sx2}" y2="${sy2}"${attrs(n)} marker-end="url(#arrowhead)"/>\n`;
 }
 
 export function layoutToSvg(
