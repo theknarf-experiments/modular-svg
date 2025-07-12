@@ -23,9 +23,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build
-        run: |
-          cd docs
-          pnpm build
+        run: pnpm --filter ./docs build
         env:
           URL: 'https://example.com/'
       - name: upload
