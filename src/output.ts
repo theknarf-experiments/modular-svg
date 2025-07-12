@@ -218,13 +218,17 @@ function arrow(
 export function layoutToSvg(
 	layout: LayoutResult,
 	nodes?: NodeRecord[],
+	margin = 0,
 ): string {
 	const byId = new Map<string, NodeRecord>();
 	if (nodes) for (const n of nodes) byId.set(n.id, n);
 	const bounds = layoutBounds(layout, nodes);
 	const min = bounds.start;
 	const max = bounds.end;
-	const offset = vec(min.x < 0 ? -min.x : 0, min.y < 0 ? -min.y : 0);
+	const offset = vec(
+		(min.x < 0 ? -min.x : 0) + margin,
+		(min.y < 0 ? -min.y : 0) + margin,
+	);
 	const body = Object.entries(layout).map(([id, box]) => {
 		const n = byId.get(id);
 		if (!n?.type) return "";
@@ -233,8 +237,8 @@ export function layoutToSvg(
 		if (n.type === "arrow") return arrow(id, n, layout, offset) ?? "";
 		return rect(id, box, n, offset);
 	});
-	const width = max.x - min.x;
-	const height = max.y - min.y;
+	const width = max.x - min.x + margin * 2;
+	const height = max.y - min.y + margin * 2;
 	return xml(
 		"svg",
 		{ xmlns: "http://www.w3.org/2000/svg", width, height },
