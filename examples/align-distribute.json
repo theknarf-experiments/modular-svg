@@ -1,0 +1,41 @@
+{
+	"type": "Group",
+	"id": "grp",
+	"children": [
+		{
+			"type": "Rect",
+			"id": "A",
+			"props": { "width": 40, "height": 20, "x": 0, "y": 0 }
+		},
+		{
+			"type": "Rect",
+			"id": "B",
+			"props": { "width": 60, "height": 30, "x": 100, "y": 50 }
+		},
+		{
+			"type": "Rect",
+			"id": "C",
+			"props": { "width": 50, "height": 40, "x": 200, "y": 20 }
+		},
+		{
+			"type": "Align",
+			"id": "align1",
+			"props": { "axis": "y", "alignment": "top" },
+			"children": [
+				{ "type": "Ref", "target": "A" },
+				{ "type": "Ref", "target": "B" },
+				{ "type": "Ref", "target": "C" }
+			]
+		},
+		{
+			"type": "Distribute",
+			"id": "dist1",
+			"props": { "axis": "x" },
+			"children": [
+				{ "type": "Ref", "target": "A" },
+				{ "type": "Ref", "target": "B" },
+				{ "type": "Ref", "target": "C" }
+			]
+		}
+	]
+}

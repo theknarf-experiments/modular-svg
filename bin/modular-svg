@@ -1,0 +1,43 @@
+#!/usr/bin/env bun
+import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { buildSceneFromJson, solveLayout, layoutToSvg, validate } from "../src/index.ts";
+
+
+async function readInput(arg) {
+        if (arg && arg !== "-") {
+                return readFileSync(arg, "utf8");
+        }
+        if (process.stdin.isTTY) {
+                console.error("Usage: modular-svg <scene.json|-> [output.svg|-]");
+                process.exit(1);
+        }
+        let data = "";
+        for await (const chunk of process.stdin) data += chunk;
+        return data;
+}
+
+try {
+        const inputArg = process.argv[2];
+        const raw = await readInput(inputArg);
+        const data = JSON.parse(raw);
+        try {
+                validate(data);
+        } catch (err) {
+                console.error("Invalid scene:", err);
+                process.exit(1);
+        }
+        const scene = buildSceneFromJson(data);
+        const layout = solveLayout(scene);
+        const svg = layoutToSvg(layout, scene.nodes);
+        const out = process.argv[3];
+        if (out && out !== "-") {
+                writeFileSync(out, svg);
+        } else {
+                process.stdout.write(svg);
+        }
+} catch (err) {
+        console.error(err);
+        process.exit(1);
+}
