@@ -53,10 +53,23 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			const props = (n.props ?? {}) as Record<string, unknown>;
 			rec = {
 				id: n.id as string,
+				type: "rect",
 				x: (props.x as number | undefined) ?? 0,
 				y: (props.y as number | undefined) ?? 0,
 				width: (props.width as number | undefined) ?? 0,
 				height: (props.height as number | undefined) ?? 0,
+			};
+		} else if (n.type === "Circle") {
+			const props = (n.props ?? {}) as Record<string, unknown>;
+			const r = (props.r as number | undefined) ?? 0;
+			rec = {
+				id: n.id as string,
+				type: "circle",
+				r,
+				x: (props.x as number | undefined) ?? 0,
+				y: (props.y as number | undefined) ?? 0,
+				width: r * 2,
+				height: r * 2,
 			};
 		} else {
 			rec = { id: n.id as string, x: 0, y: 0, width: 0, height: 0 };

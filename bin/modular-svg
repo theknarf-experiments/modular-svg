@@ -36,7 +36,7 @@ async function main() {
 	}
         const scene = buildSceneFromJson(data);
         const layout = solveLayout(scene);
-        const svg = layoutToSvg(layout);
+        const svg = layoutToSvg(layout, scene.nodes);
 	const out = process.argv[3];
 	if (out && out !== "-") {
 		writeFileSync(out, svg);

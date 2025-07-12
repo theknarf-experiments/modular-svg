@@ -7,22 +7,10 @@
 			"id": "planets",
 			"props": { "spacing": 50, "alignment": "centerY" },
 			"children": [
-				{
-					"type": "Rect",
-					"id": "mercury",
-					"props": { "width": 30, "height": 30 }
-				},
-				{
-					"type": "Rect",
-					"id": "venus",
-					"props": { "width": 72, "height": 72 }
-				},
-				{
-					"type": "Rect",
-					"id": "earth",
-					"props": { "width": 76, "height": 76 }
-				},
-				{ "type": "Rect", "id": "mars", "props": { "width": 42, "height": 42 } }
+				{ "type": "Circle", "id": "mercury", "props": { "r": 15 } },
+				{ "type": "Circle", "id": "venus", "props": { "r": 36 } },
+				{ "type": "Circle", "id": "earth", "props": { "r": 38 } },
+				{ "type": "Circle", "id": "mars", "props": { "r": 21 } }
 			]
 		},
 		{

@@ -221,4 +221,6 @@ export type NodeRecord = {
 	y: number;
 	width: number;
 	height: number;
+	type?: "rect" | "circle";
+	r?: number;
 };
