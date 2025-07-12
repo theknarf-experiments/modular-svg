@@ -3,7 +3,8 @@ import type { LayoutResult } from "./solver";
 
 function attrs(n?: NodeRecord): string {
 	if (!n) return "";
-	const fill = n.fill ?? "none";
+	let fill = n.fill;
+	if (fill === undefined) fill = n.type === "text" ? "black" : "none";
 	const stroke = n.stroke ?? "black";
 	let sw = n.strokeWidth;
 	if (sw === undefined && n.type === "arrow") sw = 3;
@@ -19,7 +20,8 @@ function rect(
 	dx: number,
 	dy: number,
 ): string {
-	return `<rect id="${id}" x="${box.x + dx}" y="${box.y + dy}" width="${box.width}" height="${box.height}"${attrs(n)}/>\n`;
+	const sw = n?.strokeWidth ?? 0;
+	return `<rect id="${id}" x="${box.x + dx - sw / 2}" y="${box.y + dy - sw / 2}" width="${box.width + sw}" height="${box.height + sw}"${attrs(n)}/>\n`;
 }
 
 function circle(
@@ -32,7 +34,7 @@ function circle(
 	const r = (n.r ?? box.width / 2) as number;
 	const cx = box.x + dx + r;
 	const cy = box.y + dy + r;
-	return `<circle id="${id}" cx="${cx}" cy="${cy}" r="${r}"${attrs(n)}/>\n`;
+	return `<circle id="${id}" cx="${cx}" cy="${cy}" r="${r}"${attrs(n)} />\n`;
 }
 
 function textNode(
@@ -68,7 +70,20 @@ function arrow(
 	const ratio = len > 0 ? (len - head) / len : 0;
 	const sx2 = x1 + dxv * ratio;
 	const sy2 = y1 + dyv * ratio;
-	return `<line id="${id}" x1="${x1}" y1="${y1}" x2="${sx2}" y2="${sy2}"${attrs(n)} marker-end="url(#arrowhead)"/>\n`;
+	const ux = len === 0 ? 0 : dxv / len;
+	const uy = len === 0 ? 0 : dyv / len;
+	const perpX = -uy;
+	const perpY = ux;
+	const w = head * 0.6;
+	const bx = sx2;
+	const by = sy2;
+	const leftX = bx + perpX * w * 0.5;
+	const leftY = by + perpY * w * 0.5;
+	const rightX = bx - perpX * w * 0.5;
+	const rightY = by - perpY * w * 0.5;
+	const line = `<line id="${id}" x1="${x1}" y1="${y1}" x2="${sx2}" y2="${sy2}"${attrs(n)}/>`;
+	const poly = `<polygon points="${x2},${y2} ${leftX},${leftY} ${rightX},${rightY}"${attrs(n)}/>`;
+	return `${line}\n${poly}\n`;
 }
 
 export function layoutToSvg(
@@ -82,6 +97,16 @@ export function layoutToSvg(
 	let minY = Math.min(...boxes.map((b) => b.y));
 	let maxX = Math.max(...boxes.map((b) => b.x + b.width));
 	let maxY = Math.max(...boxes.map((b) => b.y + b.height));
+	for (const [id, box] of Object.entries(layout)) {
+		const n = nodes?.find((m) => m.id === id);
+		const sw = n?.strokeWidth ?? (n?.type === "arrow" ? 3 : 0);
+		if (sw) {
+			minX = Math.min(minX, box.x - sw / 2);
+			minY = Math.min(minY, box.y - sw / 2);
+			maxX = Math.max(maxX, box.x + box.width + sw / 2);
+			maxY = Math.max(maxY, box.y + box.height + sw / 2);
+		}
+	}
 	// account for arrow endpoints which may lie outside node boxes
 	for (const n of nodes ?? []) {
 		if (n.type === "arrow" && n.from && n.to) {
@@ -93,17 +118,32 @@ export function layoutToSvg(
 				const y1 = a.y + a.height + margin;
 				const x2 = b.x + b.width / 2;
 				const y2 = b.y - margin;
-				minX = Math.min(minX, x1, x2);
-				minY = Math.min(minY, y1, y2);
-				maxX = Math.max(maxX, x1, x2);
-				maxY = Math.max(maxY, y1, y2);
+				const dxv = x2 - x1;
+				const dyv = y2 - y1;
+				const len = Math.hypot(dxv, dyv);
+				const head = 6;
+				const ratio = len > 0 ? (len - head) / len : 0;
+				const sx2 = x1 + dxv * ratio;
+				const sy2 = y1 + dyv * ratio;
+				const ux = len === 0 ? 0 : dxv / len;
+				const uy = len === 0 ? 0 : dyv / len;
+				const perpX = -uy;
+				const perpY = ux;
+				const w = head * 0.6;
+				const leftX = sx2 + perpX * w * 0.5;
+				const leftY = sy2 + perpY * w * 0.5;
+				const rightX = sx2 - perpX * w * 0.5;
+				const rightY = sy2 - perpY * w * 0.5;
+				minX = Math.min(minX, x1, x2, leftX, rightX);
+				minY = Math.min(minY, y1, y2, leftY, rightY);
+				maxX = Math.max(maxX, x1, x2, leftX, rightX);
+				maxY = Math.max(maxY, y1, y2, leftY, rightY);
 			}
 		}
 	}
 	const dx = minX < 0 ? -minX : 0;
 	const dy = minY < 0 ? -minY : 0;
 	let body = "";
-	let arrowUsed = false;
 	for (const [id, box] of Object.entries(layout) as [
 		string,
 		LayoutResult[string],
@@ -114,16 +154,10 @@ export function layoutToSvg(
 		else if (n.type === "text") body += textNode(id, box, n, dx, dy);
 		else if (n.type === "arrow") {
 			const line = arrow(id, n, layout, dx, dy);
-			if (line) {
-				arrowUsed = true;
-				body += line;
-			}
+			if (line) body += line;
 		} else body += rect(id, box, n, dx, dy);
 	}
 	const w = maxX - minX;
 	const h = maxY - minY;
-	const defs = arrowUsed
-		? '<defs><marker id="arrowhead" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="black"/></marker></defs>\n'
-		: "";
-	return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">\n${defs}${body}</svg>`;
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">\n${body}</svg>`;
 }

@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import Ajv from "ajv";
 import type {
 	LayoutOperator,
@@ -32,10 +31,7 @@ type AnyNode = {
 	target?: string;
 };
 
-const schemaPath = join(
-	dirname(fileURLToPath(import.meta.url)),
-	"../scene.schema.json",
-);
+const schemaPath = join(__dirname, "../scene.schema.json");
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const ajv = new Ajv();
 const validateFn = ajv.compile(schema);
@@ -134,7 +130,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					(props.width as number | undefined) ??
 					((props.text as string | undefined)?.length ?? 0) * 8,
 				height: (props.height as number | undefined) ?? 16,
-				fill: props.fill as string | undefined,
+				fill: (props.fill as string | undefined) ?? "black",
 				stroke: props.stroke as string | undefined,
 				strokeWidth: props["stroke-width"] as number | undefined,
 			};

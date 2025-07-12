@@ -89,8 +89,8 @@ describe("layoutToSvg", () => {
 		};
 		const svg = layoutToSvg(layout, nodes);
 		expect(svg).toContain('<line id="L"');
-		expect(svg).toContain("marker-end");
-		expect(svg).toContain("<defs>");
+		expect(svg).toContain("<polygon");
+		expect(svg).not.toContain("marker-end");
 		expect(svg).toContain('stroke-width="3"');
 	});
 });

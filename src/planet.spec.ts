@@ -136,5 +136,6 @@ describe("planet example", () => {
 			expect(y2).toBeLessThan(mercury.y + dy);
 			expect(attrs).toContain('stroke-width="3"');
 		}
+		expect(svg).toContain("<polygon");
 	});
 });
