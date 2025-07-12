@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { NodeRecord } from "./operators";
 import { layoutToSvg } from "./output";
-import type { LayoutResult } from "./solver";
+import type { LayoutResult, NodeRecord } from "./solver";
 
 describe("layoutToSvg", () => {
 	it("creates an svg sized to fit all boxes", () => {

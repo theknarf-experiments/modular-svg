@@ -1,4 +1,4 @@
-import type { LayoutOperator, NodeRecord } from "./operators";
+import type { LayoutOperator, NodeRecord } from ".";
 
 export type Scene = {
 	nodes: NodeRecord[];

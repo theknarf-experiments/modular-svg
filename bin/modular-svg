@@ -2,7 +2,12 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { buildSceneFromJson, solveLayout, layoutToSvg, validate } from "../src/index.ts";
+import {
+       buildSceneFromJson,
+       layoutToSvg,
+       solveLayout,
+       validate,
+} from "../src/index.ts";
 
 
 async function readInput(arg) {

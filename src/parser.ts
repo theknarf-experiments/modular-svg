@@ -7,7 +7,7 @@ import type {
 	NodeRecord,
 	StackAlignment,
 	StackChild,
-} from "./operators";
+} from "./solver/operators";
 import {
 	AlignXCenter,
 	AlignXCenterTo,
@@ -21,7 +21,7 @@ import {
 	DistributeY,
 	StackH,
 	StackV,
-} from "./operators";
+} from "./solver/operators";
 
 export type JsonScene = { nodes: NodeRecord[]; operators: LayoutOperator[] };
 type AnyNode = {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { solveLayout } from ".";
 import type { LayoutOperator, NodeRecord } from "./operators";
 import { DistributeX } from "./operators";
-import { solveLayout } from "./solver";
 
 describe("Distribute operator", () => {
 	it("distributes points evenly", () => {
