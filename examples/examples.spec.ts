@@ -2,10 +2,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { validate } from "./parser";
+import { validate } from "../src/parser";
 
-const base = dirname(fileURLToPath(import.meta.url));
-const examplesDir = join(base, "../examples");
+const examplesDir = dirname(fileURLToPath(import.meta.url));
 
 describe("example json files", () => {
 	for (const file of readdirSync(examplesDir)) {

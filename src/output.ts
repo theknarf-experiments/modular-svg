@@ -1,5 +1,4 @@
-import type { NodeRecord } from "./operators";
-import type { LayoutResult } from "./solver";
+import type { LayoutResult, NodeRecord } from "./solver";
 
 export function xml(
 	tag: string,

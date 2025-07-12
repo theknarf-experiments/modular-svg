@@ -1,8 +1,8 @@
 import fc from "fast-check";
 import { describe, it } from "vitest";
+import { solveLayout } from ".";
 import type { LayoutOperator, NodeRecord } from "./operators";
 import { AlignXLeft, DistributeX } from "./operators";
-import { solveLayout } from "./solver";
 
 describe("property based primitives", () => {
 	it("align left sets all x to min", () => {

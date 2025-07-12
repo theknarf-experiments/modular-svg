@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { solveLayout } from ".";
 import type { LayoutOperator, NodeRecord } from "./operators";
 import { StackV } from "./operators";
-import { solveLayout } from "./solver";
 
 describe("Stack operator", () => {
 	it("stacks children vertically with spacing and centers them", () => {
