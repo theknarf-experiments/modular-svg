@@ -1,0 +1,10 @@
+{
+	"type": "StackV",
+	"id": "stack",
+	"props": { "spacing": 10, "alignment": "centerX" },
+	"children": [
+		{ "type": "Rect", "id": "A", "props": { "width": 100, "height": 50 } },
+		{ "type": "Rect", "id": "B", "props": { "width": 80, "height": 80 } },
+		{ "type": "Rect", "id": "C", "props": { "width": 120, "height": 30 } }
+	]
+}

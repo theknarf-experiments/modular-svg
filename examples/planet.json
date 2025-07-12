@@ -1,0 +1,55 @@
+{
+	"type": "Group",
+	"id": "scene",
+	"children": [
+		{
+			"type": "StackH",
+			"id": "planets",
+			"props": { "spacing": 50, "alignment": "centerY" },
+			"children": [
+				{
+					"type": "Rect",
+					"id": "mercury",
+					"props": { "width": 30, "height": 30 }
+				},
+				{
+					"type": "Rect",
+					"id": "venus",
+					"props": { "width": 72, "height": 72 }
+				},
+				{
+					"type": "Rect",
+					"id": "earth",
+					"props": { "width": 76, "height": 76 }
+				},
+				{ "type": "Rect", "id": "mars", "props": { "width": 42, "height": 42 } }
+			]
+		},
+		{
+			"type": "Align",
+			"id": "alignLabel",
+			"props": { "axis": "x", "alignment": "center" },
+			"children": [
+				{ "type": "Text", "id": "label" },
+				{ "type": "Ref", "target": "mercury" }
+			]
+		},
+		{
+			"type": "Distribute",
+			"id": "distVertical",
+			"props": { "axis": "y" },
+			"children": [
+				{ "type": "Ref", "target": "label" },
+				{ "type": "Ref", "target": "mercury" }
+			]
+		},
+		{
+			"type": "Arrow",
+			"id": "arrow1",
+			"children": [
+				{ "type": "Ref", "target": "label" },
+				{ "type": "Ref", "target": "mercury" }
+			]
+		}
+	]
+}
