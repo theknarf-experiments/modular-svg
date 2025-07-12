@@ -1,0 +1,2 @@
+pnpm test && \
+pnpm lint --staged --no-errors-on-unmatched
