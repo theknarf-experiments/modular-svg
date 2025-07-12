@@ -19,7 +19,25 @@
 			]
 		},
 		"id": { "type": "string" },
-		"props": { "type": "object", "additionalProperties": true },
+		"props": {
+			"type": "object",
+			"properties": {
+				"width": { "type": "number" },
+				"height": { "type": "number" },
+				"x": { "type": "number" },
+				"y": { "type": "number" },
+				"r": { "type": "number" },
+				"spacing": { "type": "number" },
+				"alignment": { "type": "string" },
+				"axis": { "type": "string" },
+				"direction": { "type": "string" },
+				"fill": { "type": "string" },
+				"stroke": { "type": "string" },
+				"stroke-width": { "type": "number" },
+				"text": { "type": "string" }
+			},
+			"additionalProperties": true
+		},
 		"children": { "type": "array", "items": { "$ref": "#" } },
 		"target": { "type": "string" }
 	},

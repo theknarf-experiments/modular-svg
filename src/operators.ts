@@ -221,6 +221,10 @@ export type NodeRecord = {
 	y: number;
 	width: number;
 	height: number;
-	type?: "rect" | "circle";
+	type?: "rect" | "circle" | "text";
 	r?: number;
+	text?: string;
+	fill?: string;
+	stroke?: string;
+	strokeWidth?: number;
 };

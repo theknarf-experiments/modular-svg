@@ -15,13 +15,24 @@ export function layoutToSvg(
 		LayoutResult[string],
 	][]) {
 		const node = byId.get(id);
+		const fill = node?.fill ? ` fill="${node.fill}"` : ' fill="none"';
+		const stroke = node?.stroke
+			? ` stroke="${node.stroke}"`
+			: ' stroke="black"';
+		const sw =
+			node?.strokeWidth !== undefined
+				? ` stroke-width="${node.strokeWidth}"`
+				: "";
 		if (node?.type === "circle") {
 			const r = (node.r ?? box.width / 2) as number;
 			const cx = box.x + r;
 			const cy = box.y + r;
-			body += `<circle id="${id}" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="black"/>\n`;
+			body += `<circle id="${id}" cx="${cx}" cy="${cy}" r="${r}"${fill}${stroke}${sw}/>\n`;
+		} else if (node?.type === "text") {
+			const text = node.text ?? "";
+			body += `<text id="${id}" x="${box.x}" y="${box.y}"${fill}${stroke}${sw}>${text}</text>\n`;
 		} else {
-			body += `<rect id="${id}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="none" stroke="black"/>\n`;
+			body += `<rect id="${id}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"${fill}${stroke}${sw}/>\n`;
 		}
 	}
 	const w = Math.max(...Object.values(layout).map((b) => b.x + b.width));

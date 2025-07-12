@@ -58,6 +58,9 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				y: (props.y as number | undefined) ?? 0,
 				width: (props.width as number | undefined) ?? 0,
 				height: (props.height as number | undefined) ?? 0,
+				fill: props.fill as string | undefined,
+				stroke: props.stroke as string | undefined,
+				strokeWidth: props["stroke-width"] as number | undefined,
 			};
 		} else if (n.type === "Circle") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
@@ -70,6 +73,23 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				y: (props.y as number | undefined) ?? 0,
 				width: r * 2,
 				height: r * 2,
+				fill: props.fill as string | undefined,
+				stroke: props.stroke as string | undefined,
+				strokeWidth: props["stroke-width"] as number | undefined,
+			};
+		} else if (n.type === "Text") {
+			const props = (n.props ?? {}) as Record<string, unknown>;
+			rec = {
+				id: n.id as string,
+				type: "text",
+				text: (props.text as string | undefined) ?? "",
+				x: (props.x as number | undefined) ?? 0,
+				y: (props.y as number | undefined) ?? 0,
+				width: (props.width as number | undefined) ?? 0,
+				height: (props.height as number | undefined) ?? 0,
+				fill: props.fill as string | undefined,
+				stroke: props.stroke as string | undefined,
+				strokeWidth: props["stroke-width"] as number | undefined,
 			};
 		} else {
 			rec = { id: n.id as string, x: 0, y: 0, width: 0, height: 0 };

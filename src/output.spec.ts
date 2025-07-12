@@ -26,4 +26,40 @@ describe("layoutToSvg", () => {
 		expect(svg).toContain('cx="7"');
 		expect(svg).toContain('cy="8"');
 	});
+
+	it("applies fill and stroke and text", () => {
+		const nodes: NodeRecord[] = [
+			{
+				id: "R",
+				type: "rect",
+				x: 0,
+				y: 0,
+				width: 10,
+				height: 10,
+				fill: "red",
+				stroke: "blue",
+				strokeWidth: 2,
+			},
+			{
+				id: "T",
+				type: "text",
+				x: 5,
+				y: 5,
+				width: 0,
+				height: 0,
+				text: "hi",
+				fill: "green",
+			},
+		];
+		const layout: LayoutResult = {
+			R: { x: 1, y: 2, width: 10, height: 10 },
+			T: { x: 5, y: 5, width: 0, height: 0 },
+		};
+		const svg = layoutToSvg(layout, nodes);
+		expect(svg).toContain('fill="red"');
+		expect(svg).toContain('stroke="blue"');
+		expect(svg).toContain('stroke-width="2"');
+		expect(svg).toContain('<text id="T"');
+		expect(svg).toContain(">hi<");
+	});
 });
