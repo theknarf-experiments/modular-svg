@@ -1,12 +1,67 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+	Align,
+	Arrow,
+	Background,
+	Bluefish,
+	Circle,
+	Distribute,
+	Ref,
+	StackH,
+	Text,
+} from "./builder";
 import { buildSceneFromJson } from "./parser";
 import { solveLayout } from "./solver";
 
-const examplePath = join(__dirname, "../examples/planet.json");
-const data = JSON.parse(readFileSync(examplePath, "utf8"));
-const scene = buildSceneFromJson(data);
+const scene = buildSceneFromJson(
+	Bluefish(
+		Background(
+			{ padding: 10 },
+			StackH(
+				{ name: "planets", spacing: 50, alignment: "centerY" },
+				Circle({
+					name: "mercury",
+					r: 15,
+					fill: "#EBE3CF",
+					"stroke-width": 3,
+					stroke: "black",
+				}),
+				Circle({
+					name: "venus",
+					r: 36,
+					fill: "#DC933C",
+					"stroke-width": 3,
+					stroke: "black",
+				}),
+				Circle({
+					name: "earth",
+					r: 38,
+					fill: "#179DD7",
+					"stroke-width": 3,
+					stroke: "black",
+				}),
+				Circle({
+					name: "mars",
+					r: 21,
+					fill: "#F1CF8E",
+					"stroke-width": 3,
+					stroke: "black",
+				}),
+			),
+		),
+		Align(
+			{ alignment: "centerX" },
+			Text({ name: "label" }, "Mercury"),
+			Ref({ select: "mercury" }),
+		),
+		Distribute(
+			{ direction: "vertical", spacing: 60 },
+			Ref({ select: "label" }),
+			Ref({ select: "mercury" }),
+		),
+		Arrow(Ref({ select: "label" }), Ref({ select: "mercury" })),
+	),
+);
 const layout = solveLayout(scene, { damping: 1 });
 
 function centerY(id: string) {

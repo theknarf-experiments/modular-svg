@@ -247,3 +247,23 @@ export type NodeRecord = {
 	stroke?: string;
 	strokeWidth?: number;
 };
+
+export class BackgroundOp implements LayoutOperator {
+	readonly lipschitz = 1;
+	constructor(
+		private readonly childIndex: number,
+		private readonly boxIndex: number,
+		private readonly padding: number,
+	) {}
+
+	eval(cur: Float64Array, next: Float64Array): void {
+		const x = cur[this.childIndex];
+		const y = cur[this.childIndex + 1];
+		const w = cur[this.childIndex + 2];
+		const h = cur[this.childIndex + 3];
+		next[this.boxIndex] = x - this.padding;
+		next[this.boxIndex + 1] = y - this.padding;
+		next[this.boxIndex + 2] = w + this.padding * 2;
+		next[this.boxIndex + 3] = h + this.padding * 2;
+	}
+}

@@ -3,49 +3,56 @@
 	"id": "scene",
 	"children": [
 		{
-			"type": "StackH",
-			"id": "planets",
-			"props": { "spacing": 50, "alignment": "centerY" },
+			"type": "Background",
+			"id": "bg",
+			"props": { "padding": 10 },
 			"children": [
 				{
-					"type": "Circle",
-					"id": "mercury",
-					"props": {
-						"r": 15,
-						"fill": "#EBE3CF",
-						"stroke-width": 3,
-						"stroke": "black"
-					}
-				},
-				{
-					"type": "Circle",
-					"id": "venus",
-					"props": {
-						"r": 36,
-						"fill": "#DC933C",
-						"stroke-width": 3,
-						"stroke": "black"
-					}
-				},
-				{
-					"type": "Circle",
-					"id": "earth",
-					"props": {
-						"r": 38,
-						"fill": "#179DD7",
-						"stroke-width": 3,
-						"stroke": "black"
-					}
-				},
-				{
-					"type": "Circle",
-					"id": "mars",
-					"props": {
-						"r": 21,
-						"fill": "#F1CF8E",
-						"stroke-width": 3,
-						"stroke": "black"
-					}
+					"type": "StackH",
+					"id": "planets",
+					"props": { "spacing": 50, "alignment": "centerY" },
+					"children": [
+						{
+							"type": "Circle",
+							"id": "mercury",
+							"props": {
+								"r": 15,
+								"fill": "#EBE3CF",
+								"stroke-width": 3,
+								"stroke": "black"
+							}
+						},
+						{
+							"type": "Circle",
+							"id": "venus",
+							"props": {
+								"r": 36,
+								"fill": "#DC933C",
+								"stroke-width": 3,
+								"stroke": "black"
+							}
+						},
+						{
+							"type": "Circle",
+							"id": "earth",
+							"props": {
+								"r": 38,
+								"fill": "#179DD7",
+								"stroke-width": 3,
+								"stroke": "black"
+							}
+						},
+						{
+							"type": "Circle",
+							"id": "mars",
+							"props": {
+								"r": 21,
+								"fill": "#F1CF8E",
+								"stroke-width": 3,
+								"stroke": "black"
+							}
+						}
+					]
 				}
 			]
 		},

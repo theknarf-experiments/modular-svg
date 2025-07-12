@@ -12,6 +12,7 @@ import {
 	AlignYBottom,
 	AlignYCenter,
 	AlignYTop,
+	BackgroundOp,
 	DistributeX,
 	DistributeY,
 	StackH,
@@ -38,7 +39,13 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				props: Record<string, unknown>;
 		  }
 		| { kind: "align"; axis: "x" | "y"; align: string; children: NodeRecord[] }
-		| { kind: "distribute"; axis: "x" | "y"; children: NodeRecord[] };
+		| { kind: "distribute"; axis: "x" | "y"; children: NodeRecord[] }
+		| {
+				kind: "background";
+				box: NodeRecord;
+				child: NodeRecord;
+				padding: number;
+		  };
 	const descs: Desc[] = [];
 
 	function ensureNode(n: AnyNode): NodeRecord {
@@ -63,6 +70,19 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				stroke: props.stroke as string | undefined,
 				strokeWidth: props["stroke-width"] as number | undefined,
 			};
+		} else if (n.type === "Background") {
+			const props = (n.props ?? {}) as Record<string, unknown>;
+			rec = {
+				id: n.id as string,
+				type: "rect",
+				x: 0,
+				y: 0,
+				width: 0,
+				height: 0,
+				fill: props.fill as string | undefined,
+				stroke: props.stroke as string | undefined,
+				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
+			};
 		} else if (n.type === "Circle") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
 			const r = (props.r as number | undefined) ?? 0;
@@ -76,7 +96,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				height: r * 2,
 				fill: props.fill as string | undefined,
 				stroke: props.stroke as string | undefined,
-				strokeWidth: props["stroke-width"] as number | undefined,
+				strokeWidth: (props["stroke-width"] as number | undefined) ?? 1,
 			};
 		} else if (n.type === "Text") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
@@ -145,6 +165,13 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 						(node.props?.direction as "x" | "y") ??
 						"x",
 					children,
+				});
+			} else if (node.type === "Background" && children[0]) {
+				descs.push({
+					kind: "background",
+					box: rec,
+					child: children[0],
+					padding: (node.props?.padding as number) ?? 0,
 				});
 			} else if (node.type === "Arrow" && children.length >= 2) {
 				(rec as NodeRecord).from = children[0].id;
@@ -263,6 +290,12 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			});
 			if (d.axis === "x") ops.push(new DistributeX(idxs));
 			else ops.push(new DistributeY(idxs));
+		} else if (d.kind === "background") {
+			const childBase = indexMap.get(d.child.id);
+			const boxBase = indexMap.get(d.box.id);
+			if (childBase === undefined || boxBase === undefined)
+				throw new Error("unknown id in background");
+			ops.push(new BackgroundOp(childBase, boxBase, d.padding));
 		}
 	}
 

@@ -9,6 +9,7 @@
 				"Group",
 				"Rect",
 				"Circle",
+				"Background",
 				"StackV",
 				"StackH",
 				"Align",
@@ -34,7 +35,8 @@
 				"fill": { "type": "string" },
 				"stroke": { "type": "string" },
 				"stroke-width": { "type": "number" },
-				"text": { "type": "string" }
+				"text": { "type": "string" },
+				"padding": { "type": "number" }
 			},
 			"additionalProperties": true
 		},
