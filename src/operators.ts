@@ -221,9 +221,13 @@ export type NodeRecord = {
 	y: number;
 	width: number;
 	height: number;
-	type?: "rect" | "circle" | "text";
+	type?: "rect" | "circle" | "text" | "arrow";
 	r?: number;
 	text?: string;
+	/** id of source node for arrows */
+	from?: string;
+	/** id of target node for arrows */
+	to?: string;
 	fill?: string;
 	stroke?: string;
 	strokeWidth?: number;

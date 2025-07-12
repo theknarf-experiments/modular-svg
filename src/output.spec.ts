@@ -62,4 +62,30 @@ describe("layoutToSvg", () => {
 		expect(svg).toContain('<text id="T"');
 		expect(svg).toContain(">hi<");
 	});
+
+	it("renders arrows", () => {
+		const nodes: NodeRecord[] = [
+			{ id: "A", x: 0, y: 0, width: 10, height: 10 },
+			{ id: "B", x: 20, y: 0, width: 10, height: 10 },
+			{
+				id: "L",
+				type: "arrow",
+				from: "A",
+				to: "B",
+				x: 0,
+				y: 0,
+				width: 0,
+				height: 0,
+			},
+		];
+		const layout: LayoutResult = {
+			A: { x: 0, y: 0, width: 10, height: 10 },
+			B: { x: 20, y: 0, width: 10, height: 10 },
+			L: { x: 0, y: 0, width: 0, height: 0 },
+		};
+		const svg = layoutToSvg(layout, nodes);
+		expect(svg).toContain('<line id="L"');
+		expect(svg).toContain("marker-end");
+		expect(svg).toContain("<defs>");
+	});
 });

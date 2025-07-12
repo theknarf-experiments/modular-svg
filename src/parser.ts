@@ -91,6 +91,19 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				stroke: props.stroke as string | undefined,
 				strokeWidth: props["stroke-width"] as number | undefined,
 			};
+		} else if (n.type === "Arrow") {
+			const props = (n.props ?? {}) as Record<string, unknown>;
+			rec = {
+				id: n.id as string,
+				type: "arrow",
+				x: 0,
+				y: 0,
+				width: 0,
+				height: 0,
+				fill: props.fill as string | undefined,
+				stroke: props.stroke as string | undefined,
+				strokeWidth: props["stroke-width"] as number | undefined,
+			};
 		} else {
 			rec = { id: n.id as string, x: 0, y: 0, width: 0, height: 0 };
 		}
@@ -132,6 +145,9 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 						"x",
 					children,
 				});
+			} else if (node.type === "Arrow" && children.length >= 2) {
+				(rec as NodeRecord).from = children[0].id;
+				(rec as NodeRecord).to = children[1].id;
 			}
 		}
 		return rec;
