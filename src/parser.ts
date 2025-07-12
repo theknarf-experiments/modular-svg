@@ -34,7 +34,7 @@ type AnyNode = {
 
 const schemaPath = join(
 	dirname(fileURLToPath(import.meta.url)),
-	"../scene.schema.json",
+	"scene.schema.json",
 );
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const ajv = new Ajv();
