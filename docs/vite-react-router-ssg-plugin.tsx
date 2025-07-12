@@ -10,7 +10,7 @@ import {
 	createStaticHandler,
 	createStaticRouter,
 	StaticRouterProvider,
-} from "react-router";
+} from "react-router-dom/server";
 import { WritableStreamBuffer } from "stream-buffers";
 import type { Plugin } from "vite";
 
