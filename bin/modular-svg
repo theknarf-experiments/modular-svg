@@ -1,18 +1,16 @@
 #!/usr/bin/env bun
-import { readFileSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { Command } from "commander";
 import {
-       buildSceneFromJson,
-       layoutToSvg,
-       solveLayout,
-       validate,
+        buildSceneFromJson,
+        layoutToSvg,
+        solveLayout,
+        validate,
 } from "../src/index.ts";
 
-
-async function readInput(arg) {
+async function readInput(arg?: string): Promise<string> {
         if (arg && arg !== "-") {
-                return readFileSync(arg, "utf8");
+                return await readFile(arg, "utf8");
         }
         if (process.stdin.isTTY) {
                 console.error("Usage: modular-svg <scene.json|-> [output.svg|-]");
@@ -23,44 +21,32 @@ async function readInput(arg) {
         return data;
 }
 
-try {
-        let margin = 3;
-        const args = process.argv.slice(2);
-        const files = [];
-        for (let i = 0; i < args.length; i++) {
-                const arg = args[i];
-                if (arg === "-m" || arg === "--margin") {
-                        const val = args[i + 1];
-                        margin = val ? Number(val) : margin;
-                        i++;
-                        continue;
+const program = new Command();
+program
+        .name("modular-svg")
+        .argument("[input]", "scene JSON file or '-' to read from stdin")
+        .argument("[output]", "output SVG file or '-' for stdout")
+        .option("-m, --margin <number>", "margin around the SVG", "3")
+        .action(async (input: string | undefined, output: string | undefined, opts) => {
+                const raw = await readInput(input);
+                const data = JSON.parse(raw);
+                try {
+                        validate(data);
+                } catch (err) {
+                        console.error("Invalid scene:", err);
+                        process.exit(1);
                 }
-                const match = /^--margin=(.*)$/.exec(arg);
-                if (match) {
-                        margin = Number(match[1]);
-                        continue;
+                const scene = buildSceneFromJson(data);
+                const layout = solveLayout(scene);
+                const svg = layoutToSvg(layout, scene.nodes, Number(opts.margin));
+                if (output && output !== "-") {
+                       await writeFile(output, svg);
+                } else {
+                        process.stdout.write(svg);
                 }
-                files.push(arg);
-        }
-        const inputArg = files[0];
-        const raw = await readInput(inputArg);
-        const data = JSON.parse(raw);
-        try {
-                validate(data);
-        } catch (err) {
-                console.error("Invalid scene:", err);
-                process.exit(1);
-        }
-        const scene = buildSceneFromJson(data);
-        const layout = solveLayout(scene);
-        const svg = layoutToSvg(layout, scene.nodes, margin);
-        const out = files[1];
-        if (out && out !== "-") {
-                writeFileSync(out, svg);
-        } else {
-                process.stdout.write(svg);
-        }
-} catch (err) {
+        });
+
+program.parseAsync(process.argv).catch((err) => {
         console.error(err);
         process.exit(1);
-}
+});
