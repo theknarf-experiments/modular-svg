@@ -24,7 +24,25 @@ async function readInput(arg) {
 }
 
 try {
-        const inputArg = process.argv[2];
+        let margin = 3;
+        const args = process.argv.slice(2);
+        const files = [];
+        for (let i = 0; i < args.length; i++) {
+                const arg = args[i];
+                if (arg === "-m" || arg === "--margin") {
+                        const val = args[i + 1];
+                        margin = val ? Number(val) : margin;
+                        i++;
+                        continue;
+                }
+                const match = /^--margin=(.*)$/.exec(arg);
+                if (match) {
+                        margin = Number(match[1]);
+                        continue;
+                }
+                files.push(arg);
+        }
+        const inputArg = files[0];
         const raw = await readInput(inputArg);
         const data = JSON.parse(raw);
         try {
@@ -35,8 +53,8 @@ try {
         }
         const scene = buildSceneFromJson(data);
         const layout = solveLayout(scene);
-        const svg = layoutToSvg(layout, scene.nodes);
-        const out = process.argv[3];
+        const svg = layoutToSvg(layout, scene.nodes, margin);
+        const out = files[1];
         if (out && out !== "-") {
                 writeFileSync(out, svg);
         } else {
