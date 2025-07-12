@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
 import type {
 	LayoutOperator,
@@ -31,7 +32,10 @@ type AnyNode = {
 	target?: string;
 };
 
-const schemaPath = join(__dirname, "../scene.schema.json");
+const schemaPath = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"../scene.schema.json",
+);
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const ajv = new Ajv();
 const validateFn = ajv.compile(schema);
