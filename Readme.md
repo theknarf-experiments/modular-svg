@@ -23,6 +23,12 @@ The solver compiles every node into a flat array of variables representing its
 Each operator reads from the current state and writes its suggestions into the
 next state. By repeatedly applying all operators in sequence (a damped Picard
 iteration) the layout converges towards a fixed point that satisfies all
-relations. Details about the approach can be found in `spec.html` which outlines
-the benefits of modular relations and the fixed‑point solver strategy.
+relations. The process starts by parsing the JSON scene into a flat array of
+numeric variables for every node. Operators such as `StackH`, `Align` or
+`Distribute` read these variables and suggest new positions in a fresh array.
+After each pass the solver mixes the new values with the previous ones using a
+damping factor. Iteration stops once the maximum change falls below a small
+threshold or a safety limit is hit. This local fixed‑point approach keeps the
+solver fast—time grows roughly linearly with scene size—and stable even when
+relations overlap or form cycles.
 

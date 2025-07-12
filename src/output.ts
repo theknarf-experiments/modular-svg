@@ -1,16 +1,31 @@
 import type { NodeRecord } from "./operators";
 import type { LayoutResult } from "./solver";
 
-function attrs(n?: NodeRecord): string {
-	if (!n) return "";
-	let fill = n.fill;
-	if (fill === undefined) fill = n.type === "text" ? "black" : "none";
+export function xml(
+	tag: string,
+	args: Record<string, string | number | undefined>,
+	children?: string | string[],
+): string {
+	const attr = Object.entries(args)
+		.filter(([, v]) => v !== undefined)
+		.map(([k, v]) => ` ${k}="${v}"`)
+		.join("");
+	if (children === undefined) return `<${tag}${attr} />`;
+	const body = Array.isArray(children) ? children.join("") : children;
+	return `<${tag}${attr}>${body}</${tag}>`;
+}
+
+function attrs(n?: NodeRecord): Record<string, string | number | undefined> {
+	if (!n) return {};
+	const fill =
+		n.fill !== undefined ? n.fill : n.type === "text" ? "black" : "none";
 	const stroke = n.stroke ?? "black";
-	let sw = n.strokeWidth;
-	if (sw === undefined && n.type === "arrow") sw = 3;
-	return ` fill="${fill}" stroke="${stroke}"${
-		sw !== undefined ? ` stroke-width="${sw}"` : ""
-	}`;
+	const sw = n.strokeWidth ?? (n.type === "arrow" ? 3 : undefined);
+	return {
+		fill,
+		stroke,
+		...(sw !== undefined ? { "stroke-width": sw } : {}),
+	};
 }
 
 function rect(
@@ -21,7 +36,14 @@ function rect(
 	dy: number,
 ): string {
 	const sw = n?.strokeWidth ?? 0;
-	return `<rect id="${id}" x="${box.x + dx - sw / 2}" y="${box.y + dy - sw / 2}" width="${box.width + sw}" height="${box.height + sw}"${attrs(n)}/>\n`;
+	return `${xml("rect", {
+		id,
+		x: box.x + dx - sw / 2,
+		y: box.y + dy - sw / 2,
+		width: box.width + sw,
+		height: box.height + sw,
+		...attrs(n),
+	})}\n`;
 }
 
 function circle(
@@ -34,7 +56,13 @@ function circle(
 	const r = (n.r ?? box.width / 2) as number;
 	const cx = box.x + dx + r;
 	const cy = box.y + dy + r;
-	return `<circle id="${id}" cx="${cx}" cy="${cy}" r="${r}"${attrs(n)} />\n`;
+	return `${xml("circle", {
+		id,
+		cx,
+		cy,
+		r,
+		...attrs(n),
+	})}\n`;
 }
 
 function textNode(
@@ -45,7 +73,17 @@ function textNode(
 	dy: number,
 ): string {
 	const t = n.text ?? "";
-	return `<text id="${id}" x="${box.x + dx}" y="${box.y + dy}" dominant-baseline="hanging"${attrs(n)}>${t}</text>\n`;
+	return `${xml(
+		"text",
+		{
+			id,
+			x: box.x + dx,
+			y: box.y + dy,
+			"dominant-baseline": "hanging",
+			...attrs(n),
+		},
+		t,
+	)}\n`;
 }
 
 function arrow(
@@ -81,8 +119,18 @@ function arrow(
 	const leftY = by + perpY * w * 0.5;
 	const rightX = bx - perpX * w * 0.5;
 	const rightY = by - perpY * w * 0.5;
-	const line = `<line id="${id}" x1="${x1}" y1="${y1}" x2="${sx2}" y2="${sy2}"${attrs(n)}/>`;
-	const poly = `<polygon points="${x2},${y2} ${leftX},${leftY} ${rightX},${rightY}"${attrs(n)}/>`;
+	const line = xml("line", {
+		id,
+		x1,
+		y1,
+		x2: sx2,
+		y2: sy2,
+		...attrs(n),
+	});
+	const poly = xml("polygon", {
+		points: `${x2},${y2} ${leftX},${leftY} ${rightX},${rightY}`,
+		...attrs(n),
+	});
 	return `${line}\n${poly}\n`;
 }
 
@@ -143,21 +191,21 @@ export function layoutToSvg(
 	}
 	const dx = minX < 0 ? -minX : 0;
 	const dy = minY < 0 ? -minY : 0;
-	let body = "";
-	for (const [id, box] of Object.entries(layout) as [
-		string,
-		LayoutResult[string],
-	][]) {
-		const n = byId.get(id);
-		if (!n?.type) continue;
-		if (n.type === "circle") body += circle(id, box, n, dx, dy);
-		else if (n.type === "text") body += textNode(id, box, n, dx, dy);
-		else if (n.type === "arrow") {
-			const line = arrow(id, n, layout, dx, dy);
-			if (line) body += line;
-		} else body += rect(id, box, n, dx, dy);
-	}
+	const body = Object.entries(layout)
+		.map(([id, box]) => {
+			const n = byId.get(id);
+			if (!n?.type) return "";
+			if (n.type === "circle") return circle(id, box, n, dx, dy);
+			if (n.type === "text") return textNode(id, box, n, dx, dy);
+			if (n.type === "arrow") return arrow(id, n, layout, dx, dy) ?? "";
+			return rect(id, box, n, dx, dy);
+		})
+		.join("");
 	const w = maxX - minX;
 	const h = maxY - minY;
-	return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">\n${body}</svg>`;
+	return xml(
+		"svg",
+		{ xmlns: "http://www.w3.org/2000/svg", width: w, height: h },
+		`\n${body}`,
+	);
 }
