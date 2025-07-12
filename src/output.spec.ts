@@ -5,11 +5,15 @@ import type { LayoutResult } from "./solver";
 
 describe("layoutToSvg", () => {
 	it("creates an svg sized to fit all boxes", () => {
+		const nodes: NodeRecord[] = [
+			{ id: "A", x: 0, y: 0, width: 10, height: 20, type: "rect" },
+			{ id: "B", x: 10, y: 20, width: 5, height: 5, type: "rect" },
+		];
 		const layout: LayoutResult = {
 			A: { x: 0, y: 0, width: 10, height: 20 },
 			B: { x: 10, y: 20, width: 5, height: 5 },
 		};
-		const svg = layoutToSvg(layout);
+		const svg = layoutToSvg(layout, nodes);
 		expect(svg).toContain('width="15"');
 		expect(svg).toContain('height="25"');
 		expect(svg).toContain('<rect id="A"');
@@ -45,15 +49,15 @@ describe("layoutToSvg", () => {
 				type: "text",
 				x: 5,
 				y: 5,
-				width: 0,
-				height: 0,
+				width: 16,
+				height: 16,
 				text: "hi",
 				fill: "green",
 			},
 		];
 		const layout: LayoutResult = {
 			R: { x: 1, y: 2, width: 10, height: 10 },
-			T: { x: 5, y: 5, width: 0, height: 0 },
+			T: { x: 5, y: 5, width: 16, height: 16 },
 		};
 		const svg = layoutToSvg(layout, nodes);
 		expect(svg).toContain('fill="red"');
@@ -87,5 +91,6 @@ describe("layoutToSvg", () => {
 		expect(svg).toContain('<line id="L"');
 		expect(svg).toContain("marker-end");
 		expect(svg).toContain("<defs>");
+		expect(svg).toContain('stroke-width="3"');
 	});
 });

@@ -68,7 +68,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				height: (props.height as number | undefined) ?? 0,
 				fill: props.fill as string | undefined,
 				stroke: props.stroke as string | undefined,
-				strokeWidth: props["stroke-width"] as number | undefined,
+				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else if (n.type === "Background") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
@@ -106,11 +106,13 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				text: (props.text as string | undefined) ?? "",
 				x: (props.x as number | undefined) ?? 0,
 				y: (props.y as number | undefined) ?? 0,
-				width: (props.width as number | undefined) ?? 0,
-				height: (props.height as number | undefined) ?? 0,
+				width:
+					(props.width as number | undefined) ??
+					((props.text as string | undefined)?.length ?? 0) * 8,
+				height: (props.height as number | undefined) ?? 16,
 				fill: props.fill as string | undefined,
 				stroke: props.stroke as string | undefined,
-				strokeWidth: props["stroke-width"] as number | undefined,
+				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else if (n.type === "Arrow") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
@@ -123,7 +125,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				height: 0,
 				fill: props.fill as string | undefined,
 				stroke: props.stroke as string | undefined,
-				strokeWidth: props["stroke-width"] as number | undefined,
+				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else {
 			rec = { id: n.id as string, x: 0, y: 0, width: 0, height: 0 };

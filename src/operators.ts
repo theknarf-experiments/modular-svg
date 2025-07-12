@@ -157,42 +157,70 @@ export class StackV implements LayoutOperator {
 
 export class DistributeX implements LayoutOperator {
 	readonly lipschitz = 1;
-	constructor(private readonly indices: number[]) {}
+	constructor(
+		private readonly indices: number[],
+		private readonly spacing = 0,
+	) {}
 
 	eval(cur: Float64Array, next: Float64Array): void {
 		if (this.indices.length < 2) return;
-		let min = cur[this.indices[0]];
-		let max = cur[this.indices[this.indices.length - 1]];
-		for (const idx of this.indices) {
-			if (cur[idx] < min) min = cur[idx];
-			if (cur[idx] > max) max = cur[idx];
-		}
-		const n = this.indices.length;
-		const gap = (max - min) / (n - 1);
-		for (let i = 0; i < n; i++) {
-			const idx = this.indices[i];
-			next[idx] = min + i * gap;
+		if (this.spacing > 0) {
+			let x = cur[this.indices[0]];
+			next[this.indices[0]] = x;
+			for (let i = 1; i < this.indices.length; i++) {
+				const prevBase = this.indices[i - 1];
+				const prevWidth = cur[prevBase + 2];
+				x += prevWidth + this.spacing;
+				next[this.indices[i]] = x;
+			}
+		} else {
+			let min = cur[this.indices[0]];
+			let max = cur[this.indices[this.indices.length - 1]];
+			for (const idx of this.indices) {
+				if (cur[idx] < min) min = cur[idx];
+				if (cur[idx] > max) max = cur[idx];
+			}
+			const n = this.indices.length;
+			const gap = (max - min) / (n - 1);
+			for (let i = 0; i < n; i++) {
+				const idx = this.indices[i];
+				next[idx] = min + i * gap;
+			}
 		}
 	}
 }
 
 export class DistributeY implements LayoutOperator {
 	readonly lipschitz = 1;
-	constructor(private readonly indices: number[]) {}
+	constructor(
+		private readonly indices: number[],
+		private readonly spacing = 0,
+	) {}
 
 	eval(cur: Float64Array, next: Float64Array): void {
 		if (this.indices.length < 2) return;
-		let min = cur[this.indices[0]];
-		let max = cur[this.indices[this.indices.length - 1]];
-		for (const idx of this.indices) {
-			if (cur[idx] < min) min = cur[idx];
-			if (cur[idx] > max) max = cur[idx];
-		}
-		const n = this.indices.length;
-		const gap = (max - min) / (n - 1);
-		for (let i = 0; i < n; i++) {
-			const idx = this.indices[i];
-			next[idx] = min + i * gap;
+		if (this.spacing > 0) {
+			let y = cur[this.indices[0]];
+			next[this.indices[0]] = y;
+			for (let i = 1; i < this.indices.length; i++) {
+				const prevBase = this.indices[i - 1];
+				const prevHeight = cur[prevBase + 3];
+				y += prevHeight + this.spacing;
+				next[this.indices[i]] = y;
+			}
+		} else {
+			let min = cur[this.indices[0]];
+			let max = cur[this.indices[this.indices.length - 1]];
+			for (const idx of this.indices) {
+				if (cur[idx] < min) min = cur[idx];
+				if (cur[idx] > max) max = cur[idx];
+			}
+			const n = this.indices.length;
+			const gap = (max - min) / (n - 1);
+			for (let i = 0; i < n; i++) {
+				const idx = this.indices[i];
+				next[idx] = min + i * gap;
+			}
 		}
 	}
 }

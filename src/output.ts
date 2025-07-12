@@ -2,9 +2,11 @@ import type { NodeRecord } from "./operators";
 import type { LayoutResult } from "./solver";
 
 function attrs(n?: NodeRecord): string {
-	const fill = n?.fill ?? "none";
-	const stroke = n?.stroke ?? "black";
-	const sw = n?.strokeWidth;
+	if (!n) return "";
+	const fill = n.fill ?? "none";
+	const stroke = n.stroke ?? "black";
+	let sw = n.strokeWidth;
+	if (sw === undefined && n.type === "arrow") sw = 3;
 	return ` fill="${fill}" stroke="${stroke}"${
 		sw !== undefined ? ` stroke-width="${sw}"` : ""
 	}`;
@@ -54,10 +56,11 @@ function arrow(
 	const a = n.from ? layout[n.from] : undefined;
 	const b = n.to ? layout[n.to] : undefined;
 	if (!a || !b) return;
+	const margin = 5;
 	const x1 = a.x + dx + a.width / 2;
-	const y1 = a.y + dy + a.height / 2;
+	const y1 = a.y + dy + a.height + margin;
 	const x2 = b.x + dx + b.width / 2;
-	const y2 = b.y + dy + b.height / 2;
+	const y2 = b.y + dy - margin;
 	return `<line id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${attrs(n)} marker-end="url(#arrowhead)"/>\n`;
 }
 
@@ -81,9 +84,10 @@ export function layoutToSvg(
 		LayoutResult[string],
 	][]) {
 		const n = byId.get(id);
-		if (n?.type === "circle") body += circle(id, box, n, dx, dy);
-		else if (n?.type === "text") body += textNode(id, box, n, dx, dy);
-		else if (n?.type === "arrow") {
+		if (!n?.type) continue;
+		if (n.type === "circle") body += circle(id, box, n, dx, dy);
+		else if (n.type === "text") body += textNode(id, box, n, dx, dy);
+		else if (n.type === "arrow") {
 			const line = arrow(id, n, layout, dx, dy);
 			if (line) {
 				arrowUsed = true;

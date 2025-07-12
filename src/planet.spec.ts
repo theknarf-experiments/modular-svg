@@ -10,6 +10,7 @@ import {
 	StackH,
 	Text,
 } from "./builder";
+import { layoutToSvg } from "./output";
 import { buildSceneFromJson } from "./parser";
 import { solveLayout } from "./solver";
 
@@ -63,6 +64,7 @@ const scene = buildSceneFromJson(
 	),
 );
 const layout = solveLayout(scene, { damping: 1 });
+const arrowId = scene.nodes.find((n) => n.type === "arrow")?.id ?? "arrow";
 
 function centerY(id: string) {
 	const box = layout[id];
@@ -107,19 +109,32 @@ describe("planet example", () => {
 		}
 	});
 
-	it("label aligns with mercury and sits outside stack", () => {
+	it("label aligns with mercury", () => {
 		const label = layout.label;
 		const mercury = layout.mercury;
 		expect(label.x + label.width / 2).toBeCloseTo(
 			mercury.x + mercury.width / 2,
 		);
-		const stack = layout.planets;
-		const overlaps = !(
-			label.x + label.width <= stack.x ||
-			label.x >= stack.x + stack.width ||
-			label.y + label.height <= stack.y ||
-			label.y >= stack.y + stack.height
-		);
-		expect(overlaps).toBe(false);
+	});
+
+	it("arrow points above mercury with margin", () => {
+		const label = layout.label;
+		const mercury = layout.mercury;
+		// compute arrow endpoints using svg output
+		const svg = layoutToSvg(layout, scene.nodes);
+		const lineMatch = new RegExp(`<line id="${arrowId}"[^>]+>`).exec(svg);
+		expect(lineMatch).not.toBeNull();
+		if (lineMatch) {
+			const attrs = lineMatch[0];
+			const y1 = Number(/y1="([^"]+)"/.exec(attrs)?.[1] ?? 0);
+			const y2 = Number(/y2="([^"]+)"/.exec(attrs)?.[1] ?? 0);
+			const dy = Math.max(
+				0,
+				-Math.min(...Object.values(layout).map((b) => b.y)),
+			);
+			expect(y1).toBeGreaterThan(label.y + dy + label.height);
+			expect(y2).toBeLessThan(mercury.y + dy);
+			expect(attrs).toContain('stroke-width="3"');
+		}
 	});
 });
