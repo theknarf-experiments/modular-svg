@@ -10,7 +10,7 @@ describe("CLI", () => {
 	it("runs with stdin", () => {
 		const json = readFileSync(example, "utf8");
 		const out = join(__dirname, "tmp.svg");
-		const { status } = spawnSync("npx", ["tsx", bin, "-", out], {
+		const { status } = spawnSync(bin, ["-", out], {
 			input: json,
 			encoding: "utf8",
 		});

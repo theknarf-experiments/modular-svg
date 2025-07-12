@@ -1,9 +1,9 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 import { readFileSync, writeFileSync } from "node:fs";
 import Ajv from "ajv";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { buildSceneFromJson, solveLayout, layoutToSvg } from "../src/index.js";
+import { buildSceneFromJson, solveLayout, layoutToSvg } from "../src/index.ts";
 
 const schemaPath = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -12,40 +12,38 @@ const schemaPath = join(
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 
 async function readInput(arg) {
-	if (arg && arg !== "-") {
-		return readFileSync(arg, "utf8");
-	}
-	if (process.stdin.isTTY) {
-		console.error("Usage: modular-svg <scene.json|-> [output.svg|-]");
-		process.exit(1);
-	}
-	let data = "";
-	for await (const chunk of process.stdin) data += chunk;
-	return data;
+        if (arg && arg !== "-") {
+                return readFileSync(arg, "utf8");
+        }
+        if (process.stdin.isTTY) {
+                console.error("Usage: modular-svg <scene.json|-> [output.svg|-]");
+                process.exit(1);
+        }
+        let data = "";
+        for await (const chunk of process.stdin) data += chunk;
+        return data;
 }
 
-async function main() {
-	const inputArg = process.argv[2];
-	const raw = await readInput(inputArg);
-	const data = JSON.parse(raw);
-	const ajv = new Ajv();
-	const validate = ajv.compile(schema);
-	if (!validate(data)) {
-		console.error("Invalid scene:", validate.errors);
-		process.exit(1);
-	}
+try {
+        const inputArg = process.argv[2];
+        const raw = await readInput(inputArg);
+        const data = JSON.parse(raw);
+        const ajv = new Ajv();
+        const validate = ajv.compile(schema);
+        if (!validate(data)) {
+                console.error("Invalid scene:", validate.errors);
+                process.exit(1);
+        }
         const scene = buildSceneFromJson(data);
         const layout = solveLayout(scene);
         const svg = layoutToSvg(layout, scene.nodes);
-	const out = process.argv[3];
-	if (out && out !== "-") {
-		writeFileSync(out, svg);
-	} else {
-		process.stdout.write(svg);
-	}
-}
-
-main().catch((err) => {
+        const out = process.argv[3];
+        if (out && out !== "-") {
+                writeFileSync(out, svg);
+        } else {
+                process.stdout.write(svg);
+        }
+} catch (err) {
         console.error(err);
         process.exit(1);
-});
+}
