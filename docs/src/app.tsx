@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet } from "react-router-dom";
 
 const App = () => (
 	<div>
