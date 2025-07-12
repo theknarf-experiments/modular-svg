@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import Ajv from "ajv";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { buildSceneFromJson, solveLayout } from "../src/index.js";
+import { buildSceneFromJson, solveLayout, layoutToSvg } from "../src/index.js";
 
 const schemaPath = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -34,9 +34,9 @@ async function main() {
 		console.error("Invalid scene:", validate.errors);
 		process.exit(1);
 	}
-	const scene = buildSceneFromJson(data);
-	const layout = solveLayout(scene);
-	const svg = render(layout);
+        const scene = buildSceneFromJson(data);
+        const layout = solveLayout(scene);
+        const svg = layoutToSvg(layout);
 	const out = process.argv[3];
 	if (out && out !== "-") {
 		writeFileSync(out, svg);
@@ -46,16 +46,6 @@ async function main() {
 }
 
 main().catch((err) => {
-	console.error(err);
-	process.exit(1);
+        console.error(err);
+        process.exit(1);
 });
-
-function render(layout) {
-	let body = "";
-	for (const [id, box] of Object.entries(layout)) {
-		body += `<rect id="${id}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="none" stroke="black"/>\n`;
-	}
-	const w = Math.max(...Object.values(layout).map((b) => b.x + b.width));
-	const h = Math.max(...Object.values(layout).map((b) => b.y + b.height));
-	return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">\n${body}</svg>`;
-}
