@@ -6,6 +6,7 @@ import type {
 } from "./operators";
 import {
 	AlignXCenter,
+	AlignXCenterTo,
 	AlignXLeft,
 	AlignXRight,
 	AlignYBottom,
@@ -198,12 +199,30 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					});
 					ops.push(new AlignXLeft(xs));
 				} else if (d.align === "center") {
-					const arr = d.children.map((c) => {
-						const base = indexMap.get(c.id);
-						if (base === undefined) throw new Error(`Unknown id ${c.id}`);
-						return { xIndex: base, widthIndex: base + 2 };
-					});
-					ops.push(new AlignXCenter(arr));
+					if (d.children.length >= 2) {
+						const anchor = d.children[d.children.length - 1];
+						const anchorBase = indexMap.get(anchor.id);
+						if (anchorBase === undefined)
+							throw new Error(`Unknown id ${anchor.id}`);
+						const others = d.children.slice(0, -1).map((c) => {
+							const base = indexMap.get(c.id);
+							if (base === undefined) throw new Error(`Unknown id ${c.id}`);
+							return { xIndex: base, widthIndex: base + 2 };
+						});
+						ops.push(
+							new AlignXCenterTo(
+								{ xIndex: anchorBase, widthIndex: anchorBase + 2 },
+								others,
+							),
+						);
+					} else {
+						const arr = d.children.map((c) => {
+							const base = indexMap.get(c.id);
+							if (base === undefined) throw new Error(`Unknown id ${c.id}`);
+							return { xIndex: base, widthIndex: base + 2 };
+						});
+						ops.push(new AlignXCenter(arr));
+					}
 				} else if (d.align === "right") {
 					const arr = d.children.map((c) => {
 						const base = indexMap.get(c.id);

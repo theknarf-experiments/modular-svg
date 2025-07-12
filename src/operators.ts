@@ -23,6 +23,21 @@ export class AlignXCenter implements LayoutOperator {
 	}
 }
 
+export class AlignXCenterTo implements LayoutOperator {
+	readonly lipschitz = 1;
+	constructor(
+		private readonly anchor: IndexPair,
+		private readonly others: IndexPair[],
+	) {}
+
+	eval(cur: Float64Array, next: Float64Array): void {
+		const center = cur[this.anchor.xIndex] + cur[this.anchor.widthIndex] / 2;
+		for (const { xIndex, widthIndex } of this.others) {
+			next[xIndex] = center - cur[widthIndex] / 2;
+		}
+	}
+}
+
 export class AlignXLeft implements LayoutOperator {
 	readonly lipschitz = 1;
 	constructor(private readonly indices: number[]) {}

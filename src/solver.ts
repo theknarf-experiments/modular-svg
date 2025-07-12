@@ -42,13 +42,16 @@ export function solveLayout(
 	let iter = 0;
 	let residual = Infinity;
 	while (iter < maxIter && residual > epsilon) {
-		next.set(cur);
-		for (const op of operators) op.eval(cur, next);
 		residual = 0;
-		for (let i = 0; i < cur.length; i++) {
-			const diff = Math.abs(next[i] - cur[i]);
-			if (diff > residual) residual = diff;
-			cur[i] = cur[i] + lambda * (next[i] - cur[i]);
+		for (const op of operators) {
+			next.set(cur);
+			op.eval(cur, next);
+			for (let i = 0; i < cur.length; i++) {
+				const diff = next[i] - cur[i];
+				const abs = Math.abs(diff);
+				if (abs > residual) residual = abs;
+				cur[i] += lambda * diff;
+			}
 		}
 		iter++;
 	}
