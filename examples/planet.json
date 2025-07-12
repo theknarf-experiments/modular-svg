@@ -68,7 +68,7 @@
 		{
 			"type": "Distribute",
 			"id": "distVertical",
-			"props": { "axis": "y" },
+			"props": { "axis": "y", "spacing": 60 },
 			"children": [
 				{ "type": "Ref", "target": "label" },
 				{ "type": "Ref", "target": "mercury" }

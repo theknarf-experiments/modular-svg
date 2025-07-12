@@ -71,10 +71,28 @@ export function layoutToSvg(
 	const byId = new Map<string, NodeRecord>();
 	if (nodes) for (const n of nodes) byId.set(n.id, n);
 	const boxes = Object.values(layout);
-	const minX = Math.min(...boxes.map((b) => b.x));
-	const minY = Math.min(...boxes.map((b) => b.y));
-	const maxX = Math.max(...boxes.map((b) => b.x + b.width));
-	const maxY = Math.max(...boxes.map((b) => b.y + b.height));
+	let minX = Math.min(...boxes.map((b) => b.x));
+	let minY = Math.min(...boxes.map((b) => b.y));
+	let maxX = Math.max(...boxes.map((b) => b.x + b.width));
+	let maxY = Math.max(...boxes.map((b) => b.y + b.height));
+	// account for arrow endpoints which may lie outside node boxes
+	for (const n of nodes ?? []) {
+		if (n.type === "arrow" && n.from && n.to) {
+			const a = layout[n.from];
+			const b = layout[n.to];
+			if (a && b) {
+				const margin = 5;
+				const x1 = a.x + a.width / 2;
+				const y1 = a.y + a.height + margin;
+				const x2 = b.x + b.width / 2;
+				const y2 = b.y - margin;
+				minX = Math.min(minX, x1, x2);
+				minY = Math.min(minY, y1, y2);
+				maxX = Math.max(maxX, x1, x2);
+				maxY = Math.max(maxY, y1, y2);
+			}
+		}
+	}
 	const dx = minX < 0 ? -minX : 0;
 	const dy = minY < 0 ? -minY : 0;
 	let body = "";
@@ -98,7 +116,7 @@ export function layoutToSvg(
 	const w = maxX - minX;
 	const h = maxY - minY;
 	const defs = arrowUsed
-		? '<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="black"/></marker></defs>\n'
+		? '<defs><marker id="arrowhead" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="black"/></marker></defs>\n'
 		: "";
 	return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">\n${defs}${body}</svg>`;
 }

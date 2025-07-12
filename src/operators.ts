@@ -165,13 +165,14 @@ export class DistributeX implements LayoutOperator {
 	eval(cur: Float64Array, next: Float64Array): void {
 		if (this.indices.length < 2) return;
 		if (this.spacing > 0) {
-			let x = cur[this.indices[0]];
-			next[this.indices[0]] = x;
-			for (let i = 1; i < this.indices.length; i++) {
-				const prevBase = this.indices[i - 1];
-				const prevWidth = cur[prevBase + 2];
-				x += prevWidth + this.spacing;
-				next[this.indices[i]] = x;
+			const anchor = this.indices[this.indices.length - 1];
+			let x = cur[anchor];
+			next[anchor] = x;
+			for (let i = this.indices.length - 2; i >= 0; i--) {
+				const base = this.indices[i];
+				const width = cur[base + 2];
+				x -= width + this.spacing;
+				next[base] = x;
 			}
 		} else {
 			let min = cur[this.indices[0]];
@@ -200,13 +201,14 @@ export class DistributeY implements LayoutOperator {
 	eval(cur: Float64Array, next: Float64Array): void {
 		if (this.indices.length < 2) return;
 		if (this.spacing > 0) {
-			let y = cur[this.indices[0]];
-			next[this.indices[0]] = y;
-			for (let i = 1; i < this.indices.length; i++) {
-				const prevBase = this.indices[i - 1];
-				const prevHeight = cur[prevBase + 3];
-				y += prevHeight + this.spacing;
-				next[this.indices[i]] = y;
+			const anchor = this.indices[this.indices.length - 1];
+			let y = cur[anchor];
+			next[anchor] = y;
+			for (let i = this.indices.length - 2; i >= 0; i--) {
+				const base = this.indices[i];
+				const height = cur[base + 3];
+				y -= height + this.spacing;
+				next[base] = y;
 			}
 		} else {
 			let min = cur[this.indices[0]];
