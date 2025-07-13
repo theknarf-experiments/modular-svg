@@ -14,6 +14,7 @@
 		"@types/react": "^18.2.66",
 		"@types/react-dom": "^18.2.22",
 		"@vitejs/plugin-react-swc": "^3.5.0",
+		"stream-buffers": "^3.0.3",
 		"typescript": "^5.2.2",
 		"vite": "^5.2.0",
 		"vite-node": "^1.6.0"
