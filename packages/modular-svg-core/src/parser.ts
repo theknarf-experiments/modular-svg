@@ -27,6 +27,7 @@ export type JsonScene = { nodes: NodeRecord[]; operators: LayoutOperator[] };
 type AnyNode = {
 	type: string;
 	id?: string;
+	key?: string;
 	props?: Record<string, unknown>;
 	children?: AnyNode[];
 	target?: string;
@@ -50,6 +51,7 @@ export function validate(data: unknown): void {
 export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	const nodes: NodeRecord[] = [];
 	const nodeMap = new Map<string, NodeRecord>();
+	const usedIds = new Set<string>();
 	type Desc =
 		| {
 				kind: "stackV" | "stackH";
@@ -72,19 +74,53 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		  };
 	const descs: Desc[] = [];
 
-	function ensureNode(n: AnyNode): NodeRecord {
+	function generateId(node: AnyNode, path: string): string {
+		// Prefer 'key' over 'id' over auto-generated
+		if (node.key) {
+			if (usedIds.has(node.key)) {
+				throw new Error(`Duplicate key: ${node.key}`);
+			}
+			usedIds.add(node.key);
+			return node.key;
+		}
+
+		if (node.id) {
+			if (usedIds.has(node.id)) {
+				throw new Error(`Duplicate id: ${node.id}`);
+			}
+			usedIds.add(node.id);
+			return node.id;
+		}
+
+		// Auto-generate deterministic ID based on tree path
+		let id = `${node.type.toLowerCase()}-${path}`;
+		// Handle duplicates by appending counter
+		if (usedIds.has(id)) {
+			let counter = 1;
+			while (usedIds.has(`${id}-${counter}`)) {
+				counter++;
+			}
+			id = `${id}-${counter}`;
+		}
+		usedIds.add(id);
+		return id;
+	}
+
+	function ensureNode(n: AnyNode, path: string): NodeRecord {
 		if (n.type === "Ref") {
 			const target = nodeMap.get(n.target as string);
 			if (!target) throw new Error(`Unknown ref ${n.target}`);
 			return target;
 		}
-		const existing = nodeMap.get(n.id as string);
+
+		const nodeId = generateId(n, path);
+		const existing = nodeMap.get(nodeId);
 		if (existing) return existing;
 		let rec: NodeRecord;
 		if (n.type === "Rect") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
 			rec = {
-				id: n.id as string,
+				id: nodeId,
 				type: "rect",
 				x: (props.x as number | undefined) ?? 0,
 				y: (props.y as number | undefined) ?? 0,
@@ -97,7 +133,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		} else if (n.type === "Background") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
 			rec = {
-				id: n.id as string,
+				id: nodeId,
 				type: "rect",
 				x: 0,
 				y: 0,
@@ -111,7 +147,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			const props = (n.props ?? {}) as Record<string, unknown>;
 			const r = (props.r as number | undefined) ?? 0;
 			rec = {
-				id: n.id as string,
+				id: nodeId,
 				type: "circle",
 				r,
 				x: (props.x as number | undefined) ?? 0,
@@ -125,7 +161,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		} else if (n.type === "Text") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
 			rec = {
-				id: n.id as string,
+				id: nodeId,
 				type: "text",
 				text: (props.text as string | undefined) ?? "",
 				x: (props.x as number | undefined) ?? 0,
@@ -141,7 +177,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		} else if (n.type === "Arrow") {
 			const props = (n.props ?? {}) as Record<string, unknown>;
 			rec = {
-				id: n.id as string,
+				id: nodeId,
 				type: "arrow",
 				x: 0,
 				y: 0,
@@ -152,17 +188,19 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else {
-			rec = { id: n.id as string, x: 0, y: 0, width: 0, height: 0 };
+			rec = { id: nodeId, x: 0, y: 0, width: 0, height: 0 };
 		}
 		nodeMap.set(rec.id, rec);
 		nodes.push(rec);
 		return rec;
 	}
 
-	function walk(node: AnyNode): NodeRecord {
-		const rec = ensureNode(node);
+	function walk(node: AnyNode, path = "0"): NodeRecord {
+		const rec = ensureNode(node, path);
 		if (Array.isArray(node.children)) {
-			const children = node.children.map(walk);
+			const children = node.children.map((child, i) =>
+				walk(child, `${path}.${i}`),
+			);
 			if (node.type === "StackV" || node.type === "StackH") {
 				descs.push({
 					kind: node.type === "StackV" ? "stackV" : "stackH",
