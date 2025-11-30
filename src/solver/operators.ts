@@ -1,263 +1,225 @@
-export type LayoutOperator = {
-	/** Optional Lipschitz constant for convergence analysis */
-	readonly lipschitz?: number;
-	/** Apply this operator: read from cur, write into next */
-	eval(cur: Float64Array, next: Float64Array): void;
-};
+export type LayoutOperator = (cur: Float64Array, next: Float64Array) => void;
 
 export type IndexPair = { xIndex: number; widthIndex: number };
 
-export class AlignXCenter implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(private readonly indices: IndexPair[]) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
+export function alignXCenter(indices: readonly IndexPair[]): LayoutOperator {
+	return (cur, next) => {
 		let sum = 0;
-		for (const { xIndex, widthIndex } of this.indices) {
+		for (const { xIndex, widthIndex } of indices) {
 			sum += cur[xIndex] + cur[widthIndex] / 2;
 		}
-		const avg = sum / this.indices.length;
-		for (const { xIndex, widthIndex } of this.indices) {
+		const avg = sum / indices.length;
+		for (const { xIndex, widthIndex } of indices) {
 			next[xIndex] = avg - cur[widthIndex] / 2;
 		}
-	}
+	};
 }
 
-export class AlignXCenterTo implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(
-		private readonly anchor: IndexPair,
-		private readonly others: IndexPair[],
-	) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
-		const center = cur[this.anchor.xIndex] + cur[this.anchor.widthIndex] / 2;
-		for (const { xIndex, widthIndex } of this.others) {
+export function alignXCenterTo(
+	anchor: IndexPair,
+	others: readonly IndexPair[],
+): LayoutOperator {
+	return (cur, next) => {
+		const center = cur[anchor.xIndex] + cur[anchor.widthIndex] / 2;
+		for (const { xIndex, widthIndex } of others) {
 			next[xIndex] = center - cur[widthIndex] / 2;
 		}
-	}
+	};
 }
 
-export class AlignXLeft implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(private readonly indices: number[]) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
+export function alignXLeft(indices: readonly number[]): LayoutOperator {
+	return (cur, next) => {
 		let min = Infinity;
-		for (const idx of this.indices) {
+		for (const idx of indices) {
 			if (cur[idx] < min) min = cur[idx];
 		}
-		for (const idx of this.indices) {
+		for (const idx of indices) {
 			next[idx] = min;
 		}
-	}
+	};
 }
 
-export class AlignYTop implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(private readonly indices: number[]) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
+export function alignYTop(indices: readonly number[]): LayoutOperator {
+	return (cur, next) => {
 		let min = Infinity;
-		for (const idx of this.indices) {
+		for (const idx of indices) {
 			if (cur[idx] < min) min = cur[idx];
 		}
-		for (const idx of this.indices) {
+		for (const idx of indices) {
 			next[idx] = min;
 		}
-	}
+	};
 }
 
-export class AlignXRight implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(private readonly indices: IndexPair[]) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
+export function alignXRight(indices: readonly IndexPair[]): LayoutOperator {
+	return (cur, next) => {
 		let max = -Infinity;
-		for (const { xIndex, widthIndex } of this.indices) {
+		for (const { xIndex, widthIndex } of indices) {
 			const right = cur[xIndex] + cur[widthIndex];
 			if (right > max) max = right;
 		}
-		for (const { xIndex, widthIndex } of this.indices) {
+		for (const { xIndex, widthIndex } of indices) {
 			next[xIndex] = max - cur[widthIndex];
 		}
-	}
+	};
 }
 
 export type YIndexPair = { yIndex: number; heightIndex: number };
 
-export class AlignYCenter implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(private readonly indices: YIndexPair[]) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
+export function alignYCenter(indices: readonly YIndexPair[]): LayoutOperator {
+	return (cur, next) => {
 		let sum = 0;
-		for (const { yIndex, heightIndex } of this.indices) {
+		for (const { yIndex, heightIndex } of indices) {
 			sum += cur[yIndex] + cur[heightIndex] / 2;
 		}
-		const avg = sum / this.indices.length;
-		for (const { yIndex, heightIndex } of this.indices) {
+		const avg = sum / indices.length;
+		for (const { yIndex, heightIndex } of indices) {
 			next[yIndex] = avg - cur[heightIndex] / 2;
 		}
-	}
+	};
 }
 
-export class AlignYBottom implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(private readonly indices: YIndexPair[]) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
+export function alignYBottom(indices: readonly YIndexPair[]): LayoutOperator {
+	return (cur, next) => {
 		let max = -Infinity;
-		for (const { yIndex, heightIndex } of this.indices) {
+		for (const { yIndex, heightIndex } of indices) {
 			const bottom = cur[yIndex] + cur[heightIndex];
 			if (bottom > max) max = bottom;
 		}
-		for (const { yIndex, heightIndex } of this.indices) {
+		for (const { yIndex, heightIndex } of indices) {
 			next[yIndex] = max - cur[heightIndex];
 		}
-	}
+	};
 }
 
 export type StackChild = { base: number; node: NodeRecord };
 
 export type StackAlignment = "left" | "centerX" | "right";
 
-export class StackV implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(
-		private readonly childIndices: StackChild[],
-		private readonly containerIndex: number,
-		private readonly spacing: number,
-		private readonly alignment: StackAlignment,
-	) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
+export function stackV(
+	childIndices: readonly StackChild[],
+	containerIndex: number,
+	spacing: number,
+	alignment: StackAlignment,
+): LayoutOperator {
+	return (cur, next) => {
 		let y = 0;
 		let maxWidth = 0;
-		for (const { base } of this.childIndices) {
+		for (const { base } of childIndices) {
 			const w = cur[base + 2];
 			const h = cur[base + 3];
 			let x = 0;
-			const containerW = cur[this.containerIndex + 2];
-			if (this.alignment === "centerX") {
+			const containerW = cur[containerIndex + 2];
+			if (alignment === "centerX") {
 				x = (containerW - w) / 2;
-			} else if (this.alignment === "right") {
+			} else if (alignment === "right") {
 				x = containerW - w;
 			}
 			next[base] = x;
 			next[base + 1] = y;
-			y += h + this.spacing;
+			y += h + spacing;
 			if (w > maxWidth) maxWidth = w;
 		}
-		next[this.containerIndex + 2] = maxWidth;
-		const total = this.childIndices.length;
-		next[this.containerIndex + 3] = y - (total > 0 ? this.spacing : 0);
-	}
+		next[containerIndex + 2] = maxWidth;
+		const total = childIndices.length;
+		next[containerIndex + 3] = y - (total > 0 ? spacing : 0);
+	};
 }
 
-export class DistributeX implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(
-		private readonly indices: number[],
-		private readonly spacing = 0,
-	) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
-		if (this.indices.length < 2) return;
-		if (this.spacing > 0) {
-			const anchor = this.indices[this.indices.length - 1];
+export function distributeX(
+	indices: readonly number[],
+	spacing = 0,
+): LayoutOperator {
+	return (cur, next) => {
+		if (indices.length < 2) return;
+		if (spacing > 0) {
+			const anchor = indices[indices.length - 1];
 			let x = cur[anchor];
 			next[anchor] = x;
-			for (let i = this.indices.length - 2; i >= 0; i--) {
-				const base = this.indices[i];
+			for (let i = indices.length - 2; i >= 0; i--) {
+				const base = indices[i];
 				const width = cur[base + 2];
-				x -= width + this.spacing;
+				x -= width + spacing;
 				next[base] = x;
 			}
 		} else {
-			let min = cur[this.indices[0]];
-			let max = cur[this.indices[this.indices.length - 1]];
-			for (const idx of this.indices) {
+			let min = cur[indices[0]];
+			let max = cur[indices[indices.length - 1]];
+			for (const idx of indices) {
 				if (cur[idx] < min) min = cur[idx];
 				if (cur[idx] > max) max = cur[idx];
 			}
-			const n = this.indices.length;
+			const n = indices.length;
 			const gap = (max - min) / (n - 1);
 			for (let i = 0; i < n; i++) {
-				const idx = this.indices[i];
+				const idx = indices[i];
 				next[idx] = min + i * gap;
 			}
 		}
-	}
+	};
 }
 
-export class DistributeY implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(
-		private readonly indices: number[],
-		private readonly spacing = 0,
-	) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
-		if (this.indices.length < 2) return;
-		if (this.spacing > 0) {
-			const anchor = this.indices[this.indices.length - 1];
+export function distributeY(
+	indices: readonly number[],
+	spacing = 0,
+): LayoutOperator {
+	return (cur, next) => {
+		if (indices.length < 2) return;
+		if (spacing > 0) {
+			const anchor = indices[indices.length - 1];
 			let y = cur[anchor];
 			next[anchor] = y;
-			for (let i = this.indices.length - 2; i >= 0; i--) {
-				const base = this.indices[i];
+			for (let i = indices.length - 2; i >= 0; i--) {
+				const base = indices[i];
 				const height = cur[base + 3];
-				y -= height + this.spacing;
+				y -= height + spacing;
 				next[base] = y;
 			}
 		} else {
-			let min = cur[this.indices[0]];
-			let max = cur[this.indices[this.indices.length - 1]];
-			for (const idx of this.indices) {
+			let min = cur[indices[0]];
+			let max = cur[indices[indices.length - 1]];
+			for (const idx of indices) {
 				if (cur[idx] < min) min = cur[idx];
 				if (cur[idx] > max) max = cur[idx];
 			}
-			const n = this.indices.length;
+			const n = indices.length;
 			const gap = (max - min) / (n - 1);
 			for (let i = 0; i < n; i++) {
-				const idx = this.indices[i];
+				const idx = indices[i];
 				next[idx] = min + i * gap;
 			}
 		}
-	}
+	};
 }
 
-export class StackH implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(
-		private readonly childIndices: StackChild[],
-		private readonly containerIndex: number,
-		private readonly spacing: number,
-		private readonly alignment: "top" | "centerY" | "bottom",
-	) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
+export function stackH(
+	childIndices: readonly StackChild[],
+	containerIndex: number,
+	spacing: number,
+	alignment: "top" | "centerY" | "bottom",
+): LayoutOperator {
+	return (cur, next) => {
 		let x = 0;
 		let maxHeight = 0;
-		for (const { base } of this.childIndices) {
+		for (const { base } of childIndices) {
 			const w = cur[base + 2];
 			const h = cur[base + 3];
 			let y = 0;
-			const containerH = cur[this.containerIndex + 3];
-			if (this.alignment === "centerY") {
+			const containerH = cur[containerIndex + 3];
+			if (alignment === "centerY") {
 				y = (containerH - h) / 2;
-			} else if (this.alignment === "bottom") {
+			} else if (alignment === "bottom") {
 				y = containerH - h;
 			}
 			next[base] = x;
 			next[base + 1] = y;
-			x += w + this.spacing;
+			x += w + spacing;
 			if (h > maxHeight) maxHeight = h;
 		}
-		next[this.containerIndex + 3] = maxHeight;
-		const total = this.childIndices.length;
-		next[this.containerIndex + 2] = x - (total > 0 ? this.spacing : 0);
-	}
+		next[containerIndex + 3] = maxHeight;
+		const total = childIndices.length;
+		next[containerIndex + 2] = x - (total > 0 ? spacing : 0);
+	};
 }
 
 export type NodeRecord = {
@@ -278,22 +240,19 @@ export type NodeRecord = {
 	strokeWidth?: number;
 };
 
-export class BackgroundOp implements LayoutOperator {
-	readonly lipschitz = 1;
-	constructor(
-		private readonly childIndex: number,
-		private readonly boxIndex: number,
-		private readonly padding: number,
-	) {}
-
-	eval(cur: Float64Array, next: Float64Array): void {
-		const x = cur[this.childIndex];
-		const y = cur[this.childIndex + 1];
-		const w = cur[this.childIndex + 2];
-		const h = cur[this.childIndex + 3];
-		next[this.boxIndex] = x - this.padding;
-		next[this.boxIndex + 1] = y - this.padding;
-		next[this.boxIndex + 2] = w + this.padding * 2;
-		next[this.boxIndex + 3] = h + this.padding * 2;
-	}
+export function backgroundOp(
+	childIndex: number,
+	boxIndex: number,
+	padding: number,
+): LayoutOperator {
+	return (cur, next) => {
+		const x = cur[childIndex];
+		const y = cur[childIndex + 1];
+		const w = cur[childIndex + 2];
+		const h = cur[childIndex + 3];
+		next[boxIndex] = x - padding;
+		next[boxIndex + 1] = y - padding;
+		next[boxIndex + 2] = w + padding * 2;
+		next[boxIndex + 3] = h + padding * 2;
+	};
 }

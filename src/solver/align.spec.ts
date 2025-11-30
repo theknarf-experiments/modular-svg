@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { solveLayout } from ".";
 import type { LayoutOperator, NodeRecord } from "./operators";
-import { AlignXLeft } from "./operators";
+import { alignXLeft } from "./operators";
 
 describe("Align operator", () => {
 	it("aligns multiple nodes to the leftmost X", () => {
@@ -10,7 +10,7 @@ describe("Align operator", () => {
 			{ id: "B", x: 10, y: 0, width: 10, height: 10 },
 			{ id: "C", x: 20, y: 0, width: 10, height: 10 },
 		];
-		const op = new AlignXLeft(nodes.map((_n, i) => i * 4));
+		const op = alignXLeft(nodes.map((_n, i) => i * 4));
 		const scene = { nodes, operators: [op as LayoutOperator] };
 		const result = solveLayout(scene, { damping: 1 });
 		expect(result.A.x).toBe(10);
