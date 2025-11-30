@@ -6,7 +6,7 @@ import {
         layoutToSvg,
         solveLayout,
         validate,
-} from "../src/index.ts";
+} from "../packages/modular-svg-core/src/index.ts";
 
 async function readInput(arg?: string): Promise<string> {
         if (arg && arg !== "-") {

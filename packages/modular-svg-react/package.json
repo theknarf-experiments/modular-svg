@@ -1,0 +1,26 @@
+{
+	"name": "@modular-svg/react",
+	"version": "0.1.0",
+	"description": "React bindings for modular-svg",
+	"main": "src/index.ts",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"test": "echo 'No tests yet'",
+		"typecheck": "tsc --noEmit"
+	},
+	"license": "MIT",
+	"peerDependencies": {
+		"react": "^18.0.0"
+	},
+	"dependencies": {
+		"@modular-svg/core": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/react": "^18.0.0",
+		"typescript": "^5.8.3",
+		"vitest": "^3.2.4"
+	}
+}

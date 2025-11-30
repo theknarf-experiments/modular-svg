@@ -2,7 +2,11 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildSceneFromJson, layoutToSvg, solveLayout } from "../src/index";
+import {
+	buildSceneFromJson,
+	layoutToSvg,
+	solveLayout,
+} from "../packages/modular-svg-core/src/index";
 
 const bin = join(__dirname, "modular-svg");
 const example = join(__dirname, "../examples/stack.json");
