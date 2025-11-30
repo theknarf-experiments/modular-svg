@@ -9,18 +9,18 @@ import type {
 	StackChild,
 } from "./solver/operators";
 import {
-	AlignXCenter,
-	AlignXCenterTo,
-	AlignXLeft,
-	AlignXRight,
-	AlignYBottom,
-	AlignYCenter,
-	AlignYTop,
-	BackgroundOp,
-	DistributeX,
-	DistributeY,
-	StackH,
-	StackV,
+	alignXCenter,
+	alignXCenterTo,
+	alignXLeft,
+	alignXRight,
+	alignYBottom,
+	alignYCenter,
+	alignYTop,
+	backgroundOp,
+	distributeX,
+	distributeY,
+	stackH,
+	stackV,
 } from "./solver/operators";
 
 export type JsonScene = { nodes: NodeRecord[]; operators: LayoutOperator[] };
@@ -226,7 +226,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				throw new Error(`Unknown id ${d.container.id}`);
 			if (d.kind === "stackV") {
 				ops.push(
-					new StackV(
+					stackV(
 						childIndices,
 						containerIdx,
 						(d.props.spacing as number) ?? 0,
@@ -235,7 +235,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				);
 			} else {
 				ops.push(
-					new StackH(
+					stackH(
 						childIndices,
 						containerIdx,
 						(d.props.spacing as number) ?? 0,
@@ -251,7 +251,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 						if (idx === undefined) throw new Error(`Unknown id ${c.id}`);
 						return idx;
 					});
-					ops.push(new AlignXLeft(xs));
+					ops.push(alignXLeft(xs));
 				} else if (d.align === "center") {
 					if (d.children.length >= 2) {
 						const anchor = d.children[d.children.length - 1];
@@ -264,7 +264,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 							return { xIndex: base, widthIndex: base + 2 };
 						});
 						ops.push(
-							new AlignXCenterTo(
+							alignXCenterTo(
 								{ xIndex: anchorBase, widthIndex: anchorBase + 2 },
 								others,
 							),
@@ -275,7 +275,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 							if (base === undefined) throw new Error(`Unknown id ${c.id}`);
 							return { xIndex: base, widthIndex: base + 2 };
 						});
-						ops.push(new AlignXCenter(arr));
+						ops.push(alignXCenter(arr));
 					}
 				} else if (d.align === "right") {
 					const arr = d.children.map((c) => {
@@ -283,7 +283,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 						if (base === undefined) throw new Error(`Unknown id ${c.id}`);
 						return { xIndex: base, widthIndex: base + 2 };
 					});
-					ops.push(new AlignXRight(arr));
+					ops.push(alignXRight(arr));
 				}
 			} else {
 				if (d.align === "top") {
@@ -292,21 +292,21 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 						if (idx === undefined) throw new Error(`Unknown id ${c.id}`);
 						return idx + 1;
 					});
-					ops.push(new AlignYTop(ys));
+					ops.push(alignYTop(ys));
 				} else if (d.align === "center") {
 					const arr = d.children.map((c) => {
 						const base = indexMap.get(c.id);
 						if (base === undefined) throw new Error(`Unknown id ${c.id}`);
 						return { yIndex: base + 1, heightIndex: base + 3 };
 					});
-					ops.push(new AlignYCenter(arr));
+					ops.push(alignYCenter(arr));
 				} else if (d.align === "bottom") {
 					const arr = d.children.map((c) => {
 						const base = indexMap.get(c.id);
 						if (base === undefined) throw new Error(`Unknown id ${c.id}`);
 						return { yIndex: base + 1, heightIndex: base + 3 };
 					});
-					ops.push(new AlignYBottom(arr));
+					ops.push(alignYBottom(arr));
 				}
 			}
 		} else if (d.kind === "distribute") {
@@ -316,14 +316,14 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				return d.axis === "x" ? idx : idx + 1;
 			});
 			const spacing = (d.props.spacing as number | undefined) ?? 0;
-			if (d.axis === "x") ops.push(new DistributeX(idxs, spacing));
-			else ops.push(new DistributeY(idxs, spacing));
+			if (d.axis === "x") ops.push(distributeX(idxs, spacing));
+			else ops.push(distributeY(idxs, spacing));
 		} else if (d.kind === "background") {
 			const childBase = indexMap.get(d.child.id);
 			const boxBase = indexMap.get(d.box.id);
 			if (childBase === undefined || boxBase === undefined)
 				throw new Error("unknown id in background");
-			ops.push(new BackgroundOp(childBase, boxBase, d.padding));
+			ops.push(backgroundOp(childBase, boxBase, d.padding));
 		}
 	}
 

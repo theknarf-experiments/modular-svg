@@ -45,7 +45,7 @@ export function solveLayout(
 		residual = 0;
 		for (const op of operators) {
 			next.set(cur);
-			op.eval(cur, next);
+			op(cur, next);
 			for (let i = 0; i < cur.length; i++) {
 				const diff = next[i] - cur[i];
 				const abs = Math.abs(diff);

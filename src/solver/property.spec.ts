@@ -3,18 +3,18 @@ import { describe, it } from "vitest";
 import { solveLayout } from ".";
 import type { LayoutOperator, NodeRecord, StackAlignment } from "./operators";
 import {
-	AlignXCenter,
-	AlignXCenterTo,
-	AlignXLeft,
-	AlignXRight,
-	AlignYBottom,
-	AlignYCenter,
-	AlignYTop,
-	BackgroundOp,
-	DistributeX,
-	DistributeY,
-	StackH,
-	StackV,
+	alignXCenter,
+	alignXCenterTo,
+	alignXLeft,
+	alignXRight,
+	alignYBottom,
+	alignYCenter,
+	alignYTop,
+	backgroundOp,
+	distributeX,
+	distributeY,
+	stackH,
+	stackV,
 } from "./operators";
 
 describe("property based primitives", () => {
@@ -33,7 +33,7 @@ describe("property based primitives", () => {
 						width: 1,
 						height: 1,
 					}));
-					const op = new AlignXLeft(nodes.map((_n, i) => i * 4));
+					const op = alignXLeft(nodes.map((_n, i) => i * 4));
 					const scene = { nodes, operators: [op as LayoutOperator] };
 					const result = solveLayout(scene, { damping: 1 });
 					const min = Math.min(...xs);
@@ -58,7 +58,7 @@ describe("property based primitives", () => {
 						width: 0,
 						height: 0,
 					}));
-					const op = new DistributeX(nodes.map((_n, i) => i * 4));
+					const op = distributeX(nodes.map((_n, i) => i * 4));
 					const scene = { nodes, operators: [op as LayoutOperator] };
 					const result = solveLayout(scene, { damping: 1 });
 					const min = Math.min(...xs);
@@ -94,7 +94,7 @@ describe("property based primitives", () => {
 						xIndex: i * 4,
 						widthIndex: i * 4 + 2,
 					}));
-					const op = new AlignXCenter(indices);
+					const op = alignXCenter(indices);
 					const scene = { nodes, operators: [op as LayoutOperator] };
 					const result = solveLayout(scene, { damping: 1 });
 					const centers = nodes.map(
@@ -138,7 +138,7 @@ describe("property based primitives", () => {
 							height: 1,
 						})),
 					];
-					const op = new AlignXCenterTo(
+					const op = alignXCenterTo(
 						{ xIndex: 0, widthIndex: 2 },
 						others.map((_o, i) => ({
 							xIndex: (i + 1) * 4,
@@ -172,7 +172,7 @@ describe("property based primitives", () => {
 						width: 1,
 						height: 1,
 					}));
-					const op = new AlignYTop(nodes.map((_n, i) => i * 4 + 1));
+					const op = alignYTop(nodes.map((_n, i) => i * 4 + 1));
 					const scene = { nodes, operators: [op as LayoutOperator] };
 					const result = solveLayout(scene, { damping: 1 });
 					const min = Math.min(...ys);
@@ -200,7 +200,7 @@ describe("property based primitives", () => {
 						width: v.width,
 						height: 1,
 					}));
-					const op = new AlignXRight(
+					const op = alignXRight(
 						vals.map((_v, i) => ({ xIndex: i * 4, widthIndex: i * 4 + 2 })),
 					);
 					const scene = { nodes, operators: [op as LayoutOperator] };
@@ -232,7 +232,7 @@ describe("property based primitives", () => {
 						width: 1,
 						height: v.height,
 					}));
-					const op = new AlignYCenter(
+					const op = alignYCenter(
 						vals.map((_v, i) => ({
 							yIndex: i * 4 + 1,
 							heightIndex: i * 4 + 3,
@@ -267,7 +267,7 @@ describe("property based primitives", () => {
 						width: 1,
 						height: v.height,
 					}));
-					const op = new AlignYBottom(
+					const op = alignYBottom(
 						vals.map((_v, i) => ({
 							yIndex: i * 4 + 1,
 							heightIndex: i * 4 + 3,
@@ -299,7 +299,7 @@ describe("property based primitives", () => {
 						width: 0,
 						height: 0,
 					}));
-					const op = new DistributeY(nodes.map((_n, i) => i * 4 + 1));
+					const op = distributeY(nodes.map((_n, i) => i * 4 + 1));
 					const scene = { nodes, operators: [op as LayoutOperator] };
 					const result = solveLayout(scene, { damping: 1 });
 					const min = Math.min(...ys);
@@ -347,7 +347,7 @@ describe("property based primitives", () => {
 						base: (i + 1) * 4,
 						node: nodes[i + 1],
 					}));
-					const op = new StackV(childIndices, 0, spacing, align);
+					const op = stackV(childIndices, 0, spacing, align);
 					const scene = { nodes, operators: [op as LayoutOperator] };
 					const result = solveLayout(scene, { damping: 1 });
 					const expectedWidth = Math.max(...sizes.map((s) => s.width));
@@ -411,7 +411,7 @@ describe("property based primitives", () => {
 						base: (i + 1) * 4,
 						node: nodes[i + 1],
 					}));
-					const op = new StackH(
+					const op = stackH(
 						childIndices,
 						0,
 						spacing,
@@ -458,7 +458,7 @@ describe("property based primitives", () => {
 					const child: NodeRecord = { id: "child", x, y, width, height };
 					const box: NodeRecord = { id: "bg", x: 0, y: 0, width: 0, height: 0 };
 					const nodes = [child, box];
-					const op = new BackgroundOp(0, 4, padding);
+					const op = backgroundOp(0, 4, padding);
 					const scene = { nodes, operators: [op as LayoutOperator] };
 					const result = solveLayout(scene, { damping: 1 });
 					const b = result.bg;

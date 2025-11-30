@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { solveLayout } from ".";
 import type { LayoutOperator, NodeRecord } from "./operators";
-import { StackV } from "./operators";
+import { stackV } from "./operators";
 
 describe("Stack operator", () => {
 	it("stacks children vertically with spacing and centers them", () => {
@@ -19,7 +19,7 @@ describe("Stack operator", () => {
 		const childIndices = nodes
 			.slice(1)
 			.map((n, i) => ({ base: (i + 1) * 4, node: n }));
-		const op = new StackV(childIndices, 0, 5, "centerX");
+		const op = stackV(childIndices, 0, 5, "centerX");
 		const scene = { nodes, operators: [op as LayoutOperator] };
 		const result = solveLayout(scene, { damping: 1 });
 		expect(result.A.y).toBe(0);
