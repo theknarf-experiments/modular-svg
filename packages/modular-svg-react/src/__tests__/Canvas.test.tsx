@@ -111,14 +111,7 @@ describe("Canvas component", () => {
 		});
 	});
 
-	// TODO: Context forwarding with its-fine
-	// Issue: useContextMap() returns empty map when called from CanvasImpl inside FiberProvider
-	// Need to investigate why its-fine can't traverse fiber tree to find parent contexts
-	// Possible solutions:
-	// 1. Different FiberProvider placement
-	// 2. Manual context forwarding without its-fine
-	// 3. Users explicitly pass context bridge
-	describe.skip("Context Forwarding", () => {
+	describe("Context Forwarding", () => {
 		it("should forward React context to children", async () => {
 			const ThemeContext = React.createContext("light");
 			let receivedTheme: string | undefined;

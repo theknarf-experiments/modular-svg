@@ -1,8 +1,12 @@
 import { Canvas } from "@modular-svg/react";
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { ComplexPlanetSystem, FullPlanetExample } from "./FullPlanetExample";
 import { InteractivePlanetExample, PlanetExample } from "./PlanetExample";
 import "./modular-svg.d.ts";
+
+// Create contexts for demonstration
+const ThemeContext = createContext<"light" | "dark">("light");
+const SizeScaleContext = createContext(1);
 
 function App() {
 	const [radius, setRadius] = useState(20);
@@ -276,6 +280,16 @@ function App() {
 				<ComplexPlanetSystem />
 			</section>
 
+			{/* Example 13: Context Forwarding ✨ NEW! */}
+			<section style={{ marginBottom: "3rem" }}>
+				<h2>13. React Context Forwarding ✨ NEW!</h2>
+				<p style={{ color: "#666", fontSize: "14px" }}>
+					React contexts automatically flow into Canvas children - no special
+					setup required!
+				</p>
+				<ContextForwardingExample />
+			</section>
+
 			{/* Footer */}
 			<footer
 				style={{
@@ -298,10 +312,11 @@ function App() {
 					<li>✅ Event handlers (onClick, onMouseEnter, etc.)</li>
 					<li>✅ Props (margin, className, style, title)</li>
 					<li>✅ Dynamic updates and re-renders</li>
+					<li>✅ React Context forwarding</li>
 				</ul>
 				<p style={{ marginTop: "1rem" }}>
-					<strong>Note:</strong> Context forwarding is not yet implemented. See{" "}
-					<code>IMPLEMENTATION_STATUS.md</code> for details.
+					<strong>Built with React 19</strong> using react-reconciler 0.31.0 and
+					its-fine for seamless context bridging.
 				</p>
 			</footer>
 		</div>
@@ -376,6 +391,104 @@ function InteractiveClickExample() {
 				onMouseDown, onMouseUp
 			</p>
 		</div>
+	);
+}
+
+// Context forwarding example - demonstrates React contexts work seamlessly
+function ContextForwardingExample() {
+	const [theme, setTheme] = useState<"light" | "dark">("light");
+	const [scale, setScale] = useState(1);
+
+	return (
+		<ThemeContext.Provider value={theme}>
+			<SizeScaleContext.Provider value={scale}>
+				<div>
+					<div style={{ marginBottom: "1rem" }}>
+						<label style={{ display: "block", marginBottom: "0.5rem" }}>
+							<strong>Theme Context:</strong>
+							<select
+								value={theme}
+								onChange={(e) => setTheme(e.target.value as "light" | "dark")}
+								style={{ marginLeft: "1rem", padding: "4px 8px" }}
+							>
+								<option value="light">Light</option>
+								<option value="dark">Dark</option>
+							</select>
+						</label>
+						<label style={{ display: "block", marginBottom: "0.5rem" }}>
+							<strong>Size Scale Context:</strong> {scale.toFixed(1)}x
+							<input
+								type="range"
+								min="0.5"
+								max="2"
+								step="0.1"
+								value={scale}
+								onChange={(e) => setScale(Number(e.target.value))}
+								style={{ marginLeft: "1rem", width: "200px" }}
+							/>
+						</label>
+					</div>
+					<Canvas
+						style={{
+							border: "1px solid #ddd",
+							borderRadius: "8px",
+							display: "inline-block",
+						}}
+						margin={10}
+						data-testid="context-canvas"
+					>
+						<stackH spacing={15}>
+							<ThemedCircle />
+							<ThemedCircle />
+							<ThemedCircle />
+						</stackH>
+					</Canvas>
+					<p
+						style={{
+							color: "#666",
+							fontSize: "12px",
+							marginTop: "1rem",
+							maxWidth: "500px",
+						}}
+					>
+						<strong>How it works:</strong> The ThemedCircle components use{" "}
+						<code>useContext()</code> to read theme and scale values from
+						providers outside the Canvas. Context automatically flows from
+						react-dom into the custom reconciler!
+					</p>
+				</div>
+			</SizeScaleContext.Provider>
+		</ThemeContext.Provider>
+	);
+}
+
+// Component that reads from context - demonstrates context forwarding works
+function ThemedCircle() {
+	const theme = useContext(ThemeContext);
+	const scale = useContext(SizeScaleContext);
+
+	const baseRadius = 20;
+	const radius = baseRadius * scale;
+
+	// Theme-based colors
+	const colors = {
+		light: {
+			fill: "#3b82f6",
+			stroke: "#1e40af",
+		},
+		dark: {
+			fill: "#1e293b",
+			stroke: "#475569",
+		},
+	};
+
+	return (
+		<circle
+			r={radius}
+			fill={colors[theme].fill}
+			stroke={colors[theme].stroke}
+			stroke-width={2}
+		/>
 	);
 }
 
