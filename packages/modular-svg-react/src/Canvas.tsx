@@ -4,6 +4,7 @@ import {
 	type SvgElement,
 	solveLayout,
 } from "@modular-svg/core";
+import { FiberProvider, useContextBridge } from "its-fine";
 import * as React from "react";
 import {
 	createRoot,
@@ -99,9 +100,13 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 	return null;
 }
 
-export function Canvas({ children, margin = 0, title, ...props }: CanvasProps) {
+// Internal Canvas component that uses context bridge
+function CanvasImpl({ children, margin = 0, title, ...props }: CanvasProps) {
 	const rootRef = React.useRef<ReconcilerRoot | null>(null);
 	const [ast, setAst] = React.useState<SvgDocument | null>(null);
+
+	// Get context bridge - this must be called within FiberProvider
+	const ContextBridge = useContextBridge();
 
 	React.useEffect(() => {
 		if (!rootRef.current) {
@@ -111,9 +116,10 @@ export function Canvas({ children, margin = 0, title, ...props }: CanvasProps) {
 		async function render() {
 			if (!rootRef.current) return;
 
-			// TODO: Add context bridging with its-fine
-			// For now, render children directly without context bridge
-			await rootRef.current.render(children);
+			// Wrap children with context bridge to forward contexts from react-dom
+			const wrappedChildren = <ContextBridge>{children}</ContextBridge>;
+
+			await rootRef.current.render(wrappedChildren);
 			const scene = rootRef.current.getScene();
 
 			// Only render if we have nodes
@@ -127,7 +133,7 @@ export function Canvas({ children, margin = 0, title, ...props }: CanvasProps) {
 		}
 
 		render();
-	}, [children, margin]);
+	}, [children, margin, ContextBridge]);
 
 	// Cleanup on unmount
 	React.useEffect(() => {
@@ -160,5 +166,15 @@ export function Canvas({ children, margin = 0, title, ...props }: CanvasProps) {
 				))}
 			</svg>
 		</div>
+	);
+}
+
+// Public Canvas component that wraps CanvasImpl with FiberProvider
+// This enables context forwarding from react-dom to our custom reconciler
+export function Canvas(props: CanvasProps) {
+	return (
+		<FiberProvider>
+			<CanvasImpl {...props} />
+		</FiberProvider>
 	);
 }
