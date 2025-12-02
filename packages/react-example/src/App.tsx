@@ -187,9 +187,18 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 7: Margin Control */}
+			{/* Example 7: Event Handlers (NEW!) */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>7. Canvas Margin</h2>
+				<h2>7. Interactive Event Handlers ✨ NEW!</h2>
+				<p style={{ color: "#666", fontSize: "14px" }}>
+					Click on circles to see event handlers in action!
+				</p>
+				<InteractiveClickExample />
+			</section>
+
+			{/* Example 8: Margin Control */}
+			<section style={{ marginBottom: "3rem" }}>
+				<h2>8. Canvas Margin</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					The margin prop adds padding around the SVG content
 				</p>
@@ -329,6 +338,72 @@ function App() {
 // Helper component to demonstrate React component usage
 function ColoredCircle({ color }: { color: string }) {
 	return <circle r={18} fill={color} />;
+}
+
+// Interactive example with click handlers
+function InteractiveClickExample() {
+	const [clicked, setClicked] = useState<string | null>(null);
+	const [hovered, setHovered] = useState<string | null>(null);
+
+	return (
+		<div>
+			<p style={{ color: "#333", fontSize: "14px", marginBottom: "1rem" }}>
+				{clicked
+					? `✅ You clicked: ${clicked}`
+					: "👆 Click on any circle below"}
+			</p>
+			<Canvas
+				style={{
+					border: "1px solid #ddd",
+					borderRadius: "8px",
+					display: "inline-block",
+					cursor: "pointer",
+				}}
+				margin={10}
+				title="Interactive color circles"
+			>
+				<stackH spacing={20}>
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: Custom JSX elements processed by reconciler */}
+					<circle
+						key="red-circle"
+						r={25}
+						fill={hovered === "Red Circle" ? "#ff6666" : "#ff0000"}
+						stroke="#990000"
+						stroke-width={hovered === "Red Circle" ? 3 : 1}
+						onClick={() => setClicked("Red Circle")}
+						onMouseEnter={() => setHovered("Red Circle")}
+						onMouseLeave={() => setHovered(null)}
+					/>
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: Custom JSX elements processed by reconciler */}
+					<circle
+						key="green-circle"
+						r={25}
+						fill={hovered === "Green Circle" ? "#66ff66" : "#00ff00"}
+						stroke="#009900"
+						stroke-width={hovered === "Green Circle" ? 3 : 1}
+						onClick={() => setClicked("Green Circle")}
+						onMouseEnter={() => setHovered("Green Circle")}
+						onMouseLeave={() => setHovered(null)}
+					/>
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: Custom JSX elements processed by reconciler */}
+					<circle
+						key="blue-circle"
+						r={25}
+						fill={hovered === "Blue Circle" ? "#6666ff" : "#0000ff"}
+						stroke="#000099"
+						stroke-width={hovered === "Blue Circle" ? 3 : 1}
+						onClick={() => setClicked("Blue Circle")}
+						onMouseEnter={() => setHovered("Blue Circle")}
+						onMouseLeave={() => setHovered(null)}
+					/>
+				</stackH>
+			</Canvas>
+			<p style={{ color: "#666", fontSize: "12px", marginTop: "1rem" }}>
+				Supported events: onClick, onMouseEnter, onMouseLeave, onMouseMove,
+				onMouseDown, onMouseUp
+			</p>
+		</div>
+	);
 }
 
 export default App;

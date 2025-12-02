@@ -4,6 +4,16 @@ import type * as React from "react";
 import Reconciler from "react-reconciler";
 import { DefaultEventPriority } from "react-reconciler/constants";
 
+// Event handlers that can be attached to SVG elements
+export type EventHandlers = {
+	onClick?: (e: React.MouseEvent<SVGElement>) => void;
+	onMouseEnter?: (e: React.MouseEvent<SVGElement>) => void;
+	onMouseLeave?: (e: React.MouseEvent<SVGElement>) => void;
+	onMouseMove?: (e: React.MouseEvent<SVGElement>) => void;
+	onMouseDown?: (e: React.MouseEvent<SVGElement>) => void;
+	onMouseUp?: (e: React.MouseEvent<SVGElement>) => void;
+};
+
 // Instance represents a node in our scene graph
 type Instance = {
 	type: string;
@@ -13,6 +23,13 @@ type Instance = {
 	parent?: Instance;
 	textContent?: string; // For text elements with string children
 };
+
+// Global map to store event handlers for each element by ID
+// This survives across reconciler updates
+const eventHandlerMap = new Map<string, EventHandlers>();
+
+// Counter for auto-generated IDs (deterministic per reconciler session)
+let idCounter = 0;
 
 // Container holds the root instances (can be multiple for fragments)
 type Container = {
@@ -114,16 +131,47 @@ const hostConfig: Reconciler.HostConfig<
 		_hostContext: HostContext,
 		internalHandle: Reconciler.OpaqueHandle,
 	): Instance {
-		const { children, ...rest } = props;
-
 		// Get key from fiber handle (React doesn't pass key in props)
 		const fiber = internalHandle as { key?: unknown };
 		const key = fiber?.key;
 
+		// Generate stable ID for this instance
+		// Use user-provided key, or auto-generate with counter
+		const id = typeof key === "string" ? key : `${type}_${idCounter++}`;
+
+		// Extract event handlers from props
+		const {
+			children,
+			onClick,
+			onMouseEnter,
+			onMouseLeave,
+			onMouseMove,
+			onMouseDown,
+			onMouseUp,
+			...layoutProps
+		} = props;
+
+		// Store event handlers in global map if any are provided
+		const handlers: EventHandlers = {};
+		if (onClick) handlers.onClick = onClick as EventHandlers["onClick"];
+		if (onMouseEnter)
+			handlers.onMouseEnter = onMouseEnter as EventHandlers["onMouseEnter"];
+		if (onMouseLeave)
+			handlers.onMouseLeave = onMouseLeave as EventHandlers["onMouseLeave"];
+		if (onMouseMove)
+			handlers.onMouseMove = onMouseMove as EventHandlers["onMouseMove"];
+		if (onMouseDown)
+			handlers.onMouseDown = onMouseDown as EventHandlers["onMouseDown"];
+		if (onMouseUp) handlers.onMouseUp = onMouseUp as EventHandlers["onMouseUp"];
+
+		if (Object.keys(handlers).length > 0) {
+			eventHandlerMap.set(id, handlers);
+		}
+
 		return {
 			type,
-			key: typeof key === "string" ? key : undefined,
-			props: rest,
+			key: id,
+			props: layoutProps,
 			children: [],
 		};
 	},
@@ -272,6 +320,8 @@ const hostConfig: Reconciler.HostConfig<
 	// Clearing
 	clearContainer(container: Container): void {
 		container.rootInstances = [];
+		// Reset ID counter for deterministic IDs in tests
+		idCounter = 0;
 	},
 
 	// Text content
@@ -439,4 +489,14 @@ export async function act(callback: () => void | Promise<void>): Promise<void> {
 	await reactAct(async () => {
 		await callback();
 	});
+}
+
+// Export function to get event handlers for an element
+export function getEventHandlers(id: string): EventHandlers | undefined {
+	return eventHandlerMap.get(id);
+}
+
+// Export function to clear all event handlers (useful for cleanup)
+export function clearEventHandlers(): void {
+	eventHandlerMap.clear();
 }
