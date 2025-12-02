@@ -37,7 +37,7 @@ async function getValidator() {
 	if (validateFn) return validateFn;
 
 	// Skip validation in browser
-	if (typeof window !== "undefined") {
+	if (typeof globalThis !== "undefined" && "window" in globalThis) {
 		return undefined;
 	}
 
