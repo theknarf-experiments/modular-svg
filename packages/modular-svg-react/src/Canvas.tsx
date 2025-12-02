@@ -14,7 +14,6 @@ import {
 export interface CanvasProps extends React.HTMLAttributes<HTMLDivElement> {
 	children?: React.ReactNode;
 	margin?: number;
-	onRender?: (svg: string) => void;
 	title?: string;
 }
 
@@ -100,39 +99,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 	return null;
 }
 
-// Helper to serialize AST to SVG string (for onRender callback)
-function serializeAst(ast: SvgDocument): string {
-	const elements = ast.children
-		.map((el) => {
-			if (el.type === "circle") {
-				return `<circle id="${el.id}" cx="${el.cx}" cy="${el.cy}" r="${el.r}" fill="${el.fill ?? "none"}" stroke="${el.stroke ?? "none"}" stroke-width="${el.strokeWidth ?? 0}" />`;
-			}
-			if (el.type === "rect") {
-				return `<rect id="${el.id}" x="${el.x}" y="${el.y}" width="${el.width}" height="${el.height}" fill="${el.fill ?? "none"}" stroke="${el.stroke ?? "none"}" stroke-width="${el.strokeWidth ?? 0}" />`;
-			}
-			if (el.type === "text") {
-				return `<text id="${el.id}" x="${el.x}" y="${el.y}" fill="${el.fill ?? "black"}">${el.text}</text>`;
-			}
-			if (el.type === "line") {
-				return `<line id="${el.id}" x1="${el.x1}" y1="${el.y1}" x2="${el.x2}" y2="${el.y2}" stroke="${el.stroke ?? "black"}" stroke-width="${el.strokeWidth ?? 1}" />`;
-			}
-			if (el.type === "polygon") {
-				return `<polygon points="${el.points}" fill="${el.fill ?? "none"}" stroke="${el.stroke ?? "black"}" stroke-width="${el.strokeWidth ?? 1}" />`;
-			}
-			return "";
-		})
-		.join("\n");
-
-	return `<svg width="${ast.width}" height="${ast.height}" xmlns="http://www.w3.org/2000/svg">\n${elements}\n</svg>`;
-}
-
-export function Canvas({
-	children,
-	margin = 0,
-	onRender,
-	title,
-	...props
-}: CanvasProps) {
+export function Canvas({ children, margin = 0, title, ...props }: CanvasProps) {
 	const rootRef = React.useRef<ReconcilerRoot | null>(null);
 	const [ast, setAst] = React.useState<SvgDocument | null>(null);
 
@@ -154,19 +121,13 @@ export function Canvas({
 				const layout = solveLayout(scene);
 				const svgAst = layoutToAst(layout, scene.nodes, margin);
 				setAst(svgAst);
-
-				// Call onRender with serialized SVG if callback provided
-				if (onRender) {
-					const svgString = serializeAst(svgAst);
-					onRender(svgString);
-				}
 			} else {
 				setAst(null);
 			}
 		}
 
 		render();
-	}, [children, margin, onRender]);
+	}, [children, margin]);
 
 	// Cleanup on unmount
 	React.useEffect(() => {
