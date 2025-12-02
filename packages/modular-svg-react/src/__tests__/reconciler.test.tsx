@@ -1,6 +1,7 @@
+import { act } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { act, createRoot, type ReconcilerRoot } from "../reconciler";
+import { createRoot, type ReconcilerRoot } from "../reconciler";
 
 // Extend JSX intrinsic elements for testing
 declare module "react" {
