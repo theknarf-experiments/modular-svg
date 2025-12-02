@@ -1,6 +1,6 @@
 import { render, waitFor } from "@testing-library/react";
 import * as React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { Canvas } from "../Canvas";
 
 // Extend JSX intrinsic elements for testing
@@ -108,21 +108,6 @@ describe("Canvas component", () => {
 			const div = container.firstChild as HTMLElement;
 			expect(div.style.width).toBe("500px");
 			expect(div.style.height).toBe("300px");
-		});
-
-		it("should call onRender callback when SVG is rendered", async () => {
-			const onRender = vi.fn();
-
-			render(
-				<Canvas onRender={onRender}>
-					<circle r={10} />
-				</Canvas>,
-			);
-
-			await waitFor(() => {
-				expect(onRender).toHaveBeenCalled();
-				expect(typeof onRender.mock.calls[0][0]).toBe("string");
-			});
 		});
 	});
 

@@ -256,50 +256,22 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 9: onRender Callback */}
-			<section style={{ marginBottom: "3rem" }}>
-				<h2>9. onRender Callback</h2>
-				<p style={{ color: "#666", fontSize: "14px" }}>
-					Get notified when the SVG is rendered with the onRender callback
-				</p>
-				<Canvas
-					style={{
-						border: "1px solid #ddd",
-						borderRadius: "8px",
-						display: "inline-block",
-					}}
-					margin={10}
-					onRender={(svg) => {
-						console.log("SVG rendered:", `${svg.substring(0, 100)}...`);
-					}}
-				>
-					<stackH spacing={10}>
-						<circle r={15} fill="seagreen" />
-						<circle r={15} fill="salmon" />
-						<circle r={15} fill="slateblue" />
-					</stackH>
-				</Canvas>
-				<p style={{ color: "#666", fontSize: "12px", marginTop: "0.5rem" }}>
-					Check the browser console to see the rendered SVG
-				</p>
-			</section>
-
-			{/* Example 10: Planet Example */}
+			{/* Example 9: Planet Example */}
 			<section style={{ marginBottom: "3rem" }}>
 				<PlanetExample />
 			</section>
 
-			{/* Example 11: Interactive Planet Example */}
+			{/* Example 10: Interactive Planet Example */}
 			<section style={{ marginBottom: "3rem" }}>
 				<InteractivePlanetExample />
 			</section>
 
-			{/* Example 12: Full Planet Example with ALL Features */}
+			{/* Example 11: Full Planet Example with ALL Features */}
 			<section style={{ marginBottom: "3rem" }}>
 				<FullPlanetExample />
 			</section>
 
-			{/* Example 13: Complex Planet System */}
+			{/* Example 12: Complex Planet System */}
 			<section style={{ marginBottom: "3rem" }}>
 				<ComplexPlanetSystem />
 			</section>
@@ -323,7 +295,8 @@ function App() {
 					<li>✅ Nested layouts</li>
 					<li>✅ React components</li>
 					<li>✅ React state and interactivity</li>
-					<li>✅ Props (margin, className, style, onRender)</li>
+					<li>✅ Event handlers (onClick, onMouseEnter, etc.)</li>
+					<li>✅ Props (margin, className, style, title)</li>
 					<li>✅ Dynamic updates and re-renders</li>
 				</ul>
 				<p style={{ marginTop: "1rem" }}>
