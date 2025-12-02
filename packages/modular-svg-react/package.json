@@ -8,18 +8,27 @@
 		".": "./src/index.ts"
 	},
 	"scripts": {
-		"test": "echo 'No tests yet'",
+		"test": "vitest run",
+		"test:watch": "vitest",
 		"typecheck": "tsc --noEmit"
 	},
 	"license": "MIT",
 	"peerDependencies": {
-		"react": "^18.0.0"
+		"react": "^18.0.0 || ^19.0.0",
+		"react-dom": "^18.0.0 || ^19.0.0"
 	},
 	"dependencies": {
-		"@modular-svg/core": "workspace:*"
+		"@modular-svg/core": "workspace:*",
+		"react-reconciler": "^0.29.2",
+		"its-fine": "^2.0.0",
+		"scheduler": "^0.23.2"
 	},
 	"devDependencies": {
+		"@testing-library/react": "^14.0.0",
 		"@types/react": "^18.0.0",
+		"@types/react-dom": "^18.0.0",
+		"@types/react-reconciler": "^0.28.0",
+		"jsdom": "^24.0.0",
 		"typescript": "^5.8.3",
 		"vitest": "^3.2.4"
 	}

@@ -1,7 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import Ajv from "ajv";
 import type {
 	LayoutOperator,
 	NodeRecord,
@@ -33,17 +29,50 @@ type AnyNode = {
 	target?: string;
 };
 
-const schemaPath = join(
-	dirname(fileURLToPath(import.meta.url)),
-	"scene.schema.json",
-);
-const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
-const ajv = new Ajv();
-const validateFn = ajv.compile(schema);
+// Schema validation (Node.js only)
+let validateFn: ((data: unknown) => boolean) | undefined;
 
-export function validate(data: unknown): void {
-	if (!validateFn(data)) {
-		const msg = ajv.errorsText(validateFn.errors) || "invalid scene";
+// Lazy load validation only in Node.js environment
+async function getValidator() {
+	if (validateFn) return validateFn;
+
+	// Skip validation in browser
+	if (typeof window !== "undefined") {
+		return undefined;
+	}
+
+	// Dynamic import for Node.js-only modules
+	const { readFileSync } = await import("node:fs");
+	const { dirname, join } = await import("node:path");
+	const { fileURLToPath } = await import("node:url");
+	const Ajv = (await import("ajv")).default;
+
+	const schemaPath = join(
+		dirname(fileURLToPath(import.meta.url)),
+		"scene.schema.json",
+	);
+	const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
+	const ajv = new Ajv();
+	validateFn = ajv.compile(schema);
+	return validateFn;
+}
+
+export async function validate(data: unknown): Promise<void> {
+	const validator = await getValidator();
+	if (!validator) {
+		// Skip validation in browser
+		return;
+	}
+
+	if (!validator(data)) {
+		// Access Ajv instance to get errors - this is Node-only
+		const Ajv = (await import("ajv")).default;
+		const ajv = new Ajv();
+		const tempValidator = ajv.compile(
+			(await import("./scene.schema.json", { with: { type: "json" } })).default,
+		);
+		tempValidator(data);
+		const msg = ajv.errorsText(tempValidator.errors) || "invalid scene";
 		throw new Error(msg);
 	}
 }
