@@ -1,3 +1,4 @@
+import { NavLink, Route, Routes } from "react-router";
 import { ExampleSection } from "./ExampleSection";
 import { BakingRecipe } from "./examples/BakingRecipe";
 import bakingRecipeCode from "./examples/BakingRecipe.tsx?raw";
@@ -23,101 +24,189 @@ import { ShapesAndStacks } from "./examples/ShapesAndStacks";
 import shapesAndStacksCode from "./examples/ShapesAndStacks.tsx?raw";
 import "./modular-svg.d.ts";
 
+type Section = {
+	title: string;
+	description: string;
+	code: string;
+	element: React.ReactNode;
+};
+
+type Page = { path: string; title: string; sections: Section[] };
+
+const pages: Page[] = [
+	{
+		path: "/",
+		title: "Basics",
+		sections: [
+			{
+				title: "Shapes and Stacks",
+				description:
+					"Circles and rectangles arranged with stackH and stackV - stacks nest to build up larger layouts",
+				code: shapesAndStacksCode,
+				element: <ShapesAndStacks />,
+			},
+			{
+				title: "React Components",
+				description: "Using React components to create reusable shapes",
+				code: reactComponentsCode,
+				element: <ReactComponents />,
+			},
+			{
+				title: "Custom Styling",
+				description:
+					"Canvas accepts standard div props like className and style",
+				code: customStylingCode,
+				element: <CustomStyling />,
+			},
+		],
+	},
+	{
+		path: "/interactive",
+		title: "Interactivity",
+		sections: [
+			{
+				title: "Interactive with React State",
+				description:
+					"Adjust the controls to see the layout update in real-time - including the margin the Canvas reserves around the content",
+				code: interactiveStateCode,
+				element: <InteractiveState />,
+			},
+			{
+				title: "Interactive Event Handlers",
+				description: "Click on circles to see event handlers in action",
+				code: eventHandlersCode,
+				element: <EventHandlers />,
+			},
+			{
+				title: "React Context Forwarding",
+				description:
+					"React contexts automatically flow into Canvas children - no special setup required",
+				code: contextForwardingCode,
+				element: <ContextForwarding />,
+			},
+		],
+	},
+	{
+		path: "/diagrams",
+		title: "Diagrams",
+		sections: [
+			{
+				title: "Planet Example",
+				description:
+					"A complete adaptation of examples/planet.json using Background, StackH, Text, Align, Distribute, Arrow, and Ref",
+				code: planetExampleCode,
+				element: <PlanetExample />,
+			},
+			{
+				title: "Interactive Bar Chart",
+				description:
+					"Bars bottom-aligned in a stackH, with align, distribute, and an arrow pointing out the tallest bar - adjust scale and spacing",
+				code: barChartCode,
+				element: <BarChart />,
+			},
+		],
+	},
+	{
+		path: "/baking-recipe",
+		title: "Baking Recipe",
+		sections: [
+			{
+				title: "Baking Recipe",
+				description:
+					"The Bluefish gallery brownie example: a recipe table built from padded cells, groups of refs as row/column guides, and span relations drawing the cell borders",
+				code: bakingRecipeCode,
+				element: <BakingRecipe />,
+			},
+		],
+	},
+	{
+		path: "/quantum-circuit",
+		title: "Quantum Circuit",
+		sections: [
+			{
+				title: "Quantum Circuit",
+				description:
+					"The Bluefish gallery circuit-equivalence example: wires, boxed gates in fixed-size frames, control dots connected by lines, and highlight backgrounds over refs",
+				code: quantumCircuitCode,
+				element: <QuantumCircuit />,
+			},
+		],
+	},
+	{
+		path: "/pulley",
+		title: "Pulley System",
+		sections: [
+			{
+				title: "Pulley System",
+				description:
+					"The Bluefish gallery pulley example: distributed pulleys, path-based weights, and fractional line anchors for the ropes",
+				code: pulleyDiagramCode,
+				element: <PulleyDiagram />,
+			},
+		],
+	},
+];
+
+function PageContent({ page }: { page: Page }) {
+	return (
+		<main style={{ minWidth: 0 }}>
+			{page.sections.map((s) => (
+				<ExampleSection
+					key={s.title}
+					title={s.title}
+					description={s.description}
+					code={s.code}
+				>
+					{s.element}
+				</ExampleSection>
+			))}
+		</main>
+	);
+}
+
 function App() {
 	return (
-		<div style={{ fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
-			<h1>Modular SVG React Examples</h1>
-			<p style={{ color: "#666", marginBottom: "2rem" }}>
-				Showcasing declarative SVG layouts with automatic constraint solving
-			</p>
-
-			<ExampleSection
-				title="Shapes and Stacks"
-				description="Circles and rectangles arranged with stackH and stackV - stacks nest to build up larger layouts"
-				code={shapesAndStacksCode}
-			>
-				<ShapesAndStacks />
-			</ExampleSection>
-
-			<ExampleSection
-				title="React Components"
-				description="Using React components to create reusable shapes"
-				code={reactComponentsCode}
-			>
-				<ReactComponents />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Custom Styling"
-				description="Canvas accepts standard div props like className and style"
-				code={customStylingCode}
-			>
-				<CustomStyling />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Interactive with React State"
-				description="Adjust the controls to see the layout update in real-time - including the margin the Canvas reserves around the content"
-				code={interactiveStateCode}
-			>
-				<InteractiveState />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Interactive Event Handlers"
-				description="Click on circles to see event handlers in action"
-				code={eventHandlersCode}
-			>
-				<EventHandlers />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Planet Example"
-				description="A complete adaptation of examples/planet.json using Background, StackH, Text, Align, Distribute, Arrow, and Ref"
-				code={planetExampleCode}
-			>
-				<PlanetExample />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Interactive Bar Chart"
-				description="Bars bottom-aligned in a stackH, with align, distribute, and an arrow pointing out the tallest bar - adjust scale and spacing"
-				code={barChartCode}
-			>
-				<BarChart />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Baking Recipe"
-				description="The Bluefish gallery brownie example: a recipe table built from padded cells, groups of refs as row/column guides, and span relations drawing the cell borders"
-				code={bakingRecipeCode}
-			>
-				<BakingRecipe />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Quantum Circuit"
-				description="The Bluefish gallery circuit-equivalence example: wires, boxed gates in fixed-size frames, control dots connected by lines, and highlight backgrounds over refs"
-				code={quantumCircuitCode}
-			>
-				<QuantumCircuit />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Pulley System"
-				description="The Bluefish gallery pulley example: distributed pulleys, path-based weights, and fractional line anchors for the ropes"
-				code={pulleyDiagramCode}
-			>
-				<PulleyDiagram />
-			</ExampleSection>
-
-			<ExampleSection
-				title="React Context Forwarding"
-				description="React contexts automatically flow into Canvas children - no special setup required"
-				code={contextForwardingCode}
-			>
-				<ContextForwarding />
-			</ExampleSection>
+		<div
+			style={{
+				fontFamily: "system-ui, sans-serif",
+				padding: "2rem",
+				display: "grid",
+				gridTemplateColumns: "220px minmax(0, 1fr)",
+				gap: "2rem",
+				alignItems: "start",
+			}}
+		>
+			<nav style={{ position: "sticky", top: "2rem" }}>
+				<h1 style={{ fontSize: "1.2rem", marginTop: 0 }}>Modular SVG</h1>
+				<p style={{ color: "#666", fontSize: "13px" }}>
+					Declarative SVG layouts with automatic constraint solving
+				</p>
+				<ul style={{ listStyle: "none", padding: 0, lineHeight: 2 }}>
+					{pages.map((p) => (
+						<li key={p.path}>
+							<NavLink
+								to={p.path}
+								style={({ isActive }) => ({
+									color: isActive ? "#111" : "#555",
+									fontWeight: isActive ? 600 : 400,
+									textDecoration: "none",
+								})}
+							>
+								{p.title}
+							</NavLink>
+						</li>
+					))}
+				</ul>
+			</nav>
+			<Routes>
+				{pages.map((p) => (
+					<Route
+						key={p.path}
+						path={p.path}
+						element={<PageContent page={p} />}
+					/>
+				))}
+			</Routes>
 		</div>
 	);
 }
