@@ -265,7 +265,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					kind: "background",
 					box: rec,
 					child: children[0],
-					padding: (node.props?.padding as number) ?? 0,
+					// Default padding matches Bluefish
+					padding: (node.props?.padding as number) ?? 10,
 				});
 			} else if (node.type === "Arrow" && children.length >= 2) {
 				(rec as NodeRecord).from = children[0].id;
@@ -293,13 +294,14 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			const containerIdx = indexMap.get(d.container.id);
 			if (containerIdx === undefined)
 				throw new Error(`Unknown id ${d.container.id}`);
+			// Defaults match Bluefish: spacing 10, centered cross-axis alignment
 			if (d.kind === "stackV") {
 				ops.push(
 					stackV(
 						childIndices,
 						containerIdx,
-						(d.props.spacing as number) ?? 0,
-						(d.props.alignment as StackAlignment) ?? "left",
+						(d.props.spacing as number) ?? 10,
+						(d.props.alignment as StackAlignment) ?? "centerX",
 					),
 				);
 			} else {
@@ -307,8 +309,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					stackH(
 						childIndices,
 						containerIdx,
-						(d.props.spacing as number) ?? 0,
-						(d.props.alignment as "top" | "centerY" | "bottom") ?? "top",
+						(d.props.spacing as number) ?? 10,
+						(d.props.alignment as "top" | "centerY" | "bottom") ?? "centerY",
 					),
 				);
 			}
