@@ -5,7 +5,6 @@ const frameStyle: React.CSSProperties = {
 	border: "1px solid #ddd",
 	borderRadius: "8px",
 	overflow: "auto",
-	maxWidth: "800px",
 };
 
 export function CodeBlock({ code }: { code: string }) {
