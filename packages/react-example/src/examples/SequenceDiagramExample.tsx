@@ -58,6 +58,10 @@ export function SequenceDiagramExample() {
 	return (
 		<div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem" }}>
 			<div>
+				<h3 style={{ margin: "0 0 0.5rem" }}>HTTP request</h3>
+				<SequenceDiagram {...httpFlow} />
+			</div>
+			<div>
 				<h3 style={{ margin: "0 0 0.5rem" }}>OAuth login</h3>
 				<SequenceDiagram {...oauthFlow} actorSpacing={200} />
 			</div>
@@ -67,8 +71,4 @@ export function SequenceDiagramExample() {
 			</div>
 		</div>
 	);
-}
-
-export function HttpFlowDiagram() {
-	return <SequenceDiagram {...httpFlow} />;
 }
