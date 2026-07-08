@@ -4,7 +4,21 @@ import { layoutToAst, type SvgDocument, type SvgElement } from "./svg_ast.ts";
 // Re-export for convenience
 export { layoutBounds } from "./svg_ast.ts";
 
-// XML serialization helper
+// Escape XML text content
+export function escapeXml(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;");
+}
+
+// Escape XML attribute values (double-quoted)
+function escapeAttr(value: string): string {
+	return escapeXml(value).replaceAll('"', "&quot;");
+}
+
+// XML serialization helper; children strings must already be escaped or be
+// serialized elements
 export function xml(
 	tag: string,
 	args: Record<string, string | number | undefined>,
@@ -12,7 +26,7 @@ export function xml(
 ): string {
 	const attr = Object.entries(args)
 		.filter(([, v]) => v !== undefined)
-		.map(([k, v]) => ` ${k}="${v}"`)
+		.map(([k, v]) => ` ${k}="${typeof v === "string" ? escapeAttr(v) : v}"`)
 		.join("");
 	if (children === undefined) return `<${tag}${attr} />`;
 	const body = Array.isArray(children) ? children.join("") : children;
@@ -59,7 +73,7 @@ function serializeElement(element: SvgElement): string {
 				stroke: element.stroke,
 				"stroke-width": element.strokeWidth,
 			},
-			element.text,
+			escapeXml(element.text),
 		);
 	}
 

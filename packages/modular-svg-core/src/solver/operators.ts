@@ -171,7 +171,8 @@ export function distributeY(
 			next[anchor] = y;
 			for (let i = indices.length - 2; i >= 0; i--) {
 				const base = indices[i];
-				const height = cur[base + 3];
+				// indices are y-slots, so the height slot is two after (y, w, h)
+				const height = cur[base + 2];
 				y -= height + spacing;
 				next[base] = y;
 			}
