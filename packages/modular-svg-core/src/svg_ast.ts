@@ -12,6 +12,7 @@ import {
 	vec,
 } from "./math.ts";
 import type { LayoutResult, NodeRecord } from "./solver/index.ts";
+import { lineEndpoints } from "./solver/index.ts";
 
 // Extra SVG attributes passed through from the scene
 export type PassthroughAttrs = Record<string, string | number>;
@@ -256,13 +257,7 @@ function toBox(b: LayoutResult[string], offset: Vec2): Box {
 	};
 }
 
-const clamp = (num: number, min: number, max: number) =>
-	Math.min(Math.max(num, min), max);
-const lerp = (num: number, min: number, max: number) => min + (max - min) * num;
-
-// Build line element connecting two boxes, ported from Bluefish's Line:
-// fractional source/target anchors; a missing endpoint is the other endpoint
-// clamped into the box; with neither, center-biased boundary points.
+// Build line element connecting two boxes (see lineEndpoints in the solver)
 function buildLine(
 	id: string,
 	n: NodeRecord,
@@ -272,41 +267,12 @@ function buildLine(
 	const a = n.from ? layout[n.from] : undefined;
 	const b = n.to ? layout[n.to] : undefined;
 	if (!a || !b) return;
-	const from = toBox(a, offset);
-	const to = toBox(b, offset);
-
-	let fromX: number;
-	let fromY: number;
-	let toX: number;
-	let toY: number;
-	if (n.source && n.target) {
-		fromX = lerp(n.source[0], from.left, from.right);
-		fromY = lerp(n.source[1], from.top, from.bottom);
-		toX = lerp(n.target[0], to.left, to.right);
-		toY = lerp(n.target[1], to.top, to.bottom);
-	} else if (n.source) {
-		fromX = lerp(n.source[0], from.left, from.right);
-		fromY = lerp(n.source[1], from.top, from.bottom);
-		toX = clamp(fromX, to.left, to.right);
-		toY = clamp(fromY, to.top, to.bottom);
-	} else if (n.target) {
-		toX = lerp(n.target[0], to.left, to.right);
-		toY = lerp(n.target[1], to.top, to.bottom);
-		fromX = clamp(toX, from.left, from.right);
-		fromY = clamp(toY, from.top, from.bottom);
-	} else {
-		// does not necessarily produce the shortest line between the boxes;
-		// biased towards the center of each box's x and y axis (Bluefish quirk)
-		const fromCX = (from.left + from.right) / 2;
-		const fromCY = (from.top + from.bottom) / 2;
-		const toCX = (to.left + to.right) / 2;
-		const toCY = (to.top + to.bottom) / 2;
-		fromX = clamp(clamp(fromCX, to.left, to.right), from.left, from.right);
-		fromY = clamp(clamp(fromCY, to.top, to.bottom), from.top, from.bottom);
-		toX = clamp(clamp(toCX, from.left, from.right), to.left, to.right);
-		toY = clamp(clamp(toCY, from.top, from.bottom), to.top, to.bottom);
-	}
-
+	const { fromX, fromY, toX, toY } = lineEndpoints(
+		toBox(a, offset),
+		toBox(b, offset),
+		n.source,
+		n.target,
+	);
 	return {
 		type: "line",
 		id,
@@ -316,6 +282,29 @@ function buildLine(
 		y2: toY,
 		stroke: n.stroke ?? "black",
 		strokeWidth: n.strokeWidth ?? 3,
+		...(n.attrs ? { attrs: n.attrs } : {}),
+	};
+}
+
+// Build path element: the stored d is emitted with a translation from its
+// parsed origin to wherever layout placed the node
+function buildPath(
+	id: string,
+	box: LayoutResult[string],
+	n: NodeRecord,
+	offset: Vec2,
+): PathElement {
+	const dx = box.x + offset.x - (n.dOrigin?.x ?? 0);
+	const dy = box.y + offset.y - (n.dOrigin?.y ?? 0);
+	const transform = dx !== 0 || dy !== 0 ? `translate(${dx},${dy})` : undefined;
+	return {
+		type: "path",
+		id,
+		d: n.d ?? "",
+		...(transform ? { transform } : {}),
+		fill: n.fill ?? "none",
+		stroke: n.stroke ?? "black",
+		strokeWidth: n.strokeWidth,
 		...(n.attrs ? { attrs: n.attrs } : {}),
 	};
 }
@@ -430,6 +419,8 @@ export function layoutToAst(
 		} else if (n.type === "line") {
 			const line = buildLine(id, n, layout, offset);
 			elements = line ? [line] : undefined;
+		} else if (n.type === "path") {
+			elements = [buildPath(id, box, n, offset)];
 		} else if (n.type === "arrow") {
 			elements = buildArrow(id, n, layout, offset);
 		} else {

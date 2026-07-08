@@ -301,7 +301,7 @@ describe("property based primitives", () => {
 					},
 					{ id: "bg", x: 0, y: 0, width: 0, height: 0 },
 				];
-				const op = backgroundOp(0, 4, padding);
+				const op = backgroundOp([{ base: 0, subtree: [0] }], 4, { padding });
 				const result = solveLayout(
 					{ nodes, operators: [op as LayoutOperator] },
 					{ damping: 1 },

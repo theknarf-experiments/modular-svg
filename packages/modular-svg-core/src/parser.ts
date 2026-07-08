@@ -11,6 +11,8 @@ import {
 	backgroundOp,
 	distributeX,
 	distributeY,
+	lineOp,
+	spanOp,
 	stackH,
 	stackV,
 	unionOp,
@@ -121,6 +123,88 @@ function parseAlignments(
 	return [{ axis: "x", alignment: raw === "center" ? "centerX" : "left" }];
 }
 
+// Bounds of an SVG path restricted to linear commands (M m L l H h V v Z z).
+// Curves are not supported (Bluefish measures paths with paper.js; we
+// deliberately support only the linear subset).
+export function linearPathBounds(
+	d: string,
+): { minX: number; minY: number; maxX: number; maxY: number } | undefined {
+	const tokens = d.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi);
+	if (!tokens) return undefined;
+	let x = 0;
+	let y = 0;
+	let startX = 0;
+	let startY = 0;
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxX = -Infinity;
+	let maxY = -Infinity;
+	let cmd = "";
+	let i = 0;
+	const record = () => {
+		minX = Math.min(minX, x);
+		minY = Math.min(minY, y);
+		maxX = Math.max(maxX, x);
+		maxY = Math.max(maxY, y);
+	};
+	while (i < tokens.length) {
+		const t = tokens[i];
+		if (/[a-zA-Z]/.test(t)) {
+			cmd = t;
+			i++;
+			if (cmd === "Z" || cmd === "z") {
+				x = startX;
+				y = startY;
+			}
+			continue;
+		}
+		const first = i === 0;
+		switch (cmd) {
+			case "M":
+			case "L":
+				x = Number(tokens[i]);
+				y = Number(tokens[i + 1]);
+				i += 2;
+				break;
+			case "m":
+			case "l":
+				x += Number(tokens[i]);
+				y += Number(tokens[i + 1]);
+				i += 2;
+				break;
+			case "H":
+				x = Number(tokens[i]);
+				i += 1;
+				break;
+			case "h":
+				x += Number(tokens[i]);
+				i += 1;
+				break;
+			case "V":
+				y = Number(tokens[i]);
+				i += 1;
+				break;
+			case "v":
+				y += Number(tokens[i]);
+				i += 1;
+				break;
+			default:
+				// unsupported command: skip the token
+				i += 1;
+				continue;
+		}
+		if (first || cmd === "M" || cmd === "m") {
+			startX = x;
+			startY = y;
+			// subsequent pairs of an M/m are implicit linetos
+			cmd = cmd === "M" ? "L" : "l";
+		}
+		record();
+	}
+	if (minX === Infinity) return undefined;
+	return { minX, minY, maxX, maxY };
+}
+
 export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	const nodes: NodeRecord[] = [];
 	const nodeMap = new Map<string, NodeRecord>();
@@ -150,9 +234,11 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		| {
 				kind: "background";
 				box: NodeRecord;
-				child: NodeRecord;
-				padding: number;
+				children: NodeRecord[];
+				props: Record<string, unknown>;
 		  }
+		| { kind: "span"; axis: "x" | "y"; children: NodeRecord[] }
+		| { kind: "line"; line: NodeRecord; children: NodeRecord[] }
 		| { kind: "union"; container: NodeRecord; children: NodeRecord[] };
 	const descs: Desc[] = [];
 
@@ -208,6 +294,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		"source",
 		"target",
 		"href",
+		"d",
 		"fill",
 		"stroke",
 		"stroke-width",
@@ -291,6 +378,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				strokeWidth: props["stroke-width"] as number | undefined,
 			};
 		} else if (n.type === "Text") {
+			// Heuristic text metrics: half an em per character, one em tall
+			const fontSize = Number(props["font-size"] ?? 16);
 			rec = {
 				...common,
 				type: "text",
@@ -299,10 +388,24 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				y: (props.y as number | undefined) ?? 0,
 				width:
 					(props.width as number | undefined) ??
-					((props.text as string | undefined)?.length ?? 0) * 8,
-				height: (props.height as number | undefined) ?? 16,
+					((props.text as string | undefined)?.length ?? 0) * fontSize * 0.5,
+				height: (props.height as number | undefined) ?? fontSize,
 				fill: (props.fill as string | undefined) ?? "black",
 				strokeWidth: props["stroke-width"] as number | undefined,
+			};
+		} else if (n.type === "Path") {
+			const d = (props.d as string) ?? "";
+			const b = linearPathBounds(d);
+			rec = {
+				...common,
+				type: "path",
+				d,
+				dOrigin: { x: b?.minX ?? 0, y: b?.minY ?? 0 },
+				x: b?.minX ?? 0,
+				y: b?.minY ?? 0,
+				width: b ? b.maxX - b.minX : 0,
+				height: b ? b.maxY - b.minY : 0,
+				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else if (n.type === "Image") {
 			rec = {
@@ -355,7 +458,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			n.type === "Rect" ||
 			n.type === "Circle" ||
 			n.type === "Text" ||
-			n.type === "Image"
+			n.type === "Image" ||
+			n.type === "Path"
 		) {
 			if (props.x !== undefined || props.cx !== undefined)
 				userOwned.add(`${nodeId}:x`);
@@ -363,14 +467,10 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				userOwned.add(`${nodeId}:y`);
 			// Extent ownership: explicit sizes, a circle's radius, and text's
 			// measured size all count as owned (matching Bluefish)
-			if (props.width !== undefined || n.type === "Circle" || n.type === "Text")
-				userOwned.add(`${nodeId}:w`);
-			if (
-				props.height !== undefined ||
-				n.type === "Circle" ||
-				n.type === "Text"
-			)
-				userOwned.add(`${nodeId}:h`);
+			const sized =
+				n.type === "Circle" || n.type === "Text" || n.type === "Path";
+			if (props.width !== undefined || sized) userOwned.add(`${nodeId}:w`);
+			if (props.height !== undefined || sized) userOwned.add(`${nodeId}:h`);
 		}
 		nodeMap.set(rec.id, rec);
 		nodes.push(rec);
@@ -421,17 +521,23 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				descs.push({
 					kind: "background",
 					box: rec,
-					child: children[0],
-					// Default padding matches Bluefish
-					padding: (node.props?.padding as number) ?? 10,
+					children,
+					props: node.props ?? {},
 				});
-			} else if (
-				(node.type === "Arrow" || node.type === "Line") &&
-				children.length >= 2
-			) {
+			} else if (node.type === "Arrow" && children.length >= 2) {
 				(rec as NodeRecord).from = children[0].id;
 				(rec as NodeRecord).to = children[1].id;
 				descs.push({ kind: "union", container: rec, children });
+			} else if (node.type === "Line" && children.length >= 2) {
+				(rec as NodeRecord).from = children[0].id;
+				(rec as NodeRecord).to = children[1].id;
+				descs.push({ kind: "line", line: rec, children });
+			} else if (node.type === "Span" && children.length >= 2) {
+				descs.push({
+					kind: "span",
+					axis: (node.props?.axis as "x" | "y") ?? "x",
+					children,
+				});
 			} else if (children.length > 0) {
 				// Group and any other plain container: bbox = union of children
 				descs.push({ kind: "union", container: rec, children });
@@ -473,13 +579,26 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	// Ownership: axes positioned by a relation (hard) or user props (soft).
 	// The first owned child of a relation becomes its anchor and is never
 	// moved; writing an already hard-owned axis is an over-constraint.
+	// Containers, background boxes, and lines get GUIDE ownership: their
+	// derived positions make them anchor-eligible (Bluefish's fixed-element
+	// and group-as-guide behavior) without triggering conflicts.
 	const hardOwned = new Set<string>();
+	const guideOwned = new Set<string>();
 	const warnings: string[] = [];
+
+	function positionOwned(id: string, axis: "x" | "y"): boolean {
+		const key = `${id}:${axis}`;
+		return hardOwned.has(key) || userOwned.has(key) || guideOwned.has(key);
+	}
+
+	function markGuide(id: string): void {
+		guideOwned.add(`${id}:x`);
+		guideOwned.add(`${id}:y`);
+	}
 
 	function anchorIndex(children: NodeRecord[], axis: "x" | "y"): number | null {
 		for (let i = 0; i < children.length; i++) {
-			const key = `${children[i].id}:${axis}`;
-			if (hardOwned.has(key) || userOwned.has(key)) return i;
+			if (positionOwned(children[i].id, axis)) return i;
 		}
 		return null;
 	}
@@ -561,6 +680,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			);
 			hardOwned.add(`${d.container.id}:w`);
 			hardOwned.add(`${d.container.id}:h`);
+			markGuide(d.container.id);
 			const children = toSubtreeChildren(d.children);
 			const containerIdx = baseOf(d.container);
 			if (d.kind === "stackV") {
@@ -618,9 +738,68 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			if (d.axis === "x") ops.push(distributeX(children, opts));
 			else ops.push(distributeY(children, opts));
 		} else if (d.kind === "background") {
-			ops.push(backgroundOp(baseOf(d.child), baseOf(d.box), d.padding));
+			// Default padding matches Bluefish
+			const padding = (d.props.padding as number) ?? 10;
+			const width = d.props.width as number | undefined;
+			const height = d.props.height as number | undefined;
+			const xOwned = d.children.map((c) => positionOwned(c.id, "x"));
+			const yOwned = d.children.map((c) => positionOwned(c.id, "y"));
+			ops.push(
+				backgroundOp(toSubtreeChildren(d.children), baseOf(d.box), {
+					padding,
+					width,
+					height,
+					xOwned,
+					yOwned,
+				}),
+			);
+			// Fixed axes center unowned content, claiming those positions
+			if (width !== undefined) {
+				d.children.forEach((c, i) => {
+					if (!xOwned[i]) hardOwned.add(`${c.id}:x`);
+				});
+			}
+			if (height !== undefined) {
+				d.children.forEach((c, i) => {
+					if (!yOwned[i]) hardOwned.add(`${c.id}:y`);
+				});
+			}
 			hardOwned.add(`${d.box.id}:w`);
 			hardOwned.add(`${d.box.id}:h`);
+			markGuide(d.box.id);
+		} else if (d.kind === "span") {
+			const [source, ...targets] = d.children;
+			for (const target of targets) {
+				const posKey = `${target.id}:${d.axis}`;
+				const extentKey = `${target.id}:${d.axis === "x" ? "w" : "h"}`;
+				if (hardOwned.has(posKey) || hardOwned.has(extentKey)) {
+					warnings.push(
+						`span conflicts with another relation over ${target.id}`,
+					);
+				}
+				hardOwned.add(posKey);
+				hardOwned.add(extentKey);
+				ops.push(
+					spanOp(
+						baseOf(source),
+						{ base: baseOf(target), subtree: subtreeBases(target) },
+						d.axis === "x",
+					),
+				);
+			}
+		} else if (d.kind === "line") {
+			ops.push(
+				lineOp(
+					baseOf(d.children[0]),
+					baseOf(d.children[1]),
+					baseOf(d.line),
+					d.line.source,
+					d.line.target,
+				),
+			);
+			hardOwned.add(`${d.line.id}:w`);
+			hardOwned.add(`${d.line.id}:h`);
+			markGuide(d.line.id);
 		} else if (d.kind === "union") {
 			ops.push(
 				unionOp(
@@ -630,6 +809,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			);
 			hardOwned.add(`${d.container.id}:w`);
 			hardOwned.add(`${d.container.id}:h`);
+			markGuide(d.container.id);
 		}
 	}
 

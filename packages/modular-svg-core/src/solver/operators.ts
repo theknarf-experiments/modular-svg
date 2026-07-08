@@ -13,10 +13,14 @@ export type NodeRecord = {
 	y: number;
 	width: number;
 	height: number;
-	type?: "rect" | "circle" | "text" | "arrow" | "image" | "line";
+	type?: "rect" | "circle" | "text" | "arrow" | "image" | "line" | "path";
 	r?: number;
 	text?: string;
 	href?: string;
+	/** SVG path data (linear commands only) for path marks */
+	d?: string;
+	/** the path's untranslated bounds origin, for output translation */
+	dOrigin?: { x: number; y: number };
 	/** id of source node for arrows and lines */
 	from?: string;
 	/** id of target node for arrows and lines */
@@ -428,20 +432,173 @@ export function distributeY(
 	return distribute(false, children, opts);
 }
 
+export type BackgroundOptions = {
+	padding: number;
+	/** fixed frame width; when set, content with unowned x is centered */
+	width?: number;
+	/** fixed frame height; when set, content with unowned y is centered */
+	height?: number;
+	/** per-child: whether its x position is owned elsewhere */
+	xOwned?: readonly boolean[];
+	/** per-child: whether its y position is owned elsewhere */
+	yOwned?: readonly boolean[];
+};
+
+// Background box wraps the union of its content children plus padding. With
+// a fixed width/height (Bluefish's sized frame), the extent is the given
+// value and content children whose position isn't owned get centered inside.
 export function backgroundOp(
-	childIndex: number,
+	children: readonly SubtreeChild[],
 	boxIndex: number,
-	padding: number,
+	opts: BackgroundOptions,
+): LayoutOperator {
+	const { padding } = opts;
+	return (cur, next) => {
+		if (children.length === 0) return;
+		let minX = Infinity;
+		let minY = Infinity;
+		let maxX = -Infinity;
+		let maxY = -Infinity;
+		for (const c of children) {
+			minX = Math.min(minX, cur[c.base]);
+			minY = Math.min(minY, cur[c.base + 1]);
+			maxX = Math.max(maxX, cur[c.base] + cur[c.base + 2]);
+			maxY = Math.max(maxY, cur[c.base + 1] + cur[c.base + 3]);
+		}
+
+		if (opts.width === undefined) {
+			next[boxIndex] = minX - padding;
+			next[boxIndex + 2] = maxX - minX + padding * 2;
+		} else {
+			next[boxIndex + 2] = opts.width;
+			for (let i = 0; i < children.length; i++) {
+				if (opts.xOwned?.[i]) continue;
+				const c = children[i];
+				const target = cur[boxIndex] + (opts.width - cur[c.base + 2]) / 2;
+				moveSubtree(cur, next, c, 0, target - cur[c.base]);
+			}
+		}
+		if (opts.height === undefined) {
+			next[boxIndex + 1] = minY - padding;
+			next[boxIndex + 3] = maxY - minY + padding * 2;
+		} else {
+			next[boxIndex + 3] = opts.height;
+			for (let i = 0; i < children.length; i++) {
+				if (opts.yOwned?.[i]) continue;
+				const c = children[i];
+				const target = cur[boxIndex + 1] + (opts.height - cur[c.base + 3]) / 2;
+				moveSubtree(cur, next, c, 1, target - cur[c.base + 1]);
+			}
+		}
+	};
+}
+
+// Copy one axis' position and extent from a source node onto a target (our
+// JSON stand-in for Bluefish's LayoutFunction span-copy idiom, used for
+// things like table cell borders).
+export function spanOp(
+	sourceBase: number,
+	target: SubtreeChild,
+	horizontal: boolean,
+): LayoutOperator {
+	const slot = (horizontal ? 0 : 1) as 0 | 1;
+	const extentSlot = horizontal ? 2 : 3;
+	return (cur, next) => {
+		moveSubtree(
+			cur,
+			next,
+			target,
+			slot,
+			cur[sourceBase + slot] - cur[target.base + slot],
+		);
+		next[target.base + extentSlot] = cur[sourceBase + extentSlot];
+	};
+}
+
+type EndpointBox = { left: number; top: number; right: number; bottom: number };
+
+const clampNum = (num: number, min: number, max: number) =>
+	Math.min(Math.max(num, min), max);
+const lerpNum = (num: number, min: number, max: number) =>
+	min + (max - min) * num;
+
+// Line endpoints connecting two boxes, ported from Bluefish's Line:
+// fractional source/target anchors; a missing endpoint is the other endpoint
+// clamped into the box; with neither, center-biased boundary points.
+export function lineEndpoints(
+	from: EndpointBox,
+	to: EndpointBox,
+	source?: number[],
+	target?: number[],
+): { fromX: number; fromY: number; toX: number; toY: number } {
+	if (source && target) {
+		return {
+			fromX: lerpNum(source[0], from.left, from.right),
+			fromY: lerpNum(source[1], from.top, from.bottom),
+			toX: lerpNum(target[0], to.left, to.right),
+			toY: lerpNum(target[1], to.top, to.bottom),
+		};
+	}
+	if (source) {
+		const fromX = lerpNum(source[0], from.left, from.right);
+		const fromY = lerpNum(source[1], from.top, from.bottom);
+		return {
+			fromX,
+			fromY,
+			toX: clampNum(fromX, to.left, to.right),
+			toY: clampNum(fromY, to.top, to.bottom),
+		};
+	}
+	if (target) {
+		const toX = lerpNum(target[0], to.left, to.right);
+		const toY = lerpNum(target[1], to.top, to.bottom);
+		return {
+			fromX: clampNum(toX, from.left, from.right),
+			fromY: clampNum(toY, from.top, from.bottom),
+			toX,
+			toY,
+		};
+	}
+	// does not necessarily produce the shortest line between the boxes;
+	// biased towards the center of each box's x and y axis (Bluefish quirk)
+	const fromCX = (from.left + from.right) / 2;
+	const fromCY = (from.top + from.bottom) / 2;
+	const toCX = (to.left + to.right) / 2;
+	const toCY = (to.top + to.bottom) / 2;
+	return {
+		fromX: clampNum(clampNum(fromCX, to.left, to.right), from.left, from.right),
+		fromY: clampNum(clampNum(fromCY, to.top, to.bottom), from.top, from.bottom),
+		toX: clampNum(clampNum(toCX, from.left, from.right), to.left, to.right),
+		toY: clampNum(clampNum(toCY, from.top, from.bottom), to.top, to.bottom),
+	};
+}
+
+// The line node's own bbox is the segment's bbox (as in Bluefish), so other
+// relations can stack against or distribute around lines.
+export function lineOp(
+	fromBase: number,
+	toBase: number,
+	lineIndex: number,
+	source?: number[],
+	target?: number[],
 ): LayoutOperator {
 	return (cur, next) => {
-		const x = cur[childIndex];
-		const y = cur[childIndex + 1];
-		const w = cur[childIndex + 2];
-		const h = cur[childIndex + 3];
-		next[boxIndex] = x - padding;
-		next[boxIndex + 1] = y - padding;
-		next[boxIndex + 2] = w + padding * 2;
-		next[boxIndex + 3] = h + padding * 2;
+		const box = (base: number): EndpointBox => ({
+			left: cur[base],
+			top: cur[base + 1],
+			right: cur[base] + cur[base + 2],
+			bottom: cur[base + 1] + cur[base + 3],
+		});
+		const { fromX, fromY, toX, toY } = lineEndpoints(
+			box(fromBase),
+			box(toBase),
+			source,
+			target,
+		);
+		next[lineIndex] = Math.min(fromX, toX);
+		next[lineIndex + 1] = Math.min(fromY, toY);
+		next[lineIndex + 2] = Math.abs(toX - fromX);
+		next[lineIndex + 3] = Math.abs(toY - fromY);
 	};
 }
 
