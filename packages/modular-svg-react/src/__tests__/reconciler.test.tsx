@@ -3,16 +3,6 @@ import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createRoot, type ReconcilerRoot } from "../reconciler";
 
-// Extend JSX intrinsic elements for testing
-declare module "react" {
-	namespace JSX {
-		interface IntrinsicElements {
-			stackH: { spacing?: number; children?: React.ReactNode };
-			stackV: { spacing?: number; children?: React.ReactNode };
-		}
-	}
-}
-
 describe("modular-svg reconciler", () => {
 	let root: ReconcilerRoot;
 
