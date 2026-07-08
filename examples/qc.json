@@ -1,0 +1,415 @@
+{
+	"type": "Group",
+	"id": "root",
+	"children": [
+		{
+			"type": "StackH",
+			"props": {
+				"alignment": "centerY",
+				"spacing": 25
+			},
+			"children": [
+				{
+					"type": "StackV",
+					"children": [
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerLeft"
+							},
+							"children": [
+								{
+									"type": "Rect",
+									"props": {
+										"height": 3,
+										"width": 90,
+										"fill": "black",
+										"stroke-width": 0
+									}
+								},
+								{
+									"type": "StackH",
+									"children": [
+										{
+											"type": "Rect",
+											"props": {
+												"fill": "transparent",
+												"width": 10,
+												"stroke-width": 0
+											}
+										},
+										{
+											"type": "Align",
+											"props": {
+												"alignment": "center"
+											},
+											"children": [
+												{
+													"type": "Rect",
+													"props": {
+														"height": 50,
+														"width": 50,
+														"fill": "transparent",
+														"stroke-width": 0
+													}
+												},
+												{
+													"type": "Circle",
+													"id": "c1",
+													"props": {
+														"r": 5,
+														"fill": "black"
+													}
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerLeft"
+							},
+							"children": [
+								{
+									"type": "Rect",
+									"props": {
+										"height": 3,
+										"width": 90,
+										"fill": "black",
+										"stroke-width": 0
+									}
+								},
+								{
+									"type": "StackH",
+									"children": [
+										{
+											"type": "Rect",
+											"props": {
+												"fill": "transparent",
+												"width": 10,
+												"stroke-width": 0
+											}
+										},
+										{
+											"type": "Background",
+											"props": {
+												"width": 50,
+												"height": 50,
+												"fill": "white",
+												"stroke": "black",
+												"stroke-width": 3
+											},
+											"children": [
+												{
+													"type": "Text",
+													"props": {
+														"text": "Z",
+														"font-size": 30,
+														"x": 0,
+														"y": 0,
+														"font-family": "serif",
+														"font-style": "italic",
+														"dy": "5"
+													}
+												}
+											],
+											"id": "z"
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "Text",
+					"props": {
+						"text": "≡",
+						"font-size": 40,
+						"font-weight": 300,
+						"width": 7,
+						"height": 40
+					}
+				},
+				{
+					"type": "StackV",
+					"children": [
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerLeft"
+							},
+							"children": [
+								{
+									"type": "Rect",
+									"props": {
+										"height": 3,
+										"width": 210,
+										"fill": "black",
+										"stroke-width": 0
+									}
+								},
+								{
+									"type": "StackH",
+									"children": [
+										{
+											"type": "Rect",
+											"props": {
+												"fill": "transparent",
+												"width": 10,
+												"stroke-width": 0
+											}
+										},
+										{
+											"type": "Align",
+											"props": {
+												"alignment": "center"
+											},
+											"children": [
+												{
+													"type": "Rect",
+													"props": {
+														"height": 50,
+														"width": 50,
+														"fill": "transparent",
+														"stroke-width": 0
+													}
+												}
+											]
+										},
+										{
+											"type": "Align",
+											"props": {
+												"alignment": "center"
+											},
+											"children": [
+												{
+													"type": "Rect",
+													"props": {
+														"height": 50,
+														"width": 50,
+														"fill": "transparent",
+														"stroke-width": 0
+													}
+												},
+												{
+													"type": "Circle",
+													"id": "c2",
+													"props": {
+														"r": 5,
+														"fill": "black"
+													}
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerLeft"
+							},
+							"children": [
+								{
+									"type": "Rect",
+									"props": {
+										"height": 3,
+										"width": 210,
+										"fill": "black",
+										"stroke-width": 0
+									}
+								},
+								{
+									"type": "StackH",
+									"children": [
+										{
+											"type": "Rect",
+											"props": {
+												"fill": "transparent",
+												"width": 10,
+												"stroke-width": 0
+											}
+										},
+										{
+											"type": "Background",
+											"props": {
+												"width": 50,
+												"height": 50,
+												"fill": "white",
+												"stroke": "black",
+												"stroke-width": 3
+											},
+											"children": [
+												{
+													"type": "Text",
+													"props": {
+														"text": "H",
+														"font-size": 30,
+														"x": 0,
+														"y": 0,
+														"font-family": "serif",
+														"font-style": "italic",
+														"dy": "5"
+													}
+												}
+											]
+										},
+										{
+											"type": "Align",
+											"props": {
+												"alignment": "center"
+											},
+											"children": [
+												{
+													"type": "Rect",
+													"props": {
+														"height": 50,
+														"width": 50,
+														"fill": "transparent",
+														"stroke-width": 0
+													}
+												},
+												{
+													"type": "Group",
+													"id": "plus",
+													"children": [
+														{
+															"type": "Align",
+															"props": {
+																"alignment": "center"
+															},
+															"children": [
+																{
+																	"type": "Circle",
+																	"props": {
+																		"r": 15,
+																		"fill": "transparent",
+																		"stroke": "black",
+																		"stroke-width": 3
+																	}
+																},
+																{
+																	"type": "Rect",
+																	"props": {
+																		"height": 3,
+																		"width": 30,
+																		"fill": "black",
+																		"stroke-width": 0
+																	}
+																},
+																{
+																	"type": "Rect",
+																	"props": {
+																		"height": 30,
+																		"width": 3,
+																		"fill": "black",
+																		"stroke-width": 0
+																	}
+																}
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"type": "Background",
+											"props": {
+												"width": 50,
+												"height": 50,
+												"fill": "white",
+												"stroke": "black",
+												"stroke-width": 3
+											},
+											"children": [
+												{
+													"type": "Text",
+													"props": {
+														"text": "H",
+														"font-size": 30,
+														"x": 0,
+														"y": 0,
+														"font-family": "serif",
+														"font-style": "italic",
+														"dy": "5"
+													}
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "Text",
+					"id": "plusDescription",
+					"props": {
+						"text": "This is a controlled-NOT.",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"children": [
+				{
+					"type": "Ref",
+					"target": "c1"
+				},
+				{
+					"type": "Ref",
+					"target": "z"
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"children": [
+				{
+					"type": "Ref",
+					"target": "c2"
+				},
+				{
+					"type": "Ref",
+					"target": "plus"
+				}
+			]
+		},
+		{
+			"type": "Background",
+			"props": {
+				"fill": "rgba(255,200,0,0.333)",
+				"rx": 10,
+				"stroke-width": 0
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "plus"
+				}
+			]
+		},
+		{
+			"type": "Background",
+			"props": {
+				"fill": "rgba(255,200,0,0.333)",
+				"rx": 10,
+				"stroke-width": 0
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "plusDescription"
+				}
+			]
+		}
+	]
+}

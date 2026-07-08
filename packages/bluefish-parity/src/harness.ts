@@ -1,6 +1,7 @@
 import {
 	buildSceneFromJson,
 	layoutToSvg,
+	linearPathBounds,
 	solveLayout,
 } from "@modular-svg/core";
 
@@ -8,7 +9,7 @@ import {
 // circles and rects compare uniformly across both systems. Lines keep their
 // direction: x/y is the start point and width/height the signed delta.
 export type Shape = {
-	kind: "circle" | "rect" | "image" | "line";
+	kind: "circle" | "rect" | "image" | "line" | "path";
 	x: number;
 	y: number;
 	width: number;
@@ -65,6 +66,17 @@ function collectShapes(el: Element, tx: number, ty: number, out: Shape[]) {
 			width: Number.parseFloat(el.getAttribute("width") ?? "0"),
 			height: Number.parseFloat(el.getAttribute("height") ?? "0"),
 		});
+	} else if (tag === "path") {
+		const b = linearPathBounds(el.getAttribute("d") ?? "");
+		if (b) {
+			out.push({
+				kind: "path",
+				x: b.minX + ax,
+				y: b.minY + ay,
+				width: b.maxX - b.minX,
+				height: b.maxY - b.minY,
+			});
+		}
 	} else if (tag === "line") {
 		const x1 = Number.parseFloat(el.getAttribute("x1") ?? "0") + ax;
 		const y1 = Number.parseFloat(el.getAttribute("y1") ?? "0") + ay;
@@ -111,7 +123,13 @@ export function renderModular(json: Record<string, unknown>): Shape[] {
 	const layout = solveLayout(scene);
 	const shapes: Shape[] = [];
 	for (const n of scene.nodes) {
-		if (n.type !== "rect" && n.type !== "circle" && n.type !== "image")
+		if (
+			n.type !== "rect" &&
+			n.type !== "circle" &&
+			n.type !== "image" &&
+			n.type !== "line" &&
+			n.type !== "path"
+		)
 			continue;
 		const box = layout[n.id];
 		shapes.push({
