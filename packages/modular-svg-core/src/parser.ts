@@ -16,6 +16,7 @@ import {
 	distributeY,
 	lineOp,
 	sameColorOp,
+	shadeColorOp,
 	spanOp,
 	stackH,
 	stackV,
@@ -263,6 +264,11 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				props: Record<string, unknown>;
 		  }
 		| { kind: "sameColor"; children: NodeRecord[] }
+		| {
+				kind: "shade";
+				children: NodeRecord[];
+				delta: number;
+		  }
 		| {
 				kind: "contrast";
 				children: NodeRecord[];
@@ -611,6 +617,17 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			} else if (node.type === "SameColor" && children.length >= 2) {
 				descs.push({ kind: "sameColor", children });
 				descs.push({ kind: "union", container: rec, children });
+			} else if (
+				(node.type === "Lighten" || node.type === "Darken") &&
+				children.length >= 2
+			) {
+				const amount = (node.props?.amount as number | undefined) ?? 0.15;
+				descs.push({
+					kind: "shade",
+					children,
+					delta: node.type === "Lighten" ? amount : -amount,
+				});
+				descs.push({ kind: "union", container: rec, children });
 			} else if (node.type === "Contrast" && children.length >= 2) {
 				descs.push({ kind: "contrast", children, props: node.props ?? {} });
 				descs.push({ kind: "union", container: rec, children });
@@ -916,6 +933,18 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				sameColorOp(
 					colorBase(source),
 					targets.map((t) => colorBase(t)),
+				),
+			);
+			for (const t of targets) {
+				coloredIds.add(t.id);
+			}
+		} else if (d.kind === "shade") {
+			const [source, ...targets] = d.children;
+			colorOps.push(
+				shadeColorOp(
+					colorBase(source),
+					targets.map((t) => colorBase(t)),
+					d.delta,
 				),
 			);
 			for (const t of targets) {

@@ -1,4 +1,5 @@
 import { Canvas } from "@modular-svg/react";
+import { useState } from "react";
 
 export type Slice = { label: string; value: number };
 
@@ -12,15 +13,19 @@ export type PieChartProps = {
 
 const sliceId = (label: string) => `slice-${label}`;
 const swatchId = (label: string) => `swatch-${label}`;
+const rowLabelId = (label: string) => `leglabel-${label}`;
 
-// Slices auto-pick distinct colors (DistinctColors), and each legend swatch
-// copies its slice's color (SameColor) - no colors are chosen in the markup.
+// The legend swatches are the palette: DistinctColors gives each a base
+// color, and every slice derives its color from its swatch - SameColor
+// normally, or Darken/Lighten while hovering, so the hovered slice pops and
+// the rest recede. Hover works from either the slice or the legend.
 export function PieChart({
 	data,
 	radius = 90,
 	donut = 0,
 	fontSize = 13,
 }: PieChartProps) {
+	const [hovered, setHovered] = useState<string | null>(null);
 	const total = data.reduce((s, d) => s + d.value, 0);
 	let acc = 0;
 	const slices = data.map((d) => {
@@ -30,35 +35,57 @@ export function PieChart({
 		return { ...d, start, end, pct: Math.round((d.value / total) * 100) };
 	});
 
+	const hoverProps = (label: string) => ({
+		onMouseEnter: () => setHovered(label),
+		onMouseLeave: () => setHovered(null),
+	});
+
 	return (
 		<Canvas
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
 				display: "inline-block",
+				cursor: "pointer",
 			}}
 			margin={14}
 		>
 			<group>
 				<group key="pie">
-					{slices.map((s) => (
-						<arc
-							key={sliceId(s.label)}
-							r={radius}
-							innerR={donut * radius}
-							startAngle={s.start}
-							endAngle={s.end}
-							stroke="white"
-							stroke-width={2}
-						/>
-					))}
+					{slices.map((s) => {
+						const on = hovered === s.label;
+						return (
+							<arc
+								key={sliceId(s.label)}
+								r={radius}
+								innerR={donut * radius}
+								startAngle={s.start}
+								endAngle={s.end}
+								stroke={on ? "#333" : "white"}
+								stroke-width={on ? 3 : 2}
+								{...hoverProps(s.label)}
+							/>
+						);
+					})}
 				</group>
 
 				<stackV key="legend" spacing={8} alignment="left">
 					{slices.map((s) => (
 						<stackH key={`leg-${s.label}`} spacing={8} alignment="centerY">
-							<rect key={swatchId(s.label)} width={14} height={14} />
-							<text font-size={fontSize}>{`${s.label} - ${s.pct}%`}</text>
+							<rect
+								key={swatchId(s.label)}
+								width={14}
+								height={14}
+								{...hoverProps(s.label)}
+							/>
+							<text
+								key={rowLabelId(s.label)}
+								font-size={fontSize}
+								font-weight={hovered === s.label ? 700 : 400}
+								{...hoverProps(s.label)}
+							>
+								{`${s.label} - ${s.pct}%`}
+							</text>
 						</stackH>
 					))}
 				</stackV>
@@ -71,18 +98,37 @@ export function PieChart({
 					<ref target="legend" />
 				</align>
 
-				{/* Color constraints (declared after the nodes they reference) */}
-				<distinctColors saturation={0.55} lightness={0.55}>
+				{/* Colors (declared after the nodes they reference). The swatches
+				    hold the base palette; slices derive from them. */}
+				<distinctColors saturation={0.55} lightness={0.6}>
 					{slices.map((s) => (
-						<ref key={s.label} target={sliceId(s.label)} />
+						<ref key={s.label} target={swatchId(s.label)} />
 					))}
 				</distinctColors>
-				{slices.map((s) => (
-					<sameColor key={`sc-${s.label}`}>
-						<ref target={sliceId(s.label)} />
-						<ref target={swatchId(s.label)} />
-					</sameColor>
-				))}
+				{slices.map((s) => {
+					if (hovered === s.label) {
+						return (
+							<darken key={`sh-${s.label}`} amount={0.18}>
+								<ref target={swatchId(s.label)} />
+								<ref target={sliceId(s.label)} />
+							</darken>
+						);
+					}
+					if (hovered !== null) {
+						return (
+							<lighten key={`sh-${s.label}`} amount={0.18}>
+								<ref target={swatchId(s.label)} />
+								<ref target={sliceId(s.label)} />
+							</lighten>
+						);
+					}
+					return (
+						<sameColor key={`sh-${s.label}`}>
+							<ref target={swatchId(s.label)} />
+							<ref target={sliceId(s.label)} />
+						</sameColor>
+					);
+				})}
 			</group>
 		</Canvas>
 	);

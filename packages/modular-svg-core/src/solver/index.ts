@@ -16,6 +16,7 @@ export {
 	type StackAlignment,
 	type SubtreeChild,
 	sameColorOp,
+	shadeColorOp,
 	spanOp,
 	stackH,
 	stackV,
