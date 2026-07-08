@@ -191,9 +191,9 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 7: Event Handlers (NEW!) */}
+			{/* Example 7: Event Handlers */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>7. Interactive Event Handlers ✨ NEW!</h2>
+				<h2>7. Interactive Event Handlers</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					Click on circles to see event handlers in action!
 				</p>
@@ -280,45 +280,15 @@ function App() {
 				<ComplexPlanetSystem />
 			</section>
 
-			{/* Example 13: Context Forwarding ✨ NEW! */}
+			{/* Example 13: Context Forwarding */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>13. React Context Forwarding ✨ NEW!</h2>
+				<h2>13. React Context Forwarding</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					React contexts automatically flow into Canvas children - no special
 					setup required!
 				</p>
 				<ContextForwardingExample />
 			</section>
-
-			{/* Footer */}
-			<footer
-				style={{
-					marginTop: "4rem",
-					paddingTop: "2rem",
-					borderTop: "1px solid #ddd",
-					color: "#666",
-					fontSize: "14px",
-				}}
-			>
-				<p>
-					<strong>Features Demonstrated:</strong>
-				</p>
-				<ul>
-					<li>✅ Basic shapes (circle, rect)</li>
-					<li>✅ Layout containers (stackH, stackV)</li>
-					<li>✅ Nested layouts</li>
-					<li>✅ React components</li>
-					<li>✅ React state and interactivity</li>
-					<li>✅ Event handlers (onClick, onMouseEnter, etc.)</li>
-					<li>✅ Props (margin, className, style, title)</li>
-					<li>✅ Dynamic updates and re-renders</li>
-					<li>✅ React Context forwarding</li>
-				</ul>
-				<p style={{ marginTop: "1rem" }}>
-					<strong>Built with React 19</strong> using react-reconciler 0.31.0 and
-					its-fine for seamless context bridging.
-				</p>
-			</footer>
 		</div>
 	);
 }
