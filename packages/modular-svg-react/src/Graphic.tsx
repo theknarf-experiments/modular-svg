@@ -16,7 +16,26 @@ export interface GraphicProps extends React.HTMLAttributes<HTMLDivElement> {
 	children?: React.ReactNode;
 	margin?: number;
 	title?: string;
+	/**
+	 * Animate layout changes with native SVG animation (SMIL). Each mark carries
+	 * <animate> elements on its geometry attributes, so when the scene re-renders
+	 * with new state every mark — including connectors like arrows/lines/curves,
+	 * whose endpoints reshape — tweens to its new geometry. Off by default.
+	 */
+	animate?: boolean;
+	/** Animation duration in milliseconds (default 300). */
+	duration?: number;
+	/**
+	 * SMIL keySplines easing (a cubic-bezier control string), used with
+	 * calcMode="spline". Default "0.25 0.1 0.25 1" (ease).
+	 */
+	easing?: string;
 }
+
+// useLayoutEffect on the client (so we trigger SMIL before paint, no flash) but
+// useEffect on the server to avoid the SSR "useLayoutEffect does nothing" warning.
+const useIsoLayoutEffect =
+	typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
 // React DOM wants camelCase SVG attribute names (fontSize, strokeDasharray);
 // scene attrs use the SVG spellings. data-* and aria-* stay as-is.
@@ -35,8 +54,15 @@ function reactifyAttrs(
 	return out;
 }
 
-// Component to render a single SVG element with event handlers
-function SvgElementRenderer({ element }: { element: SvgElement }) {
+// Component to render a single SVG element with event handlers. Any children
+// (e.g. <animate> nodes injected in animate mode) render inside the shape.
+function SvgElementRenderer({
+	element,
+	children,
+}: {
+	element: SvgElement;
+	children?: React.ReactNode;
+}) {
 	const handlers = element.id ? getEventHandlers(element.id) : undefined;
 	const attrs = reactifyAttrs(element.attrs);
 
@@ -52,7 +78,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{children}
+			</circle>
 		);
 	}
 
@@ -69,7 +97,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{children}
+			</rect>
 		);
 	}
 
@@ -88,6 +118,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				{...handlers}
 			>
 				{element.text}
+				{children}
 			</text>
 		);
 	}
@@ -104,7 +135,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{children}
+			</line>
 		);
 	}
 
@@ -119,7 +152,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{children}
+			</polygon>
 		);
 	}
 
@@ -134,7 +169,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{children}
+			</path>
 		);
 	}
 
@@ -149,15 +186,115 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				href={element.href}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{children}
+			</image>
 		);
 	}
 
 	return null;
 }
 
+// The geometry attributes to animate per mark, as (name, value) string pairs.
+// Connectors expose the very attributes CSS/transform can't touch — a line's
+// endpoints (x1..y2) and a polygon head's `points` — which is exactly what lets
+// SMIL animate the arrow. Paths animate their `d`.
+function animatableAttrs(el: SvgElement): { name: string; value: string }[] {
+	const num = (name: string, v: number) => ({ name, value: String(v) });
+	switch (el.type) {
+		case "circle":
+			return [num("cx", el.cx), num("cy", el.cy), num("r", el.r)];
+		case "rect":
+		case "image":
+			return [
+				num("x", el.x),
+				num("y", el.y),
+				num("width", el.width),
+				num("height", el.height),
+			];
+		case "text":
+			return [num("x", el.x), num("y", el.y)];
+		case "line":
+			return [
+				num("x1", el.x1),
+				num("y1", el.y1),
+				num("x2", el.x2),
+				num("y2", el.y2),
+			];
+		case "polygon":
+			return [{ name: "points", value: el.points }];
+		case "path":
+			return [{ name: "d", value: el.d }];
+		default:
+			return [];
+	}
+}
+
+// A mark plus the <animate> nodes that tween its geometry. Each element manages
+// its own "previous values" so a new layout animates from where it currently is.
+function AnimatedElement({
+	element,
+	duration,
+	easing,
+}: {
+	element: SvgElement;
+	duration: number;
+	easing: string;
+}) {
+	const shapeRef = React.useRef<SVGGElement | null>(null);
+	const attrs = animatableAttrs(element);
+	// prevRef starts equal to the first render's values (so from == to: no motion
+	// on mount) and is advanced to the committed values after each animation.
+	const initial = React.useRef<Map<string, string>>(
+		new Map(attrs.map((a) => [a.name, a.value])),
+	);
+	const prev = initial.current;
+
+	useIsoLayoutEffect(() => {
+		const changed = attrs.some((a) => prev.get(a.name) !== a.value);
+		if (changed && shapeRef.current) {
+			// begin="indefinite" means the animations only run when triggered; a
+			// freshly rendered begin="0s" would resolve to a past time and snap.
+			for (const node of shapeRef.current.querySelectorAll("animate")) {
+				const anim = node as SVGAnimateElement;
+				if (typeof anim.beginElement === "function") anim.beginElement();
+			}
+		}
+		for (const a of attrs) prev.set(a.name, a.value);
+	});
+
+	return (
+		<g ref={shapeRef}>
+			<SvgElementRenderer element={element}>
+				{attrs.map((a) => (
+					<animate
+						key={a.name}
+						attributeName={a.name}
+						begin="indefinite"
+						dur={`${duration}ms`}
+						fill="freeze"
+						calcMode="spline"
+						keyTimes="0;1"
+						keySplines={easing}
+						from={prev.get(a.name) ?? a.value}
+						to={a.value}
+					/>
+				))}
+			</SvgElementRenderer>
+		</g>
+	);
+}
+
 // Internal Graphic component that uses context bridge
-function GraphicImpl({ children, margin = 0, title, ...props }: GraphicProps) {
+function GraphicImpl({
+	children,
+	margin = 0,
+	title,
+	animate = false,
+	duration = 300,
+	easing = "0.25 0.1 0.25 1",
+	...props
+}: GraphicProps) {
 	const rootRef = React.useRef<ReconcilerRoot | null>(null);
 	const [ast, setAst] = React.useState<SvgDocument | null>(null);
 
@@ -214,12 +351,21 @@ function GraphicImpl({ children, margin = 0, title, ...props }: GraphicProps) {
 				aria-label={title || "Modular SVG diagram"}
 			>
 				{title && <title>{title}</title>}
-				{ast.children.map((element, index) => (
-					<SvgElementRenderer
-						key={element.id ?? `element-${index}`}
-						element={element}
-					/>
-				))}
+				{ast.children.map((element, index) => {
+					const key = element.id ?? `element-${index}`;
+					// In animate mode each mark carries <animate> nodes; a stable key
+					// keeps the same DOM element across state changes so SMIL can tween.
+					return animate ? (
+						<AnimatedElement
+							key={key}
+							element={element}
+							duration={duration}
+							easing={easing}
+						/>
+					) : (
+						<SvgElementRenderer key={key} element={element} />
+					);
+				})}
 			</svg>
 		</div>
 	);

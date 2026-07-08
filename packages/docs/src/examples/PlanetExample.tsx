@@ -35,6 +35,7 @@ export function PlanetExample() {
 				</select>
 			</label>
 			<Graphic
+				animate
 				style={{
 					border: "1px solid #ddd",
 					borderRadius: "8px",
