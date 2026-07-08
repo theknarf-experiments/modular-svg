@@ -440,16 +440,21 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					padEnd: (props.padEnd as number | undefined) ?? 5,
 				},
 			};
-		} else if (n.type === "Line") {
+		} else if (n.type === "Line" || n.type === "Curve") {
 			rec = {
 				...common,
-				type: "line",
+				type: n.type === "Line" ? "line" : "curve",
 				x: 0,
 				y: 0,
 				width: 0,
 				height: 0,
 				source: props.source as number[] | undefined,
 				target: props.target as number[] | undefined,
+				curveDirection:
+					n.type === "Curve"
+						? ((props.direction as "horizontal" | "vertical" | undefined) ??
+							"auto")
+						: undefined,
 				stroke: (props.stroke as string | undefined) ?? "black",
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
@@ -537,7 +542,10 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				(rec as NodeRecord).from = children[0].id;
 				(rec as NodeRecord).to = children[1].id;
 				descs.push({ kind: "union", container: rec, children });
-			} else if (node.type === "Line" && children.length >= 2) {
+			} else if (
+				(node.type === "Line" || node.type === "Curve") &&
+				children.length >= 2
+			) {
 				(rec as NodeRecord).from = children[0].id;
 				(rec as NodeRecord).to = children[1].id;
 				descs.push({ kind: "line", line: rec, children });

@@ -30,23 +30,26 @@ const laneId = (branch: string) => `lane-${branch}`;
 const anchorId = (commit: string) => `commit-${commit}`;
 
 // Edges reference invisible anchors declared before them, so the visible
-// circles (declared after) paint on top without any z-order juggling
+// circles (declared after) paint on top without any z-order juggling.
+// Same-lane edges stay straight; lane changes get a smooth curve.
 function Edge({
 	id,
 	from,
 	to,
 	color,
+	direction,
 }: {
 	id: string;
 	from: string;
 	to: string;
 	color: string;
+	direction: "horizontal" | "vertical";
 }) {
-	return React.createElement(
-		"line",
-		{ key: id, stroke: color, "stroke-width": 2 },
-		React.createElement("ref", { target: anchorId(from) }),
-		React.createElement("ref", { target: anchorId(to) }),
+	return (
+		<curve key={id} stroke={color} stroke-width={2} direction={direction}>
+			<ref target={anchorId(from)} />
+			<ref target={anchorId(to)} />
+		</curve>
 	);
 }
 
@@ -138,6 +141,7 @@ export function GitGraph({
 							from={p}
 							to={c.id}
 							color={color.get(c.branch) ?? "#333"}
+							direction={horizontal ? "horizontal" : "vertical"}
 						/>
 					)),
 				)}

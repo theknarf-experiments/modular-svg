@@ -13,7 +13,15 @@ export type NodeRecord = {
 	y: number;
 	width: number;
 	height: number;
-	type?: "rect" | "circle" | "text" | "arrow" | "image" | "line" | "path";
+	type?:
+		| "rect"
+		| "circle"
+		| "text"
+		| "arrow"
+		| "image"
+		| "line"
+		| "curve"
+		| "path";
 	r?: number;
 	text?: string;
 	href?: string;
@@ -29,6 +37,8 @@ export type NodeRecord = {
 	source?: number[];
 	/** fractional [0..1, 0..1] bbox anchor for the line end */
 	target?: number[];
+	/** control-point axis for curves; auto picks the dominant delta */
+	curveDirection?: "horizontal" | "vertical" | "auto";
 	/** perfect-arrows options for arrows */
 	arrow?: ArrowGeometry;
 	fill?: string;
