@@ -8,7 +8,7 @@
 //    broken node-canvas require inside the bundle. Pretend to be Chrome.
 // 2. Text measurement uses canvas 2D measureText with actualBoundingBox* and
 //    fontBoundingBox* metrics; jsdom has no 2D context. Stub deterministic
-//    metrics (0.6em per character) so text layout is reproducible.
+//    metrics (0.5em per character, matching modular-svg's heuristic) so text layout is reproducible.
 // 3. Bluefish's Text measures words via SVG getComputedTextLength, which
 //    jsdom doesn't implement. Same deterministic metric.
 
@@ -28,7 +28,7 @@ Object.defineProperty(window.navigator, "userAgent", {
 			this.getAttribute?.("font-size") ||
 			"14",
 	);
-	return (this.textContent ?? "").length * fontSize * 0.6;
+	return (this.textContent ?? "").length * fontSize * 0.5;
 };
 
 const origGetContext = window.HTMLCanvasElement.prototype.getContext;
@@ -47,7 +47,7 @@ window.HTMLCanvasElement.prototype.getContext = function (
 			const fontSize = Number.parseFloat(
 				/(\d+(?:\.\d+)?)px/.exec(this.font)?.[1] ?? "14",
 			);
-			const width = text.length * fontSize * 0.6;
+			const width = text.length * fontSize * 0.5;
 			return {
 				width,
 				actualBoundingBoxLeft: 0,

@@ -538,6 +538,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					axis: (node.props?.axis as "x" | "y") ?? "x",
 					children,
 				});
+				descs.push({ kind: "union", container: rec, children });
 			} else if (children.length > 0) {
 				// Group and any other plain container: bbox = union of children
 				descs.push({ kind: "union", container: rec, children });

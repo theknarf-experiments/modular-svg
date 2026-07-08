@@ -1,0 +1,1316 @@
+{
+	"type": "Group",
+	"id": "root",
+	"children": [
+		{
+			"type": "Background",
+			"id": "outer",
+			"props": {
+				"padding": 50,
+				"fill": "#7CD4AC",
+				"opacity": 0.3,
+				"stroke-width": 0
+			},
+			"children": [
+				{
+					"type": "Background",
+					"id": "recipeTable",
+					"props": {
+						"padding": 0,
+						"stroke": "#40A03F",
+						"fill": "#FFFFFF",
+						"stroke-width": 3
+					},
+					"children": [
+						{
+							"type": "Background",
+							"id": "title",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "Preheat oven to 325°F (160°C) and butter a 9x13-in. baking pan",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col0-row0",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "6 oz. (170 g) 70% cacao chocolate",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col0-row1",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "6 oz. (170 g) butter",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col0-row2",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "1-1/2 cup (300 g) granulated sugar ",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col0-row3",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "StackV",
+									"children": [
+										{
+											"type": "Text",
+											"props": {
+												"text": "3 large eggs",
+												"font-size": 14
+											}
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col0-row4",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "1 tsp. (5 mL) vanilla extract",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col0-row5",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "1 cup (125 g) all-purpose flour",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col1-row0_1",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "melt in double boiler",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col1_2-row0_2",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "stir in",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col1_2-row3_4",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "lightly beat",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col3-row0_5",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "stir in",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col4-row0_5",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "stir in",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "Background",
+							"id": "col5-row0_5",
+							"props": {
+								"padding": 5,
+								"fill": "transparent",
+								"stroke-width": 0
+							},
+							"children": [
+								{
+									"type": "Text",
+									"props": {
+										"text": "bake 325°F (160°C) for 35 min.",
+										"font-size": 14
+									}
+								}
+							]
+						},
+						{
+							"type": "StackV",
+							"props": {
+								"alignment": "left",
+								"spacing": 0
+							},
+							"children": [
+								{
+									"type": "Ref",
+									"target": "title"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row0"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row1"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row2"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row3"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row4"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row5"
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col0-row0"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row1"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row2"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row3"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row4"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row5"
+								}
+							],
+							"id": "col0"
+						},
+						{
+							"type": "Distribute",
+							"props": {
+								"direction": "horizontal",
+								"spacing": 0
+							},
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col0"
+								},
+								{
+									"type": "Ref",
+									"target": "col1-row0_1"
+								}
+							]
+						},
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerY"
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row0"
+										},
+										{
+											"type": "Ref",
+											"target": "col0-row1"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col1-row0_1"
+								}
+							]
+						},
+						{
+							"type": "Distribute",
+							"props": {
+								"direction": "horizontal",
+								"spacing": 0
+							},
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col1-row0_1"
+								},
+								{
+									"type": "Ref",
+									"target": "col1_2-row0_2"
+								}
+							]
+						},
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerY"
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row0"
+										},
+										{
+											"type": "Ref",
+											"target": "col0-row1"
+										},
+										{
+											"type": "Ref",
+											"target": "col0-row2"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col1_2-row0_2"
+								}
+							]
+						},
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerY"
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row3"
+										},
+										{
+											"type": "Ref",
+											"target": "col0-row4"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col1_2-row3_4"
+								}
+							]
+						},
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "left"
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col1-row0_1"
+										},
+										{
+											"type": "Ref",
+											"target": "col1_2-row0_2"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col1_2-row3_4"
+								}
+							]
+						},
+						{
+							"type": "Distribute",
+							"props": {
+								"direction": "horizontal",
+								"spacing": 0
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col1-row0_1"
+										},
+										{
+											"type": "Ref",
+											"target": "col1_2-row0_2"
+										},
+										{
+											"type": "Ref",
+											"target": "col1_2-row3_4"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col3-row0_5"
+								}
+							]
+						},
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerY"
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row0"
+										},
+										{
+											"type": "Ref",
+											"target": "col0-row4"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col3-row0_5"
+								}
+							]
+						},
+						{
+							"type": "Distribute",
+							"props": {
+								"direction": "horizontal",
+								"spacing": 0
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col3-row0_5"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col4-row0_5"
+								}
+							]
+						},
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerY"
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row0"
+										},
+										{
+											"type": "Ref",
+											"target": "col0-row5"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col4-row0_5"
+								}
+							]
+						},
+						{
+							"type": "Distribute",
+							"props": {
+								"direction": "horizontal",
+								"spacing": 0
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col4-row0_5"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col5-row0_5"
+								}
+							]
+						},
+						{
+							"type": "Align",
+							"props": {
+								"alignment": "centerY"
+							},
+							"children": [
+								{
+									"type": "Group",
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row0"
+										},
+										{
+											"type": "Ref",
+											"target": "col0-row5"
+										}
+									]
+								},
+								{
+									"type": "Ref",
+									"target": "col5-row0_5"
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb1",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0"
+										},
+										{
+											"type": "Ref",
+											"target": "cb1"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row0"
+										},
+										{
+											"type": "Ref",
+											"target": "cb1"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb2",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0"
+										},
+										{
+											"type": "Ref",
+											"target": "cb2"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row1"
+										},
+										{
+											"type": "Ref",
+											"target": "cb2"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb3",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0"
+										},
+										{
+											"type": "Ref",
+											"target": "cb3"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row2"
+										},
+										{
+											"type": "Ref",
+											"target": "cb3"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb4",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0"
+										},
+										{
+											"type": "Ref",
+											"target": "cb4"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row3"
+										},
+										{
+											"type": "Ref",
+											"target": "cb4"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb5",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0"
+										},
+										{
+											"type": "Ref",
+											"target": "cb5"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row4"
+										},
+										{
+											"type": "Ref",
+											"target": "cb5"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb6",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0"
+										},
+										{
+											"type": "Ref",
+											"target": "cb6"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0-row5"
+										},
+										{
+											"type": "Ref",
+											"target": "cb6"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col1-row0_1"
+								},
+								{
+									"type": "Ref",
+									"target": "col1_2-row0_2"
+								},
+								{
+									"type": "Ref",
+									"target": "col1_2-row3_4"
+								}
+							],
+							"id": "col1_2"
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col1_2"
+								},
+								{
+									"type": "Ref",
+									"target": "col3-row0_5"
+								}
+							],
+							"id": "col1_3"
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col0-row0"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row1"
+								}
+							],
+							"id": "row0_1"
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col0-row0"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row2"
+								}
+							],
+							"id": "row0_2"
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col0-row3"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row4"
+								}
+							],
+							"id": "row3_4"
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col0-row0"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row5"
+								}
+							],
+							"id": "row0_5"
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col0-row0"
+								},
+								{
+									"type": "Ref",
+									"target": "col0-row4"
+								}
+							],
+							"id": "row0_4"
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb7",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col1-row0_1"
+										},
+										{
+											"type": "Ref",
+											"target": "cb7"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "row0_1"
+										},
+										{
+											"type": "Ref",
+											"target": "cb7"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb8",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col1_2"
+										},
+										{
+											"type": "Ref",
+											"target": "cb8"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "row0_2"
+										},
+										{
+											"type": "Ref",
+											"target": "cb8"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb9",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col1_2"
+										},
+										{
+											"type": "Ref",
+											"target": "cb9"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "row3_4"
+										},
+										{
+											"type": "Ref",
+											"target": "cb9"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb10",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col1_3"
+										},
+										{
+											"type": "Ref",
+											"target": "cb10"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "row0_4"
+										},
+										{
+											"type": "Ref",
+											"target": "cb10"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb11",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col5-row0_5"
+										},
+										{
+											"type": "Ref",
+											"target": "cb11"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "row0_5"
+										},
+										{
+											"type": "Ref",
+											"target": "cb11"
+										}
+									]
+								}
+							]
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Ref",
+									"target": "col0-row0"
+								},
+								{
+									"type": "Ref",
+									"target": "col5-row0_5"
+								}
+							],
+							"id": "col0_5"
+						},
+						{
+							"type": "Group",
+							"children": [
+								{
+									"type": "Rect",
+									"id": "cb12",
+									"props": {
+										"fill": "transparent",
+										"stroke": "#40A03F",
+										"stroke-width": 1
+									}
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "x"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "col0_5"
+										},
+										{
+											"type": "Ref",
+											"target": "cb12"
+										}
+									]
+								},
+								{
+									"type": "Span",
+									"props": {
+										"axis": "y"
+									},
+									"children": [
+										{
+											"type": "Ref",
+											"target": "title"
+										},
+										{
+											"type": "Ref",
+											"target": "cb12"
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		{
+			"type": "Text",
+			"props": {
+				"text": "Dark Chocolate Brownies (makes 24 squares)",
+				"font-size": 14
+			},
+			"id": "recipeName"
+		},
+		{
+			"type": "StackV",
+			"props": {
+				"spacing": 10,
+				"alignment": "left"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "recipeName"
+				},
+				{
+					"type": "Ref",
+					"target": "recipeTable"
+				}
+			]
+		}
+	]
+}
