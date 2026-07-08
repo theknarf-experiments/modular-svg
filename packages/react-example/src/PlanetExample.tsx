@@ -5,16 +5,8 @@ import "./modular-svg.d.ts";
  * Planet Example - Adapted from examples/planet.json
  *
  * This demonstrates a horizontal layout of planets with proper spacing.
- *
- * Note: Some features from the original JSON are not yet available in JSX:
- * - Background container with padding
- * - Align (for centering text labels)
- * - Distribute (for vertical spacing)
- * - Text elements
- * - Arrow connectors
- * - Ref (references to other elements)
- *
- * This simplified version shows what's currently possible.
+ * The full JSON feature set (background, align, distribute, text, arrow,
+ * ref) is shown in FullPlanetExample.
  */
 export function PlanetExample() {
 	return (
@@ -68,18 +60,6 @@ export function PlanetExample() {
 					<li>✅ Horizontal stack (stackH) with 50px spacing</li>
 					<li>✅ Automatic vertical centering (built into stackH)</li>
 					<li>✅ Canvas margin for outer padding</li>
-				</ul>
-
-				<p style={{ marginTop: "1rem" }}>
-					<strong>Original JSON features not yet in JSX:</strong>
-				</p>
-				<ul style={{ paddingLeft: "1.5rem" }}>
-					<li>⏳ Text labels</li>
-					<li>⏳ Arrow connectors</li>
-					<li>⏳ Align operator for precise positioning</li>
-					<li>⏳ Distribute operator for spacing control</li>
-					<li>⏳ Background container</li>
-					<li>⏳ Ref for element references</li>
 				</ul>
 			</div>
 		</div>
