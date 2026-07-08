@@ -67,6 +67,9 @@ describe("layoutToSvg", () => {
 		expect(svg).toContain('<text id="T"');
 		expect(svg).toContain(">hi<");
 		expect(svg).toContain('font-family="sans-serif"');
+		// text is filled, not stroked: no default black outline on glyphs
+		const textTag = /<text id="T"[^>]*>/.exec(svg)?.[0] ?? "";
+		expect(textTag).toContain('stroke="none"');
 	});
 
 	it("passes extra SVG attributes through", () => {

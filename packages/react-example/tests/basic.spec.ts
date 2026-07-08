@@ -192,8 +192,9 @@ test("the packet diagram sizes fields by bits and fills rests", async ({
 	if (srcPort && offset) {
 		expect(inner(offset)).toBeCloseTo(inner(srcPort) / 4, 0);
 	}
-	// the rest-filling Options row spans the full 32-bit row width
-	const options = await tcp.locator('rect[id="cell-6-0"]').boundingBox();
+	// the rest-filling Options row (last row) spans the full 32-bit width
+	const options = await tcp.locator('rect[id="cell-5-0"]').boundingBox();
+	expect(options).toBeTruthy();
 	if (options && srcPort) {
 		expect(inner(options)).toBeCloseTo(inner(srcPort) * 2, 0);
 	}
@@ -227,4 +228,32 @@ test("the git graph renders lanes, edges, and the merge", async ({ page }) => {
 		.locator('circle[id="commit-a1f9-dot"]')
 		.getAttribute("fill");
 	expect(dotFill).toBe(main);
+});
+
+test("the color-constraint examples work", async ({ page }) => {
+	await page.goto("http://localhost:5173/");
+	await page.waitForTimeout(1500);
+
+	// DistinctColors: the circles all get different fills, none set in markup
+	const distinct = page.locator("section", { hasText: "Distinct Colors" });
+	const fills = await distinct
+		.locator("svg circle")
+		.evaluateAll((els) => els.map((e) => e.getAttribute("fill")));
+	expect(fills.length).toBeGreaterThanOrEqual(2);
+	expect(new Set(fills).size).toBe(fills.length);
+
+	// SameColor: every follower matches the source swatch
+	const same = page.locator("section", { hasText: "Same Color" });
+	const swatch = await same
+		.locator('svg rect[id="source"]')
+		.getAttribute("fill");
+	const follower = await same
+		.locator('svg circle[id="f1"]')
+		.getAttribute("fill");
+	expect(follower?.toLowerCase()).toBe(swatch?.toLowerCase());
+
+	// Contrast: the label is filled, not stroked (no black glyph outline)
+	const contrast = page.locator("section", { hasText: "Readable Contrast" });
+	const label = contrast.locator('svg text[id="label"]');
+	expect(await label.getAttribute("stroke")).toBe("none");
 });

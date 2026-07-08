@@ -6,8 +6,12 @@ import { BarChart } from "./examples/BarChart";
 import barChartCode from "./examples/BarChart.tsx?raw";
 import { ContextForwarding } from "./examples/ContextForwarding";
 import contextForwardingCode from "./examples/ContextForwarding.tsx?raw";
+import { ContrastExample } from "./examples/ContrastExample";
+import contrastExampleCode from "./examples/ContrastExample.tsx?raw";
 import { CustomStyling } from "./examples/CustomStyling";
 import customStylingCode from "./examples/CustomStyling.tsx?raw";
+import { DistinctColorsExample } from "./examples/DistinctColorsExample";
+import distinctColorsExampleCode from "./examples/DistinctColorsExample.tsx?raw";
 import { EventHandlers } from "./examples/EventHandlers";
 import eventHandlersCode from "./examples/EventHandlers.tsx?raw";
 import gitGraphCode from "./examples/GitGraph.tsx?raw";
@@ -26,6 +30,8 @@ import { QuantumCircuit } from "./examples/QuantumCircuit";
 import quantumCircuitCode from "./examples/QuantumCircuit.tsx?raw";
 import { ReactComponents } from "./examples/ReactComponents";
 import reactComponentsCode from "./examples/ReactComponents.tsx?raw";
+import { SameColorExample } from "./examples/SameColorExample";
+import sameColorExampleCode from "./examples/SameColorExample.tsx?raw";
 import sequenceDiagramCode from "./examples/SequenceDiagram.tsx?raw";
 import { SequenceDiagramExample } from "./examples/SequenceDiagramExample";
 import sequenceDiagramExampleCode from "./examples/SequenceDiagramExample.tsx?raw";
@@ -66,6 +72,27 @@ const pages: Page[] = [
 					"Canvas accepts standard div props like className and style",
 				code: customStylingCode,
 				element: <CustomStyling />,
+			},
+			{
+				title: "Distinct Colors",
+				description:
+					"DistinctColors spreads the children's hues evenly around the wheel, so a set of shapes picks distinct colors automatically - none are chosen in the markup",
+				code: distinctColorsExampleCode,
+				element: <DistinctColorsExample />,
+			},
+			{
+				title: "Same Color",
+				description:
+					"SameColor copies one source color onto every follower - the color analogue of a span. Change the source and they all follow",
+				code: sameColorExampleCode,
+				element: <SameColorExample />,
+			},
+			{
+				title: "Readable Contrast",
+				description:
+					"Contrast adjusts a label's lightness to meet a WCAG ratio against its background, so text stays legible over any color",
+				code: contrastExampleCode,
+				element: <ContrastExample />,
 			},
 		],
 	},
