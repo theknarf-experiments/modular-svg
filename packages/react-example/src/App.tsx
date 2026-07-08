@@ -10,8 +10,14 @@ import { CustomStyling } from "./examples/CustomStyling";
 import customStylingCode from "./examples/CustomStyling.tsx?raw";
 import { EventHandlers } from "./examples/EventHandlers";
 import eventHandlersCode from "./examples/EventHandlers.tsx?raw";
+import gitGraphCode from "./examples/GitGraph.tsx?raw";
+import { GitGraphExample } from "./examples/GitGraphExample";
+import gitGraphExampleCode from "./examples/GitGraphExample.tsx?raw";
 import { InteractiveState } from "./examples/InteractiveState";
 import interactiveStateCode from "./examples/InteractiveState.tsx?raw";
+import packetDiagramCode from "./examples/PacketDiagram.tsx?raw";
+import { PacketDiagramExample } from "./examples/PacketDiagramExample";
+import packetDiagramExampleCode from "./examples/PacketDiagramExample.tsx?raw";
 import { PlanetExample } from "./examples/PlanetExample";
 import planetExampleCode from "./examples/PlanetExample.tsx?raw";
 import { PulleyDiagram } from "./examples/PulleyDiagram";
@@ -125,6 +131,44 @@ const pages: Page[] = [
 				description:
 					"The diagram class itself: actors in a stackH, dashed lifelines, messages as arrows between anchors positioned by align and distribute, and activation bars spanned to their message range",
 				code: sequenceDiagramCode,
+			},
+		],
+	},
+	{
+		path: "/packet",
+		title: "Packet Diagram",
+		sections: [
+			{
+				title: "Packet diagrams from data",
+				description:
+					"RFC-style header layouts from a flat field list - fields flow across 32-bit rows, and a field without a bit count fills the rest of its row via the stack's total sizing mode",
+				code: packetDiagramExampleCode,
+				element: <PacketDiagramExample />,
+			},
+			{
+				title: "How the PacketDiagram component works",
+				description:
+					"Rows are stackHs with a fixed total width; sized cells take bits x bitWidth, unsized cells share the leftover; names and bit ranges are aligned onto each cell",
+				code: packetDiagramCode,
+			},
+		],
+	},
+	{
+		path: "/gitgraph",
+		title: "Git Graph",
+		sections: [
+			{
+				title: "Git graphs from data",
+				description:
+					"Branches become lanes, commits chain left to right on their branch's lane, and parent edges draw straight lines - two parents make a merge",
+				code: gitGraphExampleCode,
+				element: <GitGraphExample />,
+			},
+			{
+				title: "How the GitGraph component works",
+				description:
+					"Branch pills define lane rows; invisible commit anchors chain horizontally with distribute and align to their lane; edges reference the anchors (painted under), then circles, ids, and tags go on top",
+				code: gitGraphCode,
 			},
 		],
 	},

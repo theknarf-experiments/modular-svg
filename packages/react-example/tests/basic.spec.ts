@@ -79,6 +79,8 @@ test("every example shows its source code on every page", async ({ page }) => {
 		"/interactive",
 		"/diagrams",
 		"/sequence",
+		"/packet",
+		"/gitgraph",
 		"/baking-recipe",
 		"/quantum-circuit",
 		"/pulley",
@@ -172,4 +174,40 @@ test("the sequence diagram renders lifelines, arrows and activations", async ({
 		const barCenter = serverBar.x + serverBar.width / 2;
 		expect(Math.abs(boxCenter - barCenter)).toBeLessThan(1);
 	}
+});
+
+test("the packet diagram sizes fields by bits and fills rests", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/packet");
+	await page.waitForTimeout(1500);
+
+	const tcp = page.locator("svg").first();
+	// bounding boxes include the 1px stroke on each side
+	const inner = (b: { width: number }) => b.width - 2;
+	// Offset (4 bits) is a quarter the width of Source Port (16 bits)
+	const srcPort = await tcp.locator('rect[id="cell-0-0"]').boundingBox();
+	const offset = await tcp.locator('rect[id="cell-3-0"]').boundingBox();
+	expect(srcPort && offset).toBeTruthy();
+	if (srcPort && offset) {
+		expect(inner(offset)).toBeCloseTo(inner(srcPort) / 4, 0);
+	}
+	// the rest-filling Options row spans the full 32-bit row width
+	const options = await tcp.locator('rect[id="cell-6-0"]').boundingBox();
+	if (options && srcPort) {
+		expect(inner(options)).toBeCloseTo(inner(srcPort) * 2, 0);
+	}
+});
+
+test("the git graph renders lanes, edges, and the merge", async ({ page }) => {
+	await page.goto("http://localhost:5173/gitgraph");
+	await page.waitForTimeout(1500);
+
+	// 7 commit circles in each of the two directions
+	await expect(page.locator('svg circle[id*="commit-"]')).toHaveCount(14);
+	// 8 edges each: 6 first parents + one extra per merge
+	await expect(page.locator('svg line[id^="edge-"]')).toHaveCount(16);
+	// tag pills with pointer lines to their commits
+	await expect(page.locator('svg line[id$="-tagline"]')).toHaveCount(2);
+	await expect(page.locator("svg text", { hasText: "v1.0" })).toHaveCount(2);
 });
