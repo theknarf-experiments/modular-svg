@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from "react-router";
+import { NavLink, Outlet } from "react-router";
 import { ExampleSection } from "./ExampleSection";
 import { BakingRecipe } from "./examples/BakingRecipe";
 import bakingRecipeCode from "./examples/BakingRecipe.tsx?raw";
@@ -52,9 +52,9 @@ type Section = {
 	element?: React.ReactNode;
 };
 
-type Page = { path: string; title: string; sections: Section[] };
+export type Page = { path: string; title: string; sections: Section[] };
 
-const pages: Page[] = [
+export const pages: Page[] = [
 	{
 		path: "/",
 		title: "Basics",
@@ -278,7 +278,7 @@ const pages: Page[] = [
 	},
 ];
 
-function PageContent({ page }: { page: Page }) {
+export function PageContent({ page }: { page: Page }) {
 	return (
 		<main style={{ minWidth: 0 }}>
 			{page.sections.map((s) => (
@@ -295,7 +295,8 @@ function PageContent({ page }: { page: Page }) {
 	);
 }
 
-function App() {
+// The app shell: a sticky nav column and an <Outlet /> for the routed page.
+export function Layout() {
 	return (
 		<div
 			style={{
@@ -317,6 +318,7 @@ function App() {
 						<li key={p.path}>
 							<NavLink
 								to={p.path}
+								end={p.path === "/"}
 								style={({ isActive }) => ({
 									color: isActive ? "#111" : "#555",
 									fontWeight: isActive ? 600 : 400,
@@ -329,17 +331,7 @@ function App() {
 					))}
 				</ul>
 			</nav>
-			<Routes>
-				{pages.map((p) => (
-					<Route
-						key={p.path}
-						path={p.path}
-						element={<PageContent page={p} />}
-					/>
-				))}
-			</Routes>
+			<Outlet />
 		</div>
 	);
 }
-
-export default App;
