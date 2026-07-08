@@ -19,6 +19,9 @@
 			"a11y": {
 				"noStaticElementInteractions": "off"
 			},
+			"suspicious": {
+				"noArrayIndexKey": "off"
+			},
 			"security": {
 				"noDangerouslySetInnerHtml": "off"
 			},
