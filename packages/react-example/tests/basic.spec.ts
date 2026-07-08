@@ -72,3 +72,18 @@ test("arrows render as straight lines with polygon heads", async ({ page }) => {
 	const heads = page.locator("svg polygon");
 	expect(await heads.count()).toBeGreaterThan(0);
 });
+
+test("every example shows its source code", async ({ page }) => {
+	await page.goto("http://localhost:5173");
+	await page.waitForTimeout(2000);
+
+	const sections = await page.locator("section").count();
+	const codeBlocks = page.locator("details summary", { hasText: "Show code" });
+	expect(await codeBlocks.count()).toBe(sections);
+
+	// expanding a block reveals real source
+	await codeBlocks.first().click();
+	const code = await page.locator("details pre code").first().textContent();
+	expect(code).toContain("import { Canvas }");
+	expect(code).toContain("<Canvas");
+});
