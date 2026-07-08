@@ -172,14 +172,17 @@ export async function renderBluefishSvg(
 export function normalize(shapes: Shape[]): Shape[] {
 	const minX = Math.min(...shapes.map((s) => s.x));
 	const minY = Math.min(...shapes.map((s) => s.y));
+	// Round sort keys so solver noise (50.0000000004 vs 50) can't reorder ties
+	const r = (v: number) => Math.round(v * 100);
 	return shapes
 		.map((s) => ({ ...s, x: s.x - minX, y: s.y - minY }))
 		.sort(
 			(a, b) =>
 				a.kind.localeCompare(b.kind) ||
-				a.x - b.x ||
-				a.y - b.y ||
-				a.width - b.width,
+				r(a.x) - r(b.x) ||
+				r(a.y) - r(b.y) ||
+				r(a.width) - r(b.width) ||
+				r(a.height) - r(b.height),
 		);
 }
 

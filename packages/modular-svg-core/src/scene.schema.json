@@ -47,7 +47,7 @@
 				"zOrder": { "type": "number" },
 				"href": { "type": "string" },
 				"d": { "type": "string" },
-				"font-size": { "type": ["number", "string"] },
+				"font-size": { "type": "number" },
 				"source": {
 					"type": "array",
 					"items": { "type": "number" },
