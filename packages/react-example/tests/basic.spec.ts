@@ -81,6 +81,7 @@ test("every example shows its source code on every page", async ({ page }) => {
 		"/sequence",
 		"/packet",
 		"/gitgraph",
+		"/charts",
 		"/baking-recipe",
 		"/quantum-circuit",
 		"/pulley",
@@ -256,4 +257,49 @@ test("the color-constraint examples work", async ({ page }) => {
 	const contrast = page.locator("section", { hasText: "Readable Contrast" });
 	const label = contrast.locator('svg text[id="label"]');
 	expect(await label.getAttribute("stroke")).toBe("none");
+});
+
+test("pie chart: slices are arcs auto-colored, legend matches via SameColor", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/charts");
+	await page.waitForTimeout(1500);
+	const pie = page.locator("section", { hasText: "Pie charts from data" });
+	const svg = pie.locator("svg").first();
+
+	// four slices, rendered as arc wedge paths, with distinct fills
+	const fills = await svg
+		.locator("path[id^='slice-']")
+		.evaluateAll((els) => els.map((e) => e.getAttribute("fill")));
+	expect(fills.length).toBe(4);
+	expect(new Set(fills).size).toBe(4);
+
+	// the TypeScript legend swatch copies its slice color
+	const sliceFill = await svg
+		.locator('path[id="slice-TypeScript"]')
+		.getAttribute("fill");
+	const swatchFill = await svg
+		.locator('rect[id="swatch-TypeScript"]')
+		.getAttribute("fill");
+	expect(swatchFill?.toLowerCase()).toBe(sliceFill?.toLowerCase());
+});
+
+test("venn: overlapping translucent circles with distinct fills", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/charts");
+	await page.waitForTimeout(1500);
+	const three = page
+		.locator("section", { hasText: "Venn diagrams from data" })
+		.locator("svg")
+		.nth(1);
+	const circles = three.locator("circle[id^='set-']");
+	await expect(circles).toHaveCount(3);
+	const fills = await circles.evaluateAll((els) =>
+		els.map((e) => e.getAttribute("fill")),
+	);
+	expect(new Set(fills).size).toBe(3);
+	// translucent
+	const op = await circles.first().getAttribute("fill-opacity");
+	expect(Number(op)).toBeLessThan(1);
 });

@@ -290,6 +290,74 @@ function buildLine(
 	};
 }
 
+// A point on a circle at an angle in degrees, 0 = top, clockwise positive
+function polar(
+	cx: number,
+	cy: number,
+	r: number,
+	deg: number,
+): [number, number] {
+	const rad = ((deg - 90) * Math.PI) / 180;
+	return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+
+const round = (n: number) => Number(n.toFixed(3));
+
+// SVG path for a wedge (pie slice) or annular sector between two angles.
+// innerR 0 = full slice to the center; a full 360 sweep draws a ring.
+export function arcPath(
+	cx: number,
+	cy: number,
+	r: number,
+	innerR: number,
+	startAngle: number,
+	endAngle: number,
+): string {
+	const sweep = endAngle - startAngle;
+	const full = Math.abs(sweep) >= 360 - 1e-6;
+	const largeArc = Math.abs(sweep) > 180 ? 1 : 0;
+	const f = round;
+	if (full) {
+		// full circle/ring via two 180 arcs; inner reversed so nonzero fill
+		// leaves a hole
+		const outer = `M ${f(cx)},${f(cy - r)} A ${f(r)},${f(r)} 0 1 1 ${f(cx)},${f(cy + r)} A ${f(r)},${f(r)} 0 1 1 ${f(cx)},${f(cy - r)} Z`;
+		if (innerR <= 0) return outer;
+		const inner = `M ${f(cx)},${f(cy - innerR)} A ${f(innerR)},${f(innerR)} 0 1 0 ${f(cx)},${f(cy + innerR)} A ${f(innerR)},${f(innerR)} 0 1 0 ${f(cx)},${f(cy - innerR)} Z`;
+		return `${outer} ${inner}`;
+	}
+	const [ox0, oy0] = polar(cx, cy, r, startAngle);
+	const [ox1, oy1] = polar(cx, cy, r, endAngle);
+	if (innerR <= 0) {
+		return `M ${f(cx)},${f(cy)} L ${f(ox0)},${f(oy0)} A ${f(r)},${f(r)} 0 ${largeArc} 1 ${f(ox1)},${f(oy1)} Z`;
+	}
+	const [ix0, iy0] = polar(cx, cy, innerR, startAngle);
+	const [ix1, iy1] = polar(cx, cy, innerR, endAngle);
+	return `M ${f(ix0)},${f(iy0)} L ${f(ox0)},${f(oy0)} A ${f(r)},${f(r)} 0 ${largeArc} 1 ${f(ox1)},${f(oy1)} L ${f(ix1)},${f(iy1)} A ${f(innerR)},${f(innerR)} 0 ${largeArc} 0 ${f(ix0)},${f(iy0)} Z`;
+}
+
+// Build an arc mark: a wedge within the node's 2r box (center-anchored like
+// a circle), painted as a path
+function buildArc(
+	id: string,
+	box: LayoutResult[string],
+	n: NodeRecord,
+	offset: Vec2,
+): PathElement {
+	const r = (n.r ?? box.width / 2) as number;
+	const cx = box.x + offset.x + r;
+	const cy = box.y + offset.y + r;
+	const attrs = getAttrs(n);
+	return {
+		type: "path",
+		id,
+		d: arcPath(cx, cy, r, n.innerR ?? 0, n.startAngle ?? 0, n.endAngle ?? 360),
+		fill: attrs.fill,
+		stroke: attrs.stroke,
+		strokeWidth: attrs.strokeWidth,
+		...(attrs.attrs ? { attrs: attrs.attrs } : {}),
+	};
+}
+
 // Build a smooth cubic between two boxes: same endpoints as a Line, with
 // control points at the midpoint along the control axis (d3-style link)
 function buildCurve(
@@ -470,6 +538,8 @@ export function layoutToAst(
 		} else if (n.type === "curve") {
 			const curve = buildCurve(id, n, layout, offset);
 			elements = curve ? [curve] : undefined;
+		} else if (n.type === "arc") {
+			elements = [buildArc(id, box, n, offset)];
 		} else if (n.type === "path") {
 			elements = [buildPath(id, box, n, offset)];
 		} else if (n.type === "arrow") {

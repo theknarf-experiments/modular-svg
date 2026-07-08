@@ -132,6 +132,18 @@ declare module "react" {
 				direction?: "horizontal" | "vertical";
 				children?: React.ReactNode;
 			};
+			arc: {
+				key?: React.Key;
+				r?: number;
+				innerR?: number;
+				startAngle?: number;
+				endAngle?: number;
+				cx?: number;
+				cy?: number;
+				fill?: string;
+				stroke?: string;
+				"stroke-width"?: number;
+			};
 			path: {
 				key?: React.Key;
 				d?: string;

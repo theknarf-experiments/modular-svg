@@ -21,6 +21,7 @@
 				"Curve",
 				"Image",
 				"Path",
+				"Arc",
 				"Span",
 				"DistinctColors",
 				"SameColor",
@@ -51,6 +52,9 @@
 				"zOrder": { "type": "number" },
 				"href": { "type": "string" },
 				"d": { "type": "string" },
+				"innerR": { "type": "number" },
+				"startAngle": { "type": "number" },
+				"endAngle": { "type": "number" },
 				"font-size": { "type": "number" },
 				"source": {
 					"type": "array",

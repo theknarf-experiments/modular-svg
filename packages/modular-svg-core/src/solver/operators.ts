@@ -23,8 +23,15 @@ export type NodeRecord = {
 		| "image"
 		| "line"
 		| "curve"
-		| "path";
+		| "path"
+		| "arc";
 	r?: number;
+	/** inner radius for arc marks (donut sectors); 0 = full pie slice */
+	innerR?: number;
+	/** arc sweep start angle in degrees (0 = top, clockwise positive) */
+	startAngle?: number;
+	/** arc sweep end angle in degrees */
+	endAngle?: number;
 	text?: string;
 	href?: string;
 	/** SVG path data (linear commands only) for path marks */

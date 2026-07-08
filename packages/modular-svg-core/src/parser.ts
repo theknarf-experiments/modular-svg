@@ -325,6 +325,9 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		"target",
 		"href",
 		"d",
+		"innerR",
+		"startAngle",
+		"endAngle",
 		"fill",
 		"stroke",
 		"stroke-width",
@@ -461,6 +464,23 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					padEnd: (props.padEnd as number | undefined) ?? 5,
 				},
 			};
+		} else if (n.type === "Arc") {
+			const r = (props.r as number | undefined) ?? 0;
+			const cx = props.cx as number | undefined;
+			const cy = props.cy as number | undefined;
+			rec = {
+				...common,
+				type: "arc",
+				r,
+				innerR: props.innerR as number | undefined,
+				startAngle: (props.startAngle as number | undefined) ?? 0,
+				endAngle: (props.endAngle as number | undefined) ?? 360,
+				x: cx !== undefined ? cx - r : ((props.x as number | undefined) ?? 0),
+				y: cy !== undefined ? cy - r : ((props.y as number | undefined) ?? 0),
+				width: r * 2,
+				height: r * 2,
+				strokeWidth: props["stroke-width"] as number | undefined,
+			};
 		} else if (n.type === "Line" || n.type === "Curve") {
 			rec = {
 				...common,
@@ -494,7 +514,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			n.type === "Circle" ||
 			n.type === "Text" ||
 			n.type === "Image" ||
-			n.type === "Path"
+			n.type === "Path" ||
+			n.type === "Arc"
 		) {
 			if (props.x !== undefined || props.cx !== undefined)
 				userOwned.add(`${nodeId}:x`);
@@ -503,7 +524,10 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			// Extent ownership: explicit sizes, a circle's radius, and text's
 			// measured size all count as owned (matching Bluefish)
 			const sized =
-				n.type === "Circle" || n.type === "Text" || n.type === "Path";
+				n.type === "Circle" ||
+				n.type === "Text" ||
+				n.type === "Path" ||
+				n.type === "Arc";
 			if (props.width !== undefined || sized) userOwned.add(`${nodeId}:w`);
 			if (props.height !== undefined || sized) userOwned.add(`${nodeId}:h`);
 		}
