@@ -22,6 +22,9 @@ import interactiveStateCode from "./examples/InteractiveState.tsx?raw";
 import packetDiagramCode from "./examples/PacketDiagram.tsx?raw";
 import { PacketDiagramExample } from "./examples/PacketDiagramExample";
 import packetDiagramExampleCode from "./examples/PacketDiagramExample.tsx?raw";
+import pieChartCode from "./examples/PieChart.tsx?raw";
+import { PieChartExample } from "./examples/PieChartExample";
+import pieChartExampleCode from "./examples/PieChartExample.tsx?raw";
 import { PlanetExample } from "./examples/PlanetExample";
 import planetExampleCode from "./examples/PlanetExample.tsx?raw";
 import { PulleyDiagram } from "./examples/PulleyDiagram";
@@ -37,6 +40,9 @@ import { SequenceDiagramExample } from "./examples/SequenceDiagramExample";
 import sequenceDiagramExampleCode from "./examples/SequenceDiagramExample.tsx?raw";
 import { ShapesAndStacks } from "./examples/ShapesAndStacks";
 import shapesAndStacksCode from "./examples/ShapesAndStacks.tsx?raw";
+import vennDiagramCode from "./examples/VennDiagram.tsx?raw";
+import { VennDiagramExample } from "./examples/VennDiagramExample";
+import vennDiagramExampleCode from "./examples/VennDiagramExample.tsx?raw";
 import "./modular-svg.d.ts";
 
 type Section = {
@@ -196,6 +202,38 @@ const pages: Page[] = [
 				description:
 					"Branch pills define lane rows; invisible commit anchors chain horizontally with distribute and align to their lane; edges reference the anchors (painted under), then circles, ids, and tags go on top",
 				code: gitGraphCode,
+			},
+		],
+	},
+	{
+		path: "/charts",
+		title: "Pie & Venn",
+		sections: [
+			{
+				title: "Pie charts from data",
+				description:
+					"Slices are Arc marks (a new core primitive) around a shared center; DistinctColors gives each a color and SameColor copies it to the legend swatch - no colors in the markup. Set donut>0 for a ring",
+				code: pieChartExampleCode,
+				element: <PieChartExample />,
+			},
+			{
+				title: "How the PieChart component works",
+				description:
+					"Cumulative angles per slice drive Arc start/end; the pie and legend are laid out with distribute + align, and the colors come entirely from constraints",
+				code: pieChartCode,
+			},
+			{
+				title: "Venn diagrams from data",
+				description:
+					"Overlapping translucent circles at computed positions; DistinctColors picks each set's color and fill-opacity lets the intersections show through",
+				code: vennDiagramExampleCode,
+				element: <VennDiagramExample />,
+			},
+			{
+				title: "How the VennDiagram component works",
+				description:
+					"Two- or three-set layouts place circles at computed centers with labels along the outward direction",
+				code: vennDiagramCode,
 			},
 		],
 	},

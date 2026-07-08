@@ -22,7 +22,7 @@ Status legend:
 | **Ellipse** | in src, **not exported** from either package (doc stub exists) | — | 🚫 |
 | **Text** | Alegreya Sans 700 14px, canvas-measured; word wrap via `width`, `scaleToFit`, `angle`, `vertical-anchor`, `dx/dy`, line-height/cap-height | heuristic 8px/char × 16px line, single line, `fill` default black | ➖ text metrics (see below) / 🟡 props |
 | **Image** | `x? y? width? height?` + `href`; layout identical to Rect | same (fixture: image in a stack) | ✅ |
-| **Path** | `d` required, `x? y?`, `position: relative\|absolute`; bounds measured via paper.js; defaults stroke black, sw 3, fill none | linear subset (M/L/H/V/Z): bbox parsed without paper.js; curves unsupported (fixture: pulley weights) | 🟡 linear only |
+| **Path** | `d` required, `x? y?`, `position: relative\|absolute`; bounds measured via paper.js; defaults stroke black, sw 3, fill none | linear subset (M/L/H/V/Z): bbox parsed without paper.js; curves unsupported (fixture: pulley weights). Extension: **Arc** mark — wedge/annular sector (pie slice or donut), 0=top clockwise angles, bbox 2r like Circle | 🟡 linear only + Arc |
 | **Blob** | takes a **paper.js `Path` instance** as a prop (not serializable); exported but experimental | — | ➖ not expressible in JSON scenes |
 
 ## Relations
@@ -72,6 +72,7 @@ w1's bbox upstream (our variants order the anchor first).
 
 Features with no Bluefish equivalent, modeled as constraints in the same solver:
 
+- **Arc** — a mark for wedge/annular sectors (pie slices, donuts, rings); see Path row above.
 - **Curve** — a `Line` sibling rendered as a smooth cubic (see Line row above).
 - **Span** — copies one axis' position + extent from a source to targets
   (our JSON stand-in for Bluefish's `LayoutFunction` span-copy idiom).

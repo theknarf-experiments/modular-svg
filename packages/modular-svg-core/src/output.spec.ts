@@ -139,6 +139,51 @@ describe("layoutToSvg", () => {
 		expect(svg).toContain('d="M 10,5 C 25,5 25,35 40,35"');
 	});
 
+	it("renders arc marks as wedge paths", () => {
+		const nodes: NodeRecord[] = [
+			{
+				id: "A",
+				type: "arc",
+				r: 50,
+				startAngle: 0,
+				endAngle: 90,
+				x: 0,
+				y: 0,
+				width: 100,
+				height: 100,
+				fill: "#f00",
+			},
+		];
+		const layout: LayoutResult = { A: { x: 0, y: 0, width: 100, height: 100 } };
+		const svg = layoutToSvg(layout, nodes);
+		// center at (50,50), r 50; 0deg = top (50,0), 90deg = right (100,50)
+		expect(svg).toContain('<path id="A"');
+		expect(svg).toContain("M 50,50 L 50,0 A 50,50 0 0 1 100,50 Z");
+		expect(svg).toContain('fill="#f00"');
+	});
+
+	it("renders a full-sweep arc as a ring", () => {
+		const nodes: NodeRecord[] = [
+			{
+				id: "R",
+				type: "arc",
+				r: 40,
+				innerR: 20,
+				startAngle: 0,
+				endAngle: 360,
+				x: 0,
+				y: 0,
+				width: 80,
+				height: 80,
+			},
+		];
+		const layout: LayoutResult = { R: { x: 0, y: 0, width: 80, height: 80 } };
+		const svg = layoutToSvg(layout, nodes);
+		// two subpaths: outer circle + reversed inner circle (donut hole)
+		expect((svg.match(/A 40,40/g) ?? []).length).toBe(2);
+		expect((svg.match(/A 20,20/g) ?? []).length).toBe(2);
+	});
+
 	it("renders arrows", () => {
 		const nodes: NodeRecord[] = [
 			{ id: "A", x: 0, y: 0, width: 10, height: 10 },
