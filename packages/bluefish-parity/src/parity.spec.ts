@@ -282,12 +282,11 @@ describe("relational parity (align + distribute over refs)", () => {
 	});
 });
 
-describe("known divergences (fixtures flip to failing when fixed)", () => {
-	// Bluefish gives every container a relative coordinate frame, so nesting
-	// composes. modular-svg's stack operators write absolute coordinates
-	// anchored at the origin, so the children of a nested stack detach from
-	// where the outer stack places their container.
-	it.fails("nested stacks compose", async () => {
+describe("previously divergent, now matching", () => {
+	// Nesting composes because relations move a child's whole structural
+	// subtree by the same delta (the flat-array equivalent of Bluefish's
+	// per-container coordinate frames).
+	it("nested stacks compose", async () => {
 		const reference = await renderBluefish((bf) =>
 			bf.StackV({ spacing: 10, alignment: "left" }, [
 				bf.Rect({ width: 20, height: 10 }),
@@ -318,11 +317,10 @@ describe("known divergences (fixtures flip to failing when fixed)", () => {
 		expectShapesToMatch(actual, reference);
 	});
 
-	// Bluefish stacks anchor on the first child whose position is already
-	// owned by another relation (so a StackV [label, Ref(planet)] hangs the
-	// label above the planet without moving it). modular-svg's stack always
-	// repositions every child, dragging the referenced node out of its row.
-	it.fails("StackV over a Ref leaves the referenced node in place", async () => {
+	// Stacks anchor on the first child whose position is owned by another
+	// relation, so a StackV [label, Ref(planet)] hangs the label above the
+	// planet without moving it — the modern Bluefish tutorial's label pattern.
+	it("StackV over a Ref leaves the referenced node in place", async () => {
 		const reference = await renderBluefish((bf) => [
 			bf.Background(
 				{ padding: 40 },

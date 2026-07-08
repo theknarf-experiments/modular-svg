@@ -16,17 +16,24 @@ describe("Stack operator", () => {
 		const child2: NodeRecord = { id: "B", x: 0, y: 0, width: 80, height: 30 };
 		const child3: NodeRecord = { id: "C", x: 0, y: 0, width: 120, height: 20 };
 		const nodes = [container, child1, child2, child3];
-		const childIndices = nodes
-			.slice(1)
-			.map((n, i) => ({ base: (i + 1) * 4, node: n }));
-		const op = stackV(childIndices, 0, 5, "centerX");
+		const children = nodes.slice(1).map((_n, i) => ({
+			base: (i + 1) * 4,
+			subtree: [(i + 1) * 4],
+		}));
+		const op = stackV(children, 0, 5, "centerX");
 		const scene = { nodes, operators: [op as LayoutOperator] };
 		const result = solveLayout(scene, { damping: 1 });
 		expect(result.A.y).toBe(0);
 		expect(result.B.y).toBe(55);
 		expect(result.C.y).toBe(90);
+		// container bbox is the union of the children
 		expect(result.container.height).toBe(110);
 		expect(result.container.width).toBe(120);
-		expect(result.A.x).toBe(10);
+		expect(result.container.y).toBe(0);
+		// centerX alignment: all centers share one line
+		expect(result.A.x + result.A.width / 2).toBeCloseTo(
+			result.C.x + result.C.width / 2,
+		);
+		expect(result.A.x - result.C.x).toBeCloseTo(10);
 	});
 });

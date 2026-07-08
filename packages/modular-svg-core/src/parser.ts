@@ -1,25 +1,27 @@
 import type {
+	AlignmentX,
+	AlignmentY,
 	LayoutOperator,
 	NodeRecord,
-	StackAlignment,
-	StackChild,
+	SubtreeChild,
 } from "./solver/operators.ts";
 import {
-	alignXCenter,
-	alignXCenterTo,
-	alignXLeft,
-	alignXRight,
-	alignYBottom,
-	alignYCenter,
-	alignYTop,
+	alignX,
+	alignY,
 	backgroundOp,
 	distributeX,
 	distributeY,
 	stackH,
 	stackV,
+	unionOp,
 } from "./solver/operators.ts";
 
-export type JsonScene = { nodes: NodeRecord[]; operators: LayoutOperator[] };
+export type JsonScene = {
+	nodes: NodeRecord[];
+	operators: LayoutOperator[];
+	/** Ownership conflicts detected at parse time (over-constrained scenes) */
+	warnings: string[];
+};
 type AnyNode = {
 	type: string;
 	id?: string;
@@ -77,10 +79,56 @@ export async function validate(data: unknown): Promise<void> {
 	}
 }
 
+// Map Bluefish alignment keywords to per-axis 1D alignments. 1D keywords
+// imply their axis; 2D keywords expand to both axes; the legacy "center"
+// resolves through the axis prop.
+function parseAlignments(
+	props: Record<string, unknown>,
+): Array<
+	{ axis: "x"; alignment: AlignmentX } | { axis: "y"; alignment: AlignmentY }
+> {
+	const raw =
+		(props.alignment as string) ?? (props.type as string) ?? undefined;
+	const axisProp =
+		(props.axis as "x" | "y") ?? (props.direction as "x" | "y") ?? "x";
+	const twoD: Record<string, [AlignmentY, AlignmentX]> = {
+		topLeft: ["top", "left"],
+		topCenter: ["top", "centerX"],
+		topRight: ["top", "right"],
+		centerLeft: ["centerY", "left"],
+		centerRight: ["centerY", "right"],
+		bottomLeft: ["bottom", "left"],
+		bottomCenter: ["bottom", "centerX"],
+		bottomRight: ["bottom", "right"],
+	};
+	if (raw && raw in twoD) {
+		const [ay, ax] = twoD[raw];
+		return [
+			{ axis: "y", alignment: ay },
+			{ axis: "x", alignment: ax },
+		];
+	}
+	if (raw === "left" || raw === "centerX" || raw === "right") {
+		return [{ axis: "x", alignment: raw }];
+	}
+	if (raw === "top" || raw === "centerY" || raw === "bottom") {
+		return [{ axis: "y", alignment: raw }];
+	}
+	// Legacy: "center" (or nothing) on an explicit axis
+	if (axisProp === "y") {
+		return [{ axis: "y", alignment: raw === "center" ? "centerY" : "top" }];
+	}
+	return [{ axis: "x", alignment: raw === "center" ? "centerX" : "left" }];
+}
+
 export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	const nodes: NodeRecord[] = [];
 	const nodeMap = new Map<string, NodeRecord>();
 	const usedIds = new Set<string>();
+	// Axes explicitly positioned by the user via props (soft ownership)
+	const userOwned = new Set<string>();
+	// Structural children (Refs excluded) for subtree moves
+	const structuralChildren = new Map<string, NodeRecord[]>();
 	type Desc =
 		| {
 				kind: "stackV" | "stackH";
@@ -88,7 +136,11 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				children: NodeRecord[];
 				props: Record<string, unknown>;
 		  }
-		| { kind: "align"; axis: "x" | "y"; align: string; children: NodeRecord[] }
+		| {
+				kind: "align";
+				children: NodeRecord[];
+				props: Record<string, unknown>;
+		  }
 		| {
 				kind: "distribute";
 				axis: "x" | "y";
@@ -100,7 +152,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				box: NodeRecord;
 				child: NodeRecord;
 				padding: number;
-		  };
+		  }
+		| { kind: "union"; container: NodeRecord; children: NodeRecord[] };
 	const descs: Desc[] = [];
 
 	function generateId(node: AnyNode, path: string): string {
@@ -146,8 +199,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		const existing = nodeMap.get(nodeId);
 		if (existing) return existing;
 		let rec: NodeRecord;
+		const props = (n.props ?? {}) as Record<string, unknown>;
 		if (n.type === "Rect") {
-			const props = (n.props ?? {}) as Record<string, unknown>;
 			rec = {
 				id: nodeId,
 				type: "rect",
@@ -160,7 +213,6 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else if (n.type === "Background") {
-			const props = (n.props ?? {}) as Record<string, unknown>;
 			rec = {
 				id: nodeId,
 				type: "rect",
@@ -173,7 +225,6 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else if (n.type === "Circle") {
-			const props = (n.props ?? {}) as Record<string, unknown>;
 			const r = (props.r as number | undefined) ?? 0;
 			rec = {
 				id: nodeId,
@@ -188,7 +239,6 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 1,
 			};
 		} else if (n.type === "Text") {
-			const props = (n.props ?? {}) as Record<string, unknown>;
 			rec = {
 				id: nodeId,
 				type: "text",
@@ -204,7 +254,6 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				strokeWidth: props["stroke-width"] as number | undefined,
 			};
 		} else if (n.type === "Arrow") {
-			const props = (n.props ?? {}) as Record<string, unknown>;
 			rec = {
 				id: nodeId,
 				type: "arrow",
@@ -219,6 +268,10 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		} else {
 			rec = { id: nodeId, x: 0, y: 0, width: 0, height: 0 };
 		}
+		if (n.type === "Rect" || n.type === "Circle" || n.type === "Text") {
+			if (props.x !== undefined) userOwned.add(`${nodeId}:x`);
+			if (props.y !== undefined) userOwned.add(`${nodeId}:y`);
+		}
 		nodeMap.set(rec.id, rec);
 		nodes.push(rec);
 		return rec;
@@ -230,6 +283,13 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			const children = node.children.map((child, i) =>
 				walk(child, `${path}.${i}`),
 			);
+			structuralChildren.set(
+				rec.id,
+				node.children
+					.map((child, i) => ({ child, rec: children[i] }))
+					.filter(({ child }) => child.type !== "Ref")
+					.map(({ rec: r }) => r),
+			);
 			if (node.type === "StackV" || node.type === "StackH") {
 				descs.push({
 					kind: node.type === "StackV" ? "stackV" : "stackH",
@@ -240,16 +300,10 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			} else if (node.type === "Align") {
 				descs.push({
 					kind: "align",
-					axis:
-						(node.props?.axis as "x" | "y") ??
-						(node.props?.direction as "x" | "y") ??
-						"x",
-					align:
-						(node.props?.alignment as string) ??
-						(node.props?.type as string) ??
-						"left",
 					children,
+					props: node.props ?? {},
 				});
+				descs.push({ kind: "union", container: rec, children });
 			} else if (node.type === "Distribute") {
 				descs.push({
 					kind: "distribute",
@@ -260,6 +314,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					children,
 					props: node.props ?? {},
 				});
+				descs.push({ kind: "union", container: rec, children });
 			} else if (node.type === "Background" && children[0]) {
 				descs.push({
 					kind: "background",
@@ -271,6 +326,10 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			} else if (node.type === "Arrow" && children.length >= 2) {
 				(rec as NodeRecord).from = children[0].id;
 				(rec as NodeRecord).to = children[1].id;
+				descs.push({ kind: "union", container: rec, children });
+			} else if (children.length > 0) {
+				// Group and any other plain container: bbox = union of children
+				descs.push({ kind: "union", container: rec, children });
 			}
 		}
 		return rec;
@@ -283,120 +342,126 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		indexMap.set(n.id, i * 4);
 	});
 
+	function baseOf(rec: NodeRecord): number {
+		const idx = indexMap.get(rec.id);
+		if (idx === undefined) throw new Error(`Unknown id ${rec.id}`);
+		return idx;
+	}
+
+	// Structural subtree of a node (itself plus all descendants), as slot bases
+	const subtreeCache = new Map<string, number[]>();
+	function subtreeBases(rec: NodeRecord): number[] {
+		const cached = subtreeCache.get(rec.id);
+		if (cached) return cached;
+		const bases = [baseOf(rec)];
+		for (const child of structuralChildren.get(rec.id) ?? []) {
+			bases.push(...subtreeBases(child));
+		}
+		subtreeCache.set(rec.id, bases);
+		return bases;
+	}
+
+	function toSubtreeChildren(children: NodeRecord[]): SubtreeChild[] {
+		return children.map((c) => ({ base: baseOf(c), subtree: subtreeBases(c) }));
+	}
+
+	// Ownership: axes positioned by a relation (hard) or user props (soft).
+	// The first owned child of a relation becomes its anchor and is never
+	// moved; writing an already hard-owned axis is an over-constraint.
+	const hardOwned = new Set<string>();
+	const warnings: string[] = [];
+
+	function anchorIndex(children: NodeRecord[], axis: "x" | "y"): number | null {
+		for (let i = 0; i < children.length; i++) {
+			const key = `${children[i].id}:${axis}`;
+			if (hardOwned.has(key) || userOwned.has(key)) return i;
+		}
+		return null;
+	}
+
+	function claim(
+		children: NodeRecord[],
+		axis: "x" | "y",
+		skip: number | null,
+		relation: string,
+	): void {
+		for (let i = 0; i < children.length; i++) {
+			if (i === skip) continue;
+			const key = `${children[i].id}:${axis}`;
+			if (hardOwned.has(key)) {
+				warnings.push(
+					`${relation} conflicts with another relation over ${key}`,
+				);
+			}
+			hardOwned.add(key);
+		}
+	}
+
 	const ops: LayoutOperator[] = [];
 	for (const d of descs) {
 		if (d.kind === "stackV" || d.kind === "stackH") {
-			const childIndices: StackChild[] = d.children.map((c) => {
-				const idx = indexMap.get(c.id);
-				if (idx === undefined) throw new Error(`Unknown id ${c.id}`);
-				return { base: idx, node: c };
-			});
-			const containerIdx = indexMap.get(d.container.id);
-			if (containerIdx === undefined)
-				throw new Error(`Unknown id ${d.container.id}`);
+			const mainAxis = d.kind === "stackV" ? "y" : "x";
+			const crossAxis = d.kind === "stackV" ? "x" : "y";
+			const mainAnchor = anchorIndex(d.children, mainAxis);
+			const crossAnchor = anchorIndex(d.children, crossAxis);
+			claim(d.children, mainAxis, mainAnchor, d.container.id);
+			claim(d.children, crossAxis, crossAnchor, d.container.id);
+			const children = toSubtreeChildren(d.children);
+			const containerIdx = baseOf(d.container);
 			// Defaults match Bluefish: spacing 10, centered cross-axis alignment
+			const spacing = (d.props.spacing as number) ?? 10;
 			if (d.kind === "stackV") {
 				ops.push(
 					stackV(
-						childIndices,
+						children,
 						containerIdx,
-						(d.props.spacing as number) ?? 10,
-						(d.props.alignment as StackAlignment) ?? "centerX",
+						spacing,
+						(d.props.alignment as AlignmentX) ?? "centerX",
+						mainAnchor,
+						crossAnchor,
 					),
 				);
 			} else {
 				ops.push(
 					stackH(
-						childIndices,
+						children,
 						containerIdx,
-						(d.props.spacing as number) ?? 10,
-						(d.props.alignment as "top" | "centerY" | "bottom") ?? "centerY",
+						spacing,
+						(d.props.alignment as AlignmentY) ?? "centerY",
+						mainAnchor,
+						crossAnchor,
 					),
 				);
 			}
 		} else if (d.kind === "align") {
-			if (d.axis === "x") {
-				if (d.align === "left") {
-					const xs = d.children.map((c) => {
-						const idx = indexMap.get(c.id);
-						if (idx === undefined) throw new Error(`Unknown id ${c.id}`);
-						return idx;
-					});
-					ops.push(alignXLeft(xs));
-				} else if (d.align === "center") {
-					if (d.children.length >= 2) {
-						const anchor = d.children[d.children.length - 1];
-						const anchorBase = indexMap.get(anchor.id);
-						if (anchorBase === undefined)
-							throw new Error(`Unknown id ${anchor.id}`);
-						const others = d.children.slice(0, -1).map((c) => {
-							const base = indexMap.get(c.id);
-							if (base === undefined) throw new Error(`Unknown id ${c.id}`);
-							return { xIndex: base, widthIndex: base + 2 };
-						});
-						ops.push(
-							alignXCenterTo(
-								{ xIndex: anchorBase, widthIndex: anchorBase + 2 },
-								others,
-							),
-						);
-					} else {
-						const arr = d.children.map((c) => {
-							const base = indexMap.get(c.id);
-							if (base === undefined) throw new Error(`Unknown id ${c.id}`);
-							return { xIndex: base, widthIndex: base + 2 };
-						});
-						ops.push(alignXCenter(arr));
-					}
-				} else if (d.align === "right") {
-					const arr = d.children.map((c) => {
-						const base = indexMap.get(c.id);
-						if (base === undefined) throw new Error(`Unknown id ${c.id}`);
-						return { xIndex: base, widthIndex: base + 2 };
-					});
-					ops.push(alignXRight(arr));
-				}
-			} else {
-				if (d.align === "top") {
-					const ys = d.children.map((c) => {
-						const idx = indexMap.get(c.id);
-						if (idx === undefined) throw new Error(`Unknown id ${c.id}`);
-						return idx + 1;
-					});
-					ops.push(alignYTop(ys));
-				} else if (d.align === "center") {
-					const arr = d.children.map((c) => {
-						const base = indexMap.get(c.id);
-						if (base === undefined) throw new Error(`Unknown id ${c.id}`);
-						return { yIndex: base + 1, heightIndex: base + 3 };
-					});
-					ops.push(alignYCenter(arr));
-				} else if (d.align === "bottom") {
-					const arr = d.children.map((c) => {
-						const base = indexMap.get(c.id);
-						if (base === undefined) throw new Error(`Unknown id ${c.id}`);
-						return { yIndex: base + 1, heightIndex: base + 3 };
-					});
-					ops.push(alignYBottom(arr));
+			for (const { axis, alignment } of parseAlignments(d.props)) {
+				const anchor = anchorIndex(d.children, axis) ?? 0;
+				claim(d.children, axis, anchor, `align(${alignment})`);
+				const children = toSubtreeChildren(d.children);
+				if (axis === "x") {
+					ops.push(alignX(children, alignment as AlignmentX, anchor));
+				} else {
+					ops.push(alignY(children, alignment as AlignmentY, anchor));
 				}
 			}
 		} else if (d.kind === "distribute") {
-			const idxs = d.children.map((c) => {
-				const idx = indexMap.get(c.id);
-				if (idx === undefined) throw new Error(`Unknown id ${c.id}`);
-				return d.axis === "x" ? idx : idx + 1;
-			});
 			const spacing = (d.props.spacing as number | undefined) ?? 0;
-			if (d.axis === "x") ops.push(distributeX(idxs, spacing));
-			else ops.push(distributeY(idxs, spacing));
+			const anchor = anchorIndex(d.children, d.axis) ?? 0;
+			claim(d.children, d.axis, spacing > 0 ? anchor : null, "distribute");
+			const children = toSubtreeChildren(d.children);
+			if (d.axis === "x") ops.push(distributeX(children, spacing, anchor));
+			else ops.push(distributeY(children, spacing, anchor));
 		} else if (d.kind === "background") {
-			const childBase = indexMap.get(d.child.id);
-			const boxBase = indexMap.get(d.box.id);
-			if (childBase === undefined || boxBase === undefined)
-				throw new Error("unknown id in background");
-			ops.push(backgroundOp(childBase, boxBase, d.padding));
+			ops.push(backgroundOp(baseOf(d.child), baseOf(d.box), d.padding));
+		} else if (d.kind === "union") {
+			ops.push(
+				unionOp(
+					d.children.map((c) => baseOf(c)),
+					baseOf(d.container),
+				),
+			);
 		}
 	}
 
-	return { nodes, operators: ops };
+	return { nodes, operators: ops, warnings };
 }
