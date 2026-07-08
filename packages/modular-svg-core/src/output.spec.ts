@@ -108,7 +108,7 @@ describe("layoutToSvg", () => {
 			L: { x: 0, y: 0, width: 0, height: 0 },
 		};
 		const svg = layoutToSvg(layout, nodes);
-		expect(svg).toContain('<path id="L"');
+		expect(svg).toContain('<line id="L"');
 		expect(svg).toContain("<polygon");
 		expect(svg).not.toContain("marker-end");
 		expect(svg).toContain('stroke-width="3"');

@@ -1,16 +1,10 @@
 export type LayoutOperator = (cur: Float64Array, next: Float64Array) => void;
 
 export type ArrowGeometry = {
-	bow: number;
-	stretch: number;
-	stretchMin: number;
-	stretchMax: number;
+	/** gap between the source box edge and the arrow start */
 	padStart: number;
+	/** gap between the arrow tip and the target box edge */
 	padEnd: number;
-	flip: boolean;
-	straights: boolean;
-	/** paint a dot at the arrow start */
-	start: boolean;
 };
 
 export type NodeRecord = {

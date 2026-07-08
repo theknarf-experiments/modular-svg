@@ -1,8 +1,12 @@
-import { getBoxToBoxArrow } from "perfect-arrows";
 import {
+	addVec,
 	type BoundingBox2d,
 	boundingBoxFromPoints,
 	boundingBoxFromRect,
+	lengthVec,
+	perpVec,
+	scaleVec,
+	subVec,
 	unionBoundingBox2d,
 	type Vec2,
 	vec,
@@ -316,9 +320,9 @@ function buildLine(
 	};
 }
 
-// Build arrow elements using perfect-arrows, matching Bluefish's Arrow paint:
-// a quadratic path, a stroke-width-scaled polygon head rotated to the end
-// angle, and an optional start dot.
+// Build arrow elements (straight line + polygon head). Deliberately NOT
+// Bluefish's perfect-arrows curves — straight arrows are preferred here.
+// The line runs between the boxes' facing edges with padStart/padEnd gaps.
 function buildArrow(
 	id: string,
 	n: NodeRecord,
@@ -328,66 +332,69 @@ function buildArrow(
 	const a = n.from ? layout[n.from] : undefined;
 	const b = n.to ? layout[n.to] : undefined;
 	if (!a || !b) return;
-	const opts = n.arrow ?? {
-		bow: 0.2,
-		stretch: 0.5,
-		stretchMin: 40,
-		stretchMax: 420,
-		padStart: 5,
-		padEnd: 20,
-		flip: false,
-		straights: true,
-		start: false,
+
+	const padStart = n.arrow?.padStart ?? 5;
+	const padEnd = n.arrow?.padEnd ?? 5;
+
+	// Straight segment between the box centers, clipped to each box's
+	// boundary and padded along the direction of travel.
+	const centerA = vec(
+		a.x + offset.x + a.width / 2,
+		a.y + offset.y + a.height / 2,
+	);
+	const centerB = vec(
+		b.x + offset.x + b.width / 2,
+		b.y + offset.y + b.height / 2,
+	);
+	const dir = subVec(centerB, centerA);
+	const len = lengthVec(dir);
+	const unit = len === 0 ? vec(0, 1) : scaleVec(dir, 1 / len);
+
+	// Distance from a box center to its boundary along the direction
+	const boundaryDistance = (w: number, h: number, u: Vec2): number => {
+		const dx = u.x === 0 ? Infinity : Math.abs(w / 2 / u.x);
+		const dy = u.y === 0 ? Infinity : Math.abs(h / 2 / u.y);
+		return Math.min(dx, dy);
 	};
 
-	const [sx, sy, cx, cy, ex, ey, ae] = getBoxToBoxArrow(
-		a.x + offset.x,
-		a.y + offset.y,
-		a.width,
-		a.height,
-		b.x + offset.x,
-		b.y + offset.y,
-		b.width,
-		b.height,
-		opts,
+	const start = addVec(
+		centerA,
+		scaleVec(unit, boundaryDistance(a.width, a.height, unit) + padStart),
+	);
+	const tip = addVec(
+		centerB,
+		scaleVec(unit, -(boundaryDistance(b.width, b.height, unit) + padEnd)),
 	);
 
-	const stroke = n.stroke ?? "black";
-	const sw = n.strokeWidth ?? 3;
-	const endAngleAsDegrees = ae * (180 / Math.PI);
-	const points = [
-		[0, -2 * sw],
-		[4 * sw, 0],
-		[0, 2 * sw],
-	]
-		.map((p) => p.join(","))
-		.join(" ");
+	const shaft = subVec(tip, start);
+	const shaftLen = lengthVec(shaft);
+	const head = 6;
+	const ratio = shaftLen > 0 ? (shaftLen - head) / shaftLen : 0;
+	const shaftEnd = addVec(start, scaleVec(shaft, ratio));
+	const perp = perpVec(unit);
+	const w = head * 0.6;
+	const left = addVec(shaftEnd, scaleVec(perp, w * 0.5));
+	const right = addVec(shaftEnd, scaleVec(perp, -w * 0.5));
 
-	const elements: SvgElement[] = [];
-	if (opts.start) {
-		elements.push({
-			type: "circle",
-			cx: sx,
-			cy: sy,
-			r: (4 / 3) * sw,
-			fill: stroke,
-		});
-	}
-	elements.push({
-		type: "path",
+	const attrs = getAttrs(n);
+
+	const line: LineElement = {
+		type: "line",
 		id,
-		d: `M${sx},${sy} Q${cx},${cy} ${ex},${ey}`,
-		fill: "none",
-		stroke,
-		strokeWidth: sw,
-	});
-	elements.push({
+		x1: start.x,
+		y1: start.y,
+		x2: shaftEnd.x,
+		y2: shaftEnd.y,
+		...attrs,
+	};
+
+	const poly: PolygonElement = {
 		type: "polygon",
-		points,
-		transform: `translate(${ex},${ey}) rotate(${endAngleAsDegrees})`,
-		fill: stroke,
-	});
-	return elements;
+		points: `${tip.x},${tip.y} ${left.x},${left.y} ${right.x},${right.y}`,
+		...attrs,
+	};
+
+	return [line, poly];
 }
 
 // Main function: convert layout to SVG AST

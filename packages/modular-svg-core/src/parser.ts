@@ -323,17 +323,9 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				width: 0,
 				height: 0,
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
-				// perfect-arrows options, defaults matching Bluefish
 				arrow: {
-					bow: (props.bow as number | undefined) ?? 0.2,
-					stretch: (props.stretch as number | undefined) ?? 0.5,
-					stretchMin: (props.stretchMin as number | undefined) ?? 40,
-					stretchMax: (props.stretchMax as number | undefined) ?? 420,
 					padStart: (props.padStart as number | undefined) ?? 5,
-					padEnd: (props.padEnd as number | undefined) ?? 20,
-					flip: (props.flip as boolean | undefined) ?? false,
-					straights: (props.straights as boolean | undefined) ?? true,
-					start: (props.start as boolean | undefined) ?? false,
+					padEnd: (props.padEnd as number | undefined) ?? 5,
 				},
 			};
 		} else if (n.type === "Line") {
