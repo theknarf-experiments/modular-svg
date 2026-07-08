@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import type * as React from "react";
 
 // One horizontal circuit wire with symbols laid on top of it
@@ -74,7 +74,7 @@ function ControlDot({ id }: { id: string }) {
 
 export function QuantumCircuit() {
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -133,6 +133,6 @@ export function QuantumCircuit() {
 					<ref target="plusDescription" />
 				</background>
 			</group>
-		</Canvas>
+		</Graphic>
 	);
 }

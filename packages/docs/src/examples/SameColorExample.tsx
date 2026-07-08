@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import { useState } from "react";
 
 // One source swatch defines the color; SameColor copies it onto every
@@ -17,7 +17,7 @@ export function SameColorExample() {
 					style={{ marginLeft: "1rem", verticalAlign: "middle" }}
 				/>
 			</label>
-			<Canvas
+			<Graphic
 				style={{
 					border: "1px solid #ddd",
 					borderRadius: "8px",
@@ -45,7 +45,7 @@ export function SameColorExample() {
 						<ref target="f3" />
 					</sameColor>
 				</group>
-			</Canvas>
+			</Graphic>
 		</div>
 	);
 }

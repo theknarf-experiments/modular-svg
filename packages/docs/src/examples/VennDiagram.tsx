@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 
 export type VennSet = { label: string };
 
@@ -42,7 +42,7 @@ export function VennDiagram({
 	});
 
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -79,6 +79,6 @@ export function VennDiagram({
 					))}
 				</distinctColors>
 			</group>
-		</Canvas>
+		</Graphic>
 	);
 }

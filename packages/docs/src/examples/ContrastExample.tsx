@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import { useState } from "react";
 
 // The label has no readable color of its own - Contrast adjusts its
@@ -18,7 +18,7 @@ export function ContrastExample() {
 					style={{ marginLeft: "1rem", verticalAlign: "middle" }}
 				/>
 			</label>
-			<Canvas
+			<Graphic
 				style={{
 					border: "1px solid #ddd",
 					borderRadius: "8px",
@@ -37,7 +37,7 @@ export function ContrastExample() {
 						<ref target="box" />
 					</contrast>
 				</group>
-			</Canvas>
+			</Graphic>
 		</div>
 	);
 }

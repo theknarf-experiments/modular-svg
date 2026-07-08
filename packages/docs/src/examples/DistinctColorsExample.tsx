@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import { useState } from "react";
 
 // A row of circles with no fill. DistinctColors spreads their hues evenly
@@ -35,7 +35,7 @@ export function DistinctColorsExample() {
 					/>
 				</label>
 			</div>
-			<Canvas
+			<Graphic
 				style={{
 					border: "1px solid #ddd",
 					borderRadius: "8px",
@@ -55,7 +55,7 @@ export function DistinctColorsExample() {
 						))}
 					</distinctColors>
 				</group>
-			</Canvas>
+			</Graphic>
 		</div>
 	);
 }

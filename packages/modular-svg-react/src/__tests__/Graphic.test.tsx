@@ -1,18 +1,18 @@
 import { render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { describe, expect, it } from "vitest";
-import { Canvas } from "../Canvas";
+import { Graphic } from "../Graphic";
 
 // Extend JSX intrinsic elements for testing
 // Using module augmentation to extend, not replace React's types
 
-describe("Canvas component", () => {
+describe("Graphic component", () => {
 	describe("Basic Rendering", () => {
-		it("should render Canvas component", async () => {
+		it("should render Graphic component", async () => {
 			const { container } = render(
-				<Canvas>
+				<Graphic>
 					<circle r={10} />
-				</Canvas>,
+				</Graphic>,
 			);
 
 			// Should create a div container
@@ -20,11 +20,11 @@ describe("Canvas component", () => {
 			expect(container.firstChild?.nodeName).toBe("DIV");
 		});
 
-		it("should render SVG inside Canvas", async () => {
+		it("should render SVG inside Graphic", async () => {
 			const { container } = render(
-				<Canvas>
+				<Graphic>
 					<circle r={10} fill="red" />
-				</Canvas>,
+				</Graphic>,
 			);
 
 			await waitFor(() => {
@@ -35,9 +35,9 @@ describe("Canvas component", () => {
 
 		it("should render circle element in SVG", async () => {
 			const { container } = render(
-				<Canvas>
+				<Graphic>
 					<circle r={10} fill="red" />
-				</Canvas>,
+				</Graphic>,
 			);
 
 			await waitFor(() => {
@@ -50,12 +50,12 @@ describe("Canvas component", () => {
 
 		it("should render multiple elements", async () => {
 			const { container } = render(
-				<Canvas>
+				<Graphic>
 					<stackH spacing={10}>
 						<circle r={5} fill="red" />
 						<circle r={8} fill="blue" />
 					</stackH>
-				</Canvas>,
+				</Graphic>,
 			);
 
 			await waitFor(() => {
@@ -68,9 +68,9 @@ describe("Canvas component", () => {
 	describe("Props", () => {
 		it("should accept margin prop", async () => {
 			const { container } = render(
-				<Canvas margin={20}>
+				<Graphic margin={20}>
 					<circle r={10} />
-				</Canvas>,
+				</Graphic>,
 			);
 
 			await waitFor(() => {
@@ -81,9 +81,9 @@ describe("Canvas component", () => {
 
 		it("should accept className prop", () => {
 			const { container } = render(
-				<Canvas className="my-canvas">
+				<Graphic className="my-canvas">
 					<circle r={10} />
-				</Canvas>,
+				</Graphic>,
 			);
 
 			const div = container.firstChild as HTMLElement;
@@ -92,9 +92,9 @@ describe("Canvas component", () => {
 
 		it("should accept style prop", () => {
 			const { container } = render(
-				<Canvas style={{ width: "500px", height: "300px" }}>
+				<Graphic style={{ width: "500px", height: "300px" }}>
 					<circle r={10} />
-				</Canvas>,
+				</Graphic>,
 			);
 
 			const div = container.firstChild as HTMLElement;
@@ -115,9 +115,9 @@ describe("Canvas component", () => {
 
 			render(
 				<ThemeContext.Provider value="dark">
-					<Canvas>
+					<Graphic>
 						<ThemedCircle />
-					</Canvas>
+					</Graphic>
 				</ThemeContext.Provider>,
 			);
 
@@ -142,9 +142,9 @@ describe("Canvas component", () => {
 			render(
 				<ThemeContext.Provider value="dark">
 					<SizeContext.Provider value={20}>
-						<Canvas>
+						<Graphic>
 							<Component />
-						</Canvas>
+						</Graphic>
 					</SizeContext.Provider>
 				</ThemeContext.Provider>,
 			);
@@ -166,9 +166,9 @@ describe("Canvas component", () => {
 			function App({ size }: { size: number }) {
 				return (
 					<SizeContext.Provider value={size}>
-						<Canvas>
+						<Graphic>
 							<DynamicCircle />
-						</Canvas>
+						</Graphic>
 					</SizeContext.Provider>
 				);
 			}
@@ -193,9 +193,9 @@ describe("Canvas component", () => {
 		it("should re-render when children change", async () => {
 			function App({ radius }: { radius: number }) {
 				return (
-					<Canvas>
+					<Graphic>
 						<circle r={radius} />
-					</Canvas>
+					</Graphic>
 				);
 			}
 
@@ -217,9 +217,9 @@ describe("Canvas component", () => {
 		it("should update SVG when props change", async () => {
 			function App({ fill }: { fill: string }) {
 				return (
-					<Canvas>
+					<Graphic>
 						<circle r={10} fill={fill} />
-					</Canvas>
+					</Graphic>
 				);
 			}
 
@@ -242,9 +242,9 @@ describe("Canvas component", () => {
 	describe("Cleanup", () => {
 		it("should cleanup on unmount", async () => {
 			const { container, unmount } = render(
-				<Canvas>
+				<Graphic>
 					<circle r={10} />
-				</Canvas>,
+				</Graphic>,
 			);
 
 			await waitFor(() => {
@@ -261,7 +261,7 @@ describe("Canvas component", () => {
 	describe("Complex Scenes", () => {
 		it("should render complex nested layout", async () => {
 			const { container } = render(
-				<Canvas margin={10}>
+				<Graphic margin={10}>
 					<stackV spacing={15}>
 						<stackH spacing={10}>
 							<circle r={15} fill="red" />
@@ -269,7 +269,7 @@ describe("Canvas component", () => {
 						</stackH>
 						<circle r={10} fill="green" />
 					</stackV>
-				</Canvas>,
+				</Graphic>,
 			);
 
 			await waitFor(() => {
@@ -278,18 +278,18 @@ describe("Canvas component", () => {
 			});
 		});
 
-		it("should handle React components inside Canvas", async () => {
+		it("should handle React components inside Graphic", async () => {
 			function CustomShape({ color }: { color: string }) {
 				return <circle r={10} fill={color} />;
 			}
 
 			const { container } = render(
-				<Canvas>
+				<Graphic>
 					<stackH>
 						<CustomShape color="red" />
 						<CustomShape color="blue" />
 					</stackH>
-				</Canvas>,
+				</Graphic>,
 			);
 
 			await waitFor(() => {
@@ -302,14 +302,14 @@ describe("Canvas component", () => {
 	describe("Arrow rendering", () => {
 		it("renders arrows as a straight line with a polygon head", async () => {
 			const { container } = render(
-				<Canvas>
+				<Graphic>
 					<rect key="a" width={40} height={30} />
 					<rect key="b" x={120} y={90} width={40} height={30} />
 					<arrow key="arr">
 						<ref target="a" />
 						<ref target="b" />
 					</arrow>
-				</Canvas>,
+				</Graphic>,
 			);
 
 			await waitFor(() => {
@@ -324,7 +324,7 @@ describe("Canvas component", () => {
 	describe("Full planet feature set (text, background, align, distribute, ref, arrow)", () => {
 		it("renders every relation from the original JSON example via JSX", async () => {
 			const { container } = render(
-				<Canvas>
+				<Graphic>
 					<background key="bg" padding={20}>
 						<stackH spacing={50}>
 							<circle key="mercury" r={15} />
@@ -344,7 +344,7 @@ describe("Canvas component", () => {
 						<ref target="label" />
 						<ref target="mercury" />
 					</arrow>
-				</Canvas>,
+				</Graphic>,
 			);
 
 			await waitFor(() => {

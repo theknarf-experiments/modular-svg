@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("Canvas renders SVG elements with console diagnostics", async ({
+test("Graphic renders SVG elements with console diagnostics", async ({
 	page,
 }) => {
 	const consoleMessages: string[] = [];
@@ -32,15 +32,15 @@ test("Canvas renders SVG elements with console diagnostics", async ({
 	const circleCount = await page.locator("circle").count();
 	console.log(`Found ${circleCount} circle elements`);
 
-	// Get the first Canvas div
-	const firstCanvas = page
+	// Get the first Graphic div
+	const firstGraphic = page
 		.locator("div")
 		.filter({ has: page.locator("svg") })
 		.first();
-	const hasCanvas = (await firstCanvas.count()) > 0;
+	const hasGraphic = (await firstGraphic.count()) > 0;
 
-	if (!hasCanvas) {
-		console.log("\n⚠️ No Canvas with SVG found!");
+	if (!hasGraphic) {
+		console.log("\n⚠️ No Graphic with SVG found!");
 		console.log("Empty div count:", await page.locator("div").count());
 	}
 

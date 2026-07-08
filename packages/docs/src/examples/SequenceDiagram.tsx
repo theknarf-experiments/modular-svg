@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import * as React from "react";
 
 export type Actor = string | { id: string; label: string };
@@ -248,7 +248,7 @@ export function SequenceDiagram({
 	});
 
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -609,6 +609,6 @@ export function SequenceDiagram({
 					);
 				})}
 			</group>
-		</Canvas>
+		</Graphic>
 	);
 }
