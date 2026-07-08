@@ -18,7 +18,9 @@
 				"Text",
 				"Arrow",
 				"Line",
-				"Image"
+				"Image",
+				"Path",
+				"Span"
 			]
 		},
 		"id": { "type": "string" },
@@ -44,6 +46,8 @@
 				"padding": { "type": "number" },
 				"zOrder": { "type": "number" },
 				"href": { "type": "string" },
+				"d": { "type": "string" },
+				"font-size": { "type": ["number", "string"] },
 				"source": {
 					"type": "array",
 					"items": { "type": "number" },
