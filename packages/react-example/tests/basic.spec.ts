@@ -137,18 +137,20 @@ test("the sequence diagram renders lifelines, arrows and activations", async ({
 	await page.goto("http://localhost:5173/sequence");
 	await page.waitForTimeout(1500);
 
-	// three dashed lifelines
+	// lifelines across the three diagrams: 3 (http) + 3 (oauth) + 2 (tcp)
 	expect(await page.locator('svg line[stroke-dasharray="4 4"]').count()).toBe(
-		3,
+		8,
 	);
-	// four message arrows (the self-message has none)
-	expect(await page.locator('svg line[id*="-arrow"]').count()).toBe(4);
+	// message arrows: 4 + 6 + 3 (the http self-message has none)
+	expect(await page.locator('svg line[id*="-arrow"]').count()).toBe(13);
 	// two activation bars sit exactly on their lifelines
 	const serverBox = await page
 		.locator('svg rect[id="actor-Server"]')
+		.first()
 		.boundingBox();
 	const serverBar = await page
 		.locator('svg rect[id="act-Server"]')
+		.first()
 		.boundingBox();
 	expect(serverBar).toBeTruthy();
 	if (serverBar && serverBox) {

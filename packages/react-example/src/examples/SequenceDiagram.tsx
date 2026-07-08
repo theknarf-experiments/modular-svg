@@ -1,24 +1,22 @@
 import { Canvas } from "@modular-svg/react";
 import * as React from "react";
 
-type Message = { from: string; to: string; label: string; reply?: boolean };
-type Activation = { actor: string; from: number; to: number };
+export type Message = {
+	from: string;
+	to: string;
+	label: string;
+	reply?: boolean;
+};
+/** Which messages activate an actor: from first index to last index */
+export type Activation = { actor: string; from: number; to: number };
 
-const actors = ["Browser", "Server", "Database"];
-
-const messages: Message[] = [
-	{ from: "Browser", to: "Server", label: "GET /planets" },
-	{ from: "Server", to: "Database", label: "SELECT * FROM planets" },
-	{ from: "Database", to: "Server", label: "rows", reply: true },
-	{ from: "Server", to: "Server", label: "render JSON" },
-	{ from: "Server", to: "Browser", label: "200 OK", reply: true },
-];
-
-// Which messages activate an actor: from first index to last index
-const activations: Activation[] = [
-	{ actor: "Server", from: 0, to: 4 },
-	{ actor: "Database", from: 1, to: 2 },
-];
+export type SequenceDiagramProps = {
+	actors: string[];
+	messages: Message[];
+	activations?: Activation[];
+	/** horizontal gap between actors; make room for the longest label */
+	actorSpacing?: number;
+};
 
 const FONT = 13;
 const MSG_GAP = 40;
@@ -30,7 +28,7 @@ const labelId = (i: number) => `msg${i}-label`;
 const arrowId = (i: number) => `msg${i}-arrow`;
 
 // The message end that touches this actor's lifeline
-function anchorOn(actor: string, i: number): string {
+function anchorOn(messages: Message[], actor: string, i: number): string {
 	return anchorId(i, messages[i].from === actor ? "from" : "to");
 }
 
@@ -76,7 +74,14 @@ function Lifeline({ actor }: { actor: string }) {
 	);
 }
 
-export function SequenceDiagram() {
+// Ids are scoped to this component's own Canvas, so several diagrams can
+// live on one page without colliding.
+export function SequenceDiagram({
+	actors,
+	messages,
+	activations = [],
+	actorSpacing = 170,
+}: SequenceDiagramProps) {
 	return (
 		<Canvas
 			style={{
@@ -88,7 +93,7 @@ export function SequenceDiagram() {
 		>
 			<group>
 				{/* Actor boxes, top and bottom (painted first: declared first) */}
-				<stackH key="actors" spacing={170} alignment="top">
+				<stackH key="actors" spacing={actorSpacing} alignment="top">
 					{actors.map((a) => (
 						<ActorBox key={a} id={boxId(a)} name={a} />
 					))}
@@ -211,8 +216,8 @@ export function SequenceDiagram() {
 						</align>
 						<Span axis="y">
 							<group>
-								<ref target={anchorOn(act.actor, act.from)} />
-								<ref target={anchorOn(act.actor, act.to)} />
+								<ref target={anchorOn(messages, act.actor, act.from)} />
+								<ref target={anchorOn(messages, act.actor, act.to)} />
 							</group>
 							<ref target={`act-${act.actor}`} />
 						</Span>
