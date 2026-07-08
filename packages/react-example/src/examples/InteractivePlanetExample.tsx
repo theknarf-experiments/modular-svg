@@ -1,5 +1,4 @@
 import { Canvas } from "@modular-svg/react";
-import "./modular-svg.d.ts";
 
 /**
  * Interactive Planet Example with Size Control
@@ -9,12 +8,7 @@ export function InteractivePlanetExample() {
 	const [spacing, setSpacing] = React.useState(50);
 
 	return (
-		<div style={{ fontFamily: "system-ui, sans-serif" }}>
-			<h2>Interactive Planet Example</h2>
-			<p style={{ color: "#666", fontSize: "14px" }}>
-				Adjust the scale and spacing to explore the layout
-			</p>
-
+		<div>
 			<div style={{ marginBottom: "1rem" }}>
 				<label style={{ display: "block", marginBottom: "0.5rem" }}>
 					Scale: {scale.toFixed(1)}x
