@@ -20,6 +20,8 @@ import { QuantumCircuit } from "./examples/QuantumCircuit";
 import quantumCircuitCode from "./examples/QuantumCircuit.tsx?raw";
 import { ReactComponents } from "./examples/ReactComponents";
 import reactComponentsCode from "./examples/ReactComponents.tsx?raw";
+import { SequenceDiagram } from "./examples/SequenceDiagram";
+import sequenceDiagramCode from "./examples/SequenceDiagram.tsx?raw";
 import { ShapesAndStacks } from "./examples/ShapesAndStacks";
 import shapesAndStacksCode from "./examples/ShapesAndStacks.tsx?raw";
 import "./modular-svg.d.ts";
@@ -103,6 +105,19 @@ const pages: Page[] = [
 					"Bars bottom-aligned in a stackH, with align, distribute, and an arrow pointing out the tallest bar - adjust scale and spacing",
 				code: barChartCode,
 				element: <BarChart />,
+			},
+		],
+	},
+	{
+		path: "/sequence",
+		title: "Sequence Diagram",
+		sections: [
+			{
+				title: "Sequence Diagram",
+				description:
+					"A mermaid-style sequence diagram: actors in a stackH, dashed lifelines, messages as arrows between anchors positioned by align and distribute, and activation bars spanned to their message range",
+				code: sequenceDiagramCode,
+				element: <SequenceDiagram />,
 			},
 		],
 	},
