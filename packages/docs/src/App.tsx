@@ -103,7 +103,7 @@ export const pages: Page[] = [
 		],
 	},
 	{
-		path: "/interactive",
+		path: "/interactive/",
 		title: "Interactivity",
 		sections: [
 			{
@@ -129,7 +129,7 @@ export const pages: Page[] = [
 		],
 	},
 	{
-		path: "/diagrams",
+		path: "/diagrams/",
 		title: "Diagrams",
 		sections: [
 			{
@@ -149,7 +149,7 @@ export const pages: Page[] = [
 		],
 	},
 	{
-		path: "/sequence",
+		path: "/sequence/",
 		title: "Sequence Diagram",
 		sections: [
 			{
@@ -168,7 +168,7 @@ export const pages: Page[] = [
 		],
 	},
 	{
-		path: "/packet",
+		path: "/packet/",
 		title: "Packet Diagram",
 		sections: [
 			{
@@ -187,7 +187,7 @@ export const pages: Page[] = [
 		],
 	},
 	{
-		path: "/gitgraph",
+		path: "/gitgraph/",
 		title: "Git Graph",
 		sections: [
 			{
@@ -206,7 +206,7 @@ export const pages: Page[] = [
 		],
 	},
 	{
-		path: "/charts",
+		path: "/charts/",
 		title: "Pie & Venn",
 		sections: [
 			{
@@ -238,7 +238,7 @@ export const pages: Page[] = [
 		],
 	},
 	{
-		path: "/baking-recipe",
+		path: "/baking-recipe/",
 		title: "Baking Recipe",
 		sections: [
 			{
@@ -251,7 +251,7 @@ export const pages: Page[] = [
 		],
 	},
 	{
-		path: "/quantum-circuit",
+		path: "/quantum-circuit/",
 		title: "Quantum Circuit",
 		sections: [
 			{
@@ -264,7 +264,7 @@ export const pages: Page[] = [
 		],
 	},
 	{
-		path: "/pulley",
+		path: "/pulley/",
 		title: "Pulley System",
 		sections: [
 			{

@@ -8,7 +8,11 @@ if (!rootElement) {
 	throw new Error("Root element not found");
 }
 
-const router = createBrowserRouter(routes);
+// react-router's basename tracks Vite's base so hydration lines up with
+// the statically rendered pages served under a subpath.
+const router = createBrowserRouter(routes, {
+	basename: import.meta.env.BASE_URL,
+});
 
 hydrateRoot(
 	rootElement,
