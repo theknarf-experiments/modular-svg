@@ -110,6 +110,7 @@ function serializeElement(element: SvgElement): string {
 		return xml("path", {
 			id: element.id,
 			d: element.d,
+			transform: element.transform,
 			fill: element.fill,
 			stroke: element.stroke,
 			"stroke-width": element.strokeWidth,

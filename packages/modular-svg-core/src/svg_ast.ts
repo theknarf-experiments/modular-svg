@@ -92,6 +92,8 @@ export type PathElement = {
 	type: "path";
 	id?: string;
 	d: string;
+	/** translation from the path's parsed origin to its layout position */
+	transform?: string;
 	fill?: string;
 	stroke?: string;
 	strokeWidth?: number;

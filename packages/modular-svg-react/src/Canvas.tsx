@@ -110,6 +110,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 			<path
 				id={element.id}
 				d={element.d}
+				transform={element.transform}
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}

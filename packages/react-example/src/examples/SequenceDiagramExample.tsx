@@ -1,6 +1,7 @@
 import {
 	type Activation,
-	type Message,
+	type Frame,
+	type Item,
 	SequenceDiagram,
 } from "./SequenceDiagram";
 
@@ -8,58 +9,69 @@ import {
 
 const httpFlow: {
 	actors: string[];
-	messages: Message[];
+	items: Item[];
 	activations: Activation[];
 } = {
 	actors: ["Browser", "Server", "Database"],
-	messages: [
+	items: [
 		{ from: "Browser", to: "Server", label: "GET /planets" },
+		{ note: "over", actors: ["Server", "Database"], text: "query planning" },
 		{ from: "Server", to: "Database", label: "SELECT * FROM planets" },
-		{ from: "Database", to: "Server", label: "rows", reply: true },
+		{ from: "Database", to: "Server", label: "rows", line: "dotted" },
 		{ from: "Server", to: "Server", label: "render JSON" },
-		{ from: "Server", to: "Browser", label: "200 OK", reply: true },
+		{ from: "Server", to: "Browser", label: "200 OK", line: "dotted" },
 	],
 	activations: [
-		{ actor: "Server", from: 0, to: 4 },
-		{ actor: "Database", from: 1, to: 2 },
+		{ actor: "Server", from: 0, to: 5 },
+		{ actor: "Database", from: 2, to: 3 },
 	],
 };
 
 const oauthFlow: {
-	actors: string[];
-	messages: Message[];
+	actors: { id: string; label: string }[];
+	items: Item[];
 	activations: Activation[];
+	frames: Frame[];
 } = {
-	actors: ["User", "App", "Auth"],
-	messages: [
-		{ from: "User", to: "App", label: "Log in" },
-		{ from: "App", to: "Auth", label: "Authorization request" },
-		{ from: "Auth", to: "User", label: "Consent prompt" },
-		{ from: "User", to: "Auth", label: "Approve" },
-		{ from: "Auth", to: "App", label: "Access token", reply: true },
-		{ from: "App", to: "User", label: "Logged in", reply: true },
+	actors: [
+		{ id: "user", label: "User" },
+		{ id: "app", label: "My App" },
+		{ id: "auth", label: "Auth Server" },
+	],
+	items: [
+		{ from: "user", to: "app", label: "Log in" },
+		{ from: "app", to: "auth", label: "Authorization request", head: "open" },
+		{ from: "auth", to: "user", label: "Consent prompt" },
+		{ from: "user", to: "auth", label: "Approve" },
+		{ from: "auth", to: "app", label: "Access token", line: "dotted" },
+		{ note: "rightOf", actors: ["app"], text: "token cached" },
+		{ from: "app", to: "user", label: "Logged in", line: "dotted" },
 	],
 	activations: [
-		{ actor: "App", from: 0, to: 5 },
-		{ actor: "Auth", from: 1, to: 4 },
+		{ actor: "app", from: 0, to: 6 },
+		{ actor: "auth", from: 1, to: 4 },
 	],
+	frames: [{ kind: "loop", label: "until granted", from: 2, to: 3 }],
 };
 
-const tcpHandshake: { actors: string[]; messages: Message[] } = {
+const tcpHandshake: { actors: string[]; items: Item[]; frames: Frame[] } = {
 	actors: ["Client", "Server"],
-	messages: [
+	items: [
 		{ from: "Client", to: "Server", label: "SYN" },
-		{ from: "Server", to: "Client", label: "SYN-ACK", reply: true },
+		{ from: "Server", to: "Client", label: "SYN-ACK", line: "dotted" },
 		{ from: "Client", to: "Server", label: "ACK" },
+		{ from: "Client", to: "Server", label: "data", head: "both" },
+		{ from: "Client", to: "Server", label: "FIN (lost)", head: "cross" },
 	],
+	frames: [{ kind: "rect", from: 0, to: 2, fill: "rgba(120,180,255,0.2)" }],
 };
 
 export function SequenceDiagramExample() {
 	return (
 		<div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem" }}>
 			<div>
-				<h3 style={{ margin: "0 0 0.5rem" }}>HTTP request</h3>
-				<SequenceDiagram {...httpFlow} />
+				<h3 style={{ margin: "0 0 0.5rem" }}>HTTP request (autonumbered)</h3>
+				<SequenceDiagram {...httpFlow} autonumber />
 			</div>
 			<div>
 				<h3 style={{ margin: "0 0 0.5rem" }}>OAuth login</h3>
@@ -67,7 +79,7 @@ export function SequenceDiagramExample() {
 			</div>
 			<div>
 				<h3 style={{ margin: "0 0 0.5rem" }}>TCP handshake</h3>
-				<SequenceDiagram {...tcpHandshake} actorSpacing={120} />
+				<SequenceDiagram {...tcpHandshake} actorSpacing={140} />
 			</div>
 		</div>
 	);
