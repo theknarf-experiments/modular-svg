@@ -1,9 +1,10 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { layoutToSvg } from "./output.ts";
-import { buildSceneFromJson, validate } from "./parser.ts";
+import { buildSceneFromJson } from "./parser.ts";
 import type { LayoutResult } from "./solver/index.ts";
 import { solveLayout } from "./solver/index.ts";
+import { validate } from "./validate.ts";
 
 // The solver is a damped fixed-point iteration (epsilon 1e-6, damping 0.5),
 // so geometric assertions need a tolerance well above the termination
