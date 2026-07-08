@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { validate } from "../packages/modular-svg-core/src/parser";
+import { validate } from "../packages/modular-svg-core/src/validate";
 
 const examplesDir = dirname(fileURLToPath(import.meta.url));
 
