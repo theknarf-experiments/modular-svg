@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("Context forwarding works - theme changes update circle colors", async ({
 	page,
 }) => {
-	await page.goto("http://localhost:5173");
+	await page.goto("http://localhost:5173/interactive");
 
 	// Wait for the context canvas to be visible
 	const canvas = page.locator('[data-testid="context-canvas"]');
@@ -46,7 +46,7 @@ test("Context forwarding works - theme changes update circle colors", async ({
 test("Context forwarding works - size scale changes circle radius", async ({
 	page,
 }) => {
-	await page.goto("http://localhost:5173");
+	await page.goto("http://localhost:5173/interactive");
 
 	// Wait for the context canvas
 	const canvas = page.locator('[data-testid="context-canvas"]');
@@ -90,7 +90,7 @@ test("Context forwarding works - size scale changes circle radius", async ({
 test("Context forwarding works - multiple contexts update independently", async ({
 	page,
 }) => {
-	await page.goto("http://localhost:5173");
+	await page.goto("http://localhost:5173/interactive");
 
 	const canvas = page.locator('[data-testid="context-canvas"]');
 	await expect(canvas).toBeVisible();

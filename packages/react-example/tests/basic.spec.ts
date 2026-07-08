@@ -63,7 +63,7 @@ test("Canvas renders SVG elements with console diagnostics", async ({
 });
 
 test("arrows render as straight lines with polygon heads", async ({ page }) => {
-	await page.goto("http://localhost:5173");
+	await page.goto("http://localhost:5173/diagrams");
 	await page.waitForTimeout(2000);
 
 	// The Full Planet Example draws arrows between labels and planets
@@ -73,21 +73,29 @@ test("arrows render as straight lines with polygon heads", async ({ page }) => {
 	expect(await heads.count()).toBeGreaterThan(0);
 });
 
-test("every example shows its source code", async ({ page }) => {
-	await page.goto("http://localhost:5173");
-	await page.waitForTimeout(2000);
-
-	const sections = await page.locator("section").count();
-	const codeBlocks = page.locator("section pre code");
-	expect(await codeBlocks.count()).toBe(sections);
-
-	const code = await codeBlocks.first().textContent();
-	expect(code).toContain("import { Canvas }");
-	expect(code).toContain("<Canvas");
+test("every example shows its source code on every page", async ({ page }) => {
+	const routes = [
+		"/",
+		"/interactive",
+		"/diagrams",
+		"/baking-recipe",
+		"/quantum-circuit",
+		"/pulley",
+	];
+	for (const route of routes) {
+		await page.goto(`http://localhost:5173${route}`);
+		await page.waitForTimeout(1000);
+		const sections = await page.locator("section").count();
+		expect(sections).toBeGreaterThan(0);
+		const codeBlocks = page.locator("section pre code");
+		expect(await codeBlocks.count()).toBe(sections);
+		const code = await codeBlocks.first().textContent();
+		expect(code).toContain("import { Canvas }");
+	}
 });
 
 test("planet label dropdown retargets the refs", async ({ page }) => {
-	await page.goto("http://localhost:5173");
+	await page.goto("http://localhost:5173/diagrams");
 	await page.waitForTimeout(2000);
 
 	const label = page.locator('svg text[id="label"]');
@@ -100,19 +108,24 @@ test("planet label dropdown retargets the refs", async ({ page }) => {
 	expect(await page.locator('svg line[id="arrow1"]').count()).toBe(1);
 });
 
-test("the Bluefish gallery examples render", async ({ page }) => {
-	await page.goto("http://localhost:5173");
-	await page.waitForTimeout(2000);
-
+test("the Bluefish gallery examples render on their pages", async ({
+	page,
+}) => {
 	// Baking recipe: the table cell borders exist and the title cell spans them
+	await page.goto("http://localhost:5173/baking-recipe");
+	await page.waitForTimeout(1500);
 	expect(await page.locator('svg rect[id="cb12"]').count()).toBe(1);
 	expect(await page.locator('svg rect[id="recipeTable"]').count()).toBe(1);
 
 	// Quantum circuit: control-dot circles and connecting lines
+	await page.goto("http://localhost:5173/quantum-circuit");
+	await page.waitForTimeout(1500);
 	expect(await page.locator('svg circle[id="c1"]').count()).toBe(1);
 	expect(await page.locator('svg circle[id="c2"]').count()).toBe(1);
 
 	// Pulley: trapezoid weights are paths, ropes are lines
+	await page.goto("http://localhost:5173/pulley");
+	await page.waitForTimeout(1500);
 	expect(await page.locator('svg path[d*="M 10,0"]').count()).toBe(2);
 	expect(await page.locator('svg line[id="l6copy"]').count()).toBe(1);
 });
