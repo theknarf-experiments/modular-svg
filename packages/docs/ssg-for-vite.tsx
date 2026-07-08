@@ -32,12 +32,17 @@ const routesToPaths = (routes, parentRoute = "") => {
 };
 
 const renderHtml = async (path, routes, mainScript) => {
-	const { query, dataRoutes } = createStaticHandler(routes);
+	// Render with the same basename the client hydrates with (Vite's base),
+	// so NavLink hrefs include the base and match the client after hydration
+	// (otherwise opening a nav link in a new tab would drop the base path).
+	const basename = import.meta.env.BASE_URL;
+	const baseNoSlash = basename.replace(/\/+$/, "");
+	const { query, dataRoutes } = createStaticHandler(routes, { basename });
 
-	const url = new URL(path, "http://localhost/");
+	const url = new URL("http://localhost/");
 	url.search = "";
 	url.hash = "";
-	url.pathname = path;
+	url.pathname = baseNoSlash + path;
 
 	const context = await query(
 		new Request(url.href, {
