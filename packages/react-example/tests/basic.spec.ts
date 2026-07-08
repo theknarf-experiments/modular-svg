@@ -303,3 +303,65 @@ test("venn: overlapping translucent circles with distinct fills", async ({
 	const op = await circles.first().getAttribute("fill-opacity");
 	expect(Number(op)).toBeLessThan(1);
 });
+
+test("pie chart hover darkens the slice and lightens the rest", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/charts");
+	await page.waitForTimeout(1500);
+	const pie = page
+		.locator("section", { hasText: "Pie charts from data" })
+		.locator("svg")
+		.first();
+
+	const lum = (hex: string) => {
+		const n = Number.parseInt(hex.slice(1), 16);
+		return (
+			0.2126 * ((n >> 16) & 255) +
+			0.7152 * ((n >> 8) & 255) +
+			0.0722 * (n & 255)
+		);
+	};
+
+	// swatches hold the stable base palette
+	const rustBase = await pie
+		.locator('rect[id="swatch-Rust"]')
+		.getAttribute("fill");
+
+	await pie.locator('path[id="slice-Rust"]').hover();
+	await page.waitForTimeout(300);
+
+	// hovered slice is darker than its base; a non-hovered slice is lighter
+	const rustHov = await pie
+		.locator('path[id="slice-Rust"]')
+		.getAttribute("fill");
+	const tsBase = await pie
+		.locator('rect[id="swatch-TypeScript"]')
+		.getAttribute("fill");
+	const tsHov = await pie
+		.locator('path[id="slice-TypeScript"]')
+		.getAttribute("fill");
+	expect(lum(rustHov as string)).toBeLessThan(lum(rustBase as string));
+	expect(lum(tsHov as string)).toBeGreaterThan(lum(tsBase as string));
+
+	// the swatch stays at the base color, and the legend label bolds
+	expect(rustBase).toBe(
+		await pie.locator('rect[id="swatch-Rust"]').getAttribute("fill"),
+	);
+	expect(
+		await pie.locator('text[id="leglabel-Rust"]').getAttribute("font-weight"),
+	).toBe("700");
+
+	// hovering the legend label drives the same highlight (bidirectional)
+	await page.mouse.move(0, 0);
+	await page.waitForTimeout(200);
+	await pie.locator('text[id="leglabel-Python"]').hover();
+	await page.waitForTimeout(300);
+	const pyBase = await pie
+		.locator('rect[id="swatch-Python"]')
+		.getAttribute("fill");
+	const pyHov = await pie
+		.locator('path[id="slice-Python"]')
+		.getAttribute("fill");
+	expect(lum(pyHov as string)).toBeLessThan(lum(pyBase as string));
+});

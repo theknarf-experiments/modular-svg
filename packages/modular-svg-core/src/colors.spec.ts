@@ -128,6 +128,50 @@ describe("color constraints", () => {
 		}
 	});
 
+	it("Lighten and Darken shift a source color's lightness", () => {
+		const json = {
+			type: "Group",
+			id: "root",
+			children: [
+				{
+					type: "Rect",
+					id: "src",
+					props: { width: 10, height: 10, fill: "#4C72B0" },
+				},
+				{ type: "Rect", id: "lite", props: { width: 10, height: 10 } },
+				{ type: "Rect", id: "dark", props: { width: 10, height: 10 } },
+				{
+					type: "Lighten",
+					props: { amount: 0.2 },
+					children: [
+						{ type: "Ref", target: "src" },
+						{ type: "Ref", target: "lite" },
+					],
+				},
+				{
+					type: "Darken",
+					props: { amount: 0.2 },
+					children: [
+						{ type: "Ref", target: "src" },
+						{ type: "Ref", target: "dark" },
+					],
+				},
+			],
+		};
+		const scene = buildSceneFromJson(json);
+		const layout = solveLayout(scene);
+		const src = parseColor("#4C72B0");
+		const lite = parseColor(layout.lite.fill ?? "");
+		const dark = parseColor(layout.dark.fill ?? "");
+		expect(src && lite && dark).toBeTruthy();
+		if (src && lite && dark) {
+			// same hue, shifted lightness
+			expect(lite.h).toBeCloseTo(src.h, 0);
+			expect(lite.l).toBeGreaterThan(src.l);
+			expect(dark.l).toBeLessThan(src.l);
+		}
+	});
+
 	it("constraints chain: distinct backgrounds with contrasting labels", () => {
 		const json = {
 			type: "Group",

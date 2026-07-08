@@ -686,6 +686,23 @@ export function sameColorOp(
 	};
 }
 
+// Copy the source color onto targets with the lightness shifted by deltaL
+// (positive = lighten, negative = darken; clamped to [0, 1]). Keep the
+// source distinct from the targets so this stays a feed-forward relation.
+export function shadeColorOp(
+	sourceBase: number,
+	targetBases: readonly number[],
+	deltaL: number,
+): LayoutOperator {
+	return (cur, next) => {
+		for (const base of targetBases) {
+			next[base] = cur[sourceBase];
+			next[base + 1] = cur[sourceBase + 1];
+			next[base + 2] = Math.max(0, Math.min(1, cur[sourceBase + 2] + deltaL));
+		}
+	};
+}
+
 // Adjust the foreground's lightness (keeping hue and saturation) until the
 // WCAG contrast ratio against the background's current color is satisfied.
 export function contrastOp(

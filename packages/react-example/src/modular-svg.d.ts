@@ -75,6 +75,16 @@ declare module "react" {
 				key?: React.Key;
 				children?: React.ReactNode;
 			};
+			lighten: {
+				key?: React.Key;
+				amount?: number;
+				children?: React.ReactNode;
+			};
+			darken: {
+				key?: React.Key;
+				amount?: number;
+				children?: React.ReactNode;
+			};
 			contrast: {
 				key?: React.Key;
 				ratio?: number;
@@ -97,6 +107,9 @@ declare module "react" {
 				fill?: string;
 				stroke?: string;
 				"stroke-width"?: number;
+				onClick?: React.MouseEventHandler<SVGElement>;
+				onMouseEnter?: React.MouseEventHandler<SVGElement>;
+				onMouseLeave?: React.MouseEventHandler<SVGElement>;
 				children?: string;
 			};
 			arrow: {
@@ -143,6 +156,9 @@ declare module "react" {
 				fill?: string;
 				stroke?: string;
 				"stroke-width"?: number;
+				onClick?: React.MouseEventHandler<SVGElement>;
+				onMouseEnter?: React.MouseEventHandler<SVGElement>;
+				onMouseLeave?: React.MouseEventHandler<SVGElement>;
 			};
 			path: {
 				key?: React.Key;

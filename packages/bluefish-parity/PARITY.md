@@ -80,6 +80,8 @@ Features with no Bluefish equivalent, modeled as constraints in the same solver:
   fixed-point pass, with an explicit `fill` acting as a pinned (owned) color:
   - `DistinctColors` — spreads children's hues evenly (a distribute in hue space).
   - `SameColor` — copies a source color onto targets (a Span in color space).
+  - `Lighten` / `Darken` — copy a source color with the lightness shifted
+    (feed-forward, so the source must differ from the targets).
   - `Contrast` — adjusts a foreground's lightness to meet a WCAG ratio (default
     4.5) against a background's solved color.
   Resolved colors flow into `fill` (or `stroke` for line/curve/arrow marks).

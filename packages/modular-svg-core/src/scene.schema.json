@@ -25,6 +25,8 @@
 				"Span",
 				"DistinctColors",
 				"SameColor",
+				"Lighten",
+				"Darken",
 				"Contrast"
 			]
 		},
@@ -73,7 +75,8 @@
 				"saturation": { "type": "number" },
 				"lightness": { "type": "number" },
 				"startHue": { "type": "number" },
-				"ratio": { "type": "number" }
+				"ratio": { "type": "number" },
+				"amount": { "type": "number" }
 			},
 			"additionalProperties": true
 		},
