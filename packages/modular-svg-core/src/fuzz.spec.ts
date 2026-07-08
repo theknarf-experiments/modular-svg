@@ -271,22 +271,20 @@ describe("stack layout properties", () => {
 						children: withIds(leaves as JsonNode[]),
 					};
 					const { layout } = solveJson(json);
-					const c = layout.stack;
-					for (let i = 0; i < leaves.length; i++) {
+					// Every child shares one alignment line across the axis
+					const lines = leaves.map((_l, i) => {
 						const b = layout[`leaf${i}`];
 						if (horizontal) {
-							if (alignment === "top") expect(close(b.y, 0)).toBe(true);
-							if (alignment === "centerY")
-								expect(close(b.y + b.height / 2, c.height / 2)).toBe(true);
-							if (alignment === "bottom")
-								expect(close(b.y + b.height, c.height)).toBe(true);
-						} else {
-							if (alignment === "left") expect(close(b.x, 0)).toBe(true);
-							if (alignment === "centerX")
-								expect(close(b.x + b.width / 2, c.width / 2)).toBe(true);
-							if (alignment === "right")
-								expect(close(b.x + b.width, c.width)).toBe(true);
+							if (alignment === "top") return b.y;
+							if (alignment === "centerY") return b.y + b.height / 2;
+							return b.y + b.height;
 						}
+						if (alignment === "left") return b.x;
+						if (alignment === "centerX") return b.x + b.width / 2;
+						return b.x + b.width;
+					});
+					for (const line of lines) {
+						expect(close(line, lines[0])).toBe(true);
 					}
 				},
 			),
@@ -299,7 +297,9 @@ describe("stack layout properties", () => {
 // ---------------------------------------------------------------------------
 
 describe("align properties", () => {
-	it("left/top aligns to the minimum initial coordinate", () => {
+	// The anchor is the first child whose position is owned — here every rect
+	// has explicit x/y, so the first child always supplies the line.
+	it("left/top aligns everything to the first child's edge", () => {
 		fc.assert(
 			fc.property(alignSceneArb, ({ axis, rects }) => {
 				const alignment = axis === "x" ? "left" : "top";
@@ -320,16 +320,16 @@ describe("align properties", () => {
 					],
 				};
 				const { layout } = solveJson(json);
-				const min = Math.min(...rects.map((r) => (axis === "x" ? r.x : r.y)));
+				const line = axis === "x" ? rects[0].x : rects[0].y;
 				for (let i = 0; i < rects.length; i++) {
 					const v = axis === "x" ? layout[`r${i}`].x : layout[`r${i}`].y;
-					expect(close(v, min)).toBe(true);
+					expect(close(v, line)).toBe(true);
 				}
 			}),
 		);
 	});
 
-	it("right/bottom aligns trailing edges to the maximum initial edge", () => {
+	it("right/bottom aligns trailing edges to the first child's edge", () => {
 		fc.assert(
 			fc.property(alignSceneArb, ({ axis, rects }) => {
 				const alignment = axis === "x" ? "right" : "bottom";
@@ -350,23 +350,20 @@ describe("align properties", () => {
 					],
 				};
 				const { layout } = solveJson(json);
-				const maxEdge = Math.max(
-					...rects.map((r) => (axis === "x" ? r.x + r.width : r.y + r.height)),
-				);
+				const line =
+					axis === "x"
+						? rects[0].x + rects[0].width
+						: rects[0].y + rects[0].height;
 				for (let i = 0; i < rects.length; i++) {
 					const b = layout[`r${i}`];
 					const edge = axis === "x" ? b.x + b.width : b.y + b.height;
-					expect(close(edge, maxEdge)).toBe(true);
+					expect(close(edge, line)).toBe(true);
 				}
 			}),
 		);
 	});
 
-	// NOTE: the parser is asymmetric here. Align center on the x axis anchors
-	// everything to the LAST child's center (alignXCenterTo); on the y axis it
-	// moves every child to the MEAN of the centers (alignYCenter). Revisit when
-	// aligning semantics with Bluefish.
-	it("center collapses all centers onto a single coordinate", () => {
+	it("center collapses all centers onto the first child's center", () => {
 		fc.assert(
 			fc.property(alignSceneArb, ({ axis, rects }) => {
 				const json = {
@@ -392,8 +389,8 @@ describe("align properties", () => {
 				});
 				const expected =
 					axis === "x"
-						? rects[rects.length - 1].x + rects[rects.length - 1].width / 2
-						: rects.reduce((s, r) => s + r.y + r.height / 2, 0) / rects.length;
+						? rects[0].x + rects[0].width / 2
+						: rects[0].y + rects[0].height / 2;
 				for (const c of centers) {
 					expect(close(c, expected)).toBe(true);
 				}
@@ -438,7 +435,7 @@ describe("distribute properties", () => {
 		);
 	});
 
-	it("the last child is the anchor and never moves", () => {
+	it("the first child is the anchor and never moves", () => {
 		fc.assert(
 			fc.property(distributeSceneArb, ({ axis, spacing, rects }) => {
 				const json = {
@@ -458,10 +455,10 @@ describe("distribute properties", () => {
 					],
 				};
 				const { layout } = solveJson(json);
-				const last = rects[rects.length - 1];
-				const b = layout[`r${rects.length - 1}`];
-				if (axis === "x") expect(close(b.x, last.x)).toBe(true);
-				else expect(close(b.y, last.y)).toBe(true);
+				const first = rects[0];
+				const b = layout.r0;
+				if (axis === "x") expect(close(b.x, first.x)).toBe(true);
+				else expect(close(b.y, first.y)).toBe(true);
 			}),
 		);
 	});
