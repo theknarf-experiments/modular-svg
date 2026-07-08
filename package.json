@@ -6,14 +6,12 @@
 		"test": "pnpm -r run test && pnpm test:root",
 		"test:root": "vitest run",
 		"lint": "biome check --error-on-warnings",
-		"typecheck": "pnpm -r run typecheck",
-		"prepare": "husky"
+		"typecheck": "pnpm -r run typecheck"
 	},
 	"license": "MIT",
 	"devDependencies": {
 		"@biomejs/biome": "2.1.1",
 		"@types/node": "^24.0.13",
-		"husky": "^9.1.7",
 		"typescript": "^5.8.3",
 		"vitest": "^3.2.4"
 	},

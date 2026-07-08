@@ -1,2 +1,5 @@
-pnpm test && \
+#!/usr/bin/env sh
+set -e
+
+pnpm test
 pnpm lint --staged --no-errors-on-unmatched
