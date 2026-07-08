@@ -21,9 +21,9 @@ function App() {
 				Showcasing declarative SVG layouts with automatic constraint solving
 			</p>
 
-			{/* Example 1: Basic Shapes */}
+			{/* Basic Shapes */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>1. Basic Shapes</h2>
+				<h2>Basic Shapes</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					Simple circle and rectangle with default styling
 				</p>
@@ -40,9 +40,9 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 2: Horizontal Stack */}
+			{/* Horizontal Stack */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>2. Horizontal Stack</h2>
+				<h2>Horizontal Stack</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					Using stackH to arrange circles horizontally with spacing
 				</p>
@@ -62,9 +62,9 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 3: Vertical Stack */}
+			{/* Vertical Stack */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>3. Vertical Stack</h2>
+				<h2>Vertical Stack</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					Using stackV to arrange shapes vertically with spacing
 				</p>
@@ -84,9 +84,9 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 4: Nested Layouts */}
+			{/* Nested Layouts */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>4. Nested Layouts</h2>
+				<h2>Nested Layouts</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					Combining stackH and stackV to create complex layouts
 				</p>
@@ -112,9 +112,9 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 5: React Components */}
+			{/* React Components */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>5. React Components</h2>
+				<h2>React Components</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					Using React components to create reusable shapes
 				</p>
@@ -134,9 +134,9 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 6: Interactive with State */}
+			{/* Interactive with State */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>6. Interactive with React State</h2>
+				<h2>Interactive with React State</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					Adjust the controls to see the layout update in real-time
 				</p>
@@ -191,18 +191,18 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 7: Event Handlers */}
+			{/* Event Handlers */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>7. Interactive Event Handlers</h2>
+				<h2>Interactive Event Handlers</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					Click on circles to see event handlers in action!
 				</p>
 				<InteractiveClickExample />
 			</section>
 
-			{/* Example 8: Margin Control */}
+			{/* Margin Control */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>8. Canvas Margin</h2>
+				<h2>Canvas Margin</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					The margin prop adds padding around the SVG content
 				</p>
@@ -235,9 +235,9 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 8: Custom Styling */}
+			{/* Custom Styling */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>8. Custom Styling</h2>
+				<h2>Custom Styling</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					Canvas accepts standard div props like className and style
 				</p>
@@ -260,24 +260,24 @@ function App() {
 				</Canvas>
 			</section>
 
-			{/* Example 9: Planet Example */}
+			{/* Planet Example */}
 			<section style={{ marginBottom: "3rem" }}>
 				<PlanetExample />
 			</section>
 
-			{/* Example 10: Interactive Planet Example */}
+			{/* Interactive Planet Example */}
 			<section style={{ marginBottom: "3rem" }}>
 				<InteractivePlanetExample />
 			</section>
 
-			{/* Example 11: Complex Planet System */}
+			{/* Complex Planet System */}
 			<section style={{ marginBottom: "3rem" }}>
 				<ComplexPlanetSystem />
 			</section>
 
-			{/* Example 13: Context Forwarding */}
+			{/* Context Forwarding */}
 			<section style={{ marginBottom: "3rem" }}>
-				<h2>13. React Context Forwarding</h2>
+				<h2>React Context Forwarding</h2>
 				<p style={{ color: "#666", fontSize: "14px" }}>
 					React contexts automatically flow into Canvas children - no special
 					setup required!
