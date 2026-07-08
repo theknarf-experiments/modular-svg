@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import { useState } from "react";
 
 export type Slice = { label: string; value: number };
@@ -41,7 +41,7 @@ export function PieChart({
 	});
 
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -130,6 +130,6 @@ export function PieChart({
 					);
 				})}
 			</group>
-		</Canvas>
+		</Graphic>
 	);
 }

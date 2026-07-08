@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import { createContext, useContext, useState } from "react";
 
 const ThemeContext = createContext<"light" | "dark">("light");
@@ -56,7 +56,7 @@ export function ContextForwarding() {
 							/>
 						</label>
 					</div>
-					<Canvas
+					<Graphic
 						style={{
 							border: "1px solid #ddd",
 							borderRadius: "8px",
@@ -70,7 +70,7 @@ export function ContextForwarding() {
 							<ThemedCircle />
 							<ThemedCircle />
 						</stackH>
-					</Canvas>
+					</Graphic>
 				</div>
 			</SizeScaleContext.Provider>
 		</ThemeContext.Provider>

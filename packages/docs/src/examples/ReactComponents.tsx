@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 
 function ColoredCircle({ color }: { color: string }) {
 	return <circle r={18} fill={color} />;
@@ -6,7 +6,7 @@ function ColoredCircle({ color }: { color: string }) {
 
 export function ReactComponents() {
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -19,6 +19,6 @@ export function ReactComponents() {
 				<ColoredCircle color="green" />
 				<ColoredCircle color="blue" />
 			</stackH>
-		</Canvas>
+		</Graphic>
 	);
 }

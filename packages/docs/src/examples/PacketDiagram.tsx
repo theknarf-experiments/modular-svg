@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 
 export type Field = {
 	name: string;
@@ -70,7 +70,7 @@ export function PacketDiagram({
 	const cellId = (r: number, c: number) => `cell-${r}-${c}`;
 
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -141,6 +141,6 @@ export function PacketDiagram({
 					}),
 				)}
 			</group>
-		</Canvas>
+		</Graphic>
 	);
 }

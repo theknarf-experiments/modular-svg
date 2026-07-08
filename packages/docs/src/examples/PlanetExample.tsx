@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import { useState } from "react";
 
 const planets = [
@@ -34,7 +34,7 @@ export function PlanetExample() {
 					))}
 				</select>
 			</label>
-			<Canvas
+			<Graphic
 				style={{
 					border: "1px solid #ddd",
 					borderRadius: "8px",
@@ -68,7 +68,7 @@ export function PlanetExample() {
 						<ref target={target} />
 					</arrow>
 				</group>
-			</Canvas>
+			</Graphic>
 		</div>
 	);
 }

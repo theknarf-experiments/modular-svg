@@ -54,7 +54,7 @@ Status legend:
 | **Layout / LayoutFunction** | custom layout escape hatches (function props) | custom `LayoutOperator` via `solveLayout` API; the span-copy idiom (copy one axis' position+extent) has a JSON `Span` relation (fixture: brownie cell borders) | ➖ escape hatch / ✅ span idiom |
 | **Ownership errors** | typed errors (DimAlreadyOwned w/ provenance, DimUnowned, NaN, …) — but currently soft (`console.warn`) | `JsonScene.warnings` for double hard ownership; hard throws for dup ids / unknown refs | ✅ comparable |
 | **Reactivity / control flow** | Solid signals; For/Show/Index/Switch/Match (hyperscript) | react package (state → re-render); JSON is data | ➖ framework-specific |
-| **Interactivity** | signals driving props; no dedicated API | react Canvas event handlers | ➖ different mechanism |
+| **Interactivity** | signals driving props; no dedicated API | react Graphic event handlers | ➖ different mechanism |
 | **debug / window.bluefish / DEBUG-name breakpoints** | scenegraph dump, debugger triggers | — | ➖ |
 
 ## Gallery compliance

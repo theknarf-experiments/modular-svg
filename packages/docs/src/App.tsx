@@ -75,7 +75,7 @@ export const pages: Page[] = [
 			{
 				title: "Custom Styling",
 				description:
-					"Canvas accepts standard div props like className and style",
+					"Graphic accepts standard div props like className and style",
 				code: customStylingCode,
 				element: <CustomStyling />,
 			},
@@ -109,7 +109,7 @@ export const pages: Page[] = [
 			{
 				title: "Interactive with React State",
 				description:
-					"Adjust the controls to see the layout update in real-time - including the margin the Canvas reserves around the content",
+					"Adjust the controls to see the layout update in real-time - including the margin the Graphic reserves around the content",
 				code: interactiveStateCode,
 				element: <InteractiveState />,
 			},
@@ -122,7 +122,7 @@ export const pages: Page[] = [
 			{
 				title: "React Context Forwarding",
 				description:
-					"React contexts automatically flow into Canvas children - no special setup required",
+					"React contexts automatically flow into Graphic children - no special setup required",
 				code: contextForwardingCode,
 				element: <ContextForwarding />,
 			},

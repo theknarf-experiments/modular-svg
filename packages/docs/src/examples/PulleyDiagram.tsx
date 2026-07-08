@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import * as React from "react";
 
 const R = 25;
@@ -71,7 +71,7 @@ function RopeLabel({ id, children }: { id: string; children: string }) {
 
 export function PulleyDiagram() {
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -240,6 +240,6 @@ export function PulleyDiagram() {
 				<Rope id="l0" from="rect" to="B" target={[0.5, 0.5]} />
 				<Rope id="l6copy" from="C" to="w2" source={[0.5, 0.5]} />
 			</group>
-		</Canvas>
+		</Graphic>
 	);
 }

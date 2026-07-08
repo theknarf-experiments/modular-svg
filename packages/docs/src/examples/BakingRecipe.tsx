@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import * as React from "react";
 
 // The span relation's JSX tag collides with HTML <span> in TypeScript's
@@ -51,7 +51,7 @@ const rows = [0, 1, 2, 3, 4, 5].map((i) => `col0-row${i}`);
 
 export function BakingRecipe() {
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -270,6 +270,6 @@ export function BakingRecipe() {
 					<ref target="recipeTable" />
 				</stackV>
 			</group>
-		</Canvas>
+		</Graphic>
 	);
 }

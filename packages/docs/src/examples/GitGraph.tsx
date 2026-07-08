@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import * as React from "react";
 
 export type Branch = { name: string; color?: string };
@@ -93,7 +93,7 @@ export function GitGraph({
 	);
 
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -230,6 +230,6 @@ export function GitGraph({
 					</contrast>
 				))}
 			</group>
-		</Canvas>
+		</Graphic>
 	);
 }

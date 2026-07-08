@@ -1,8 +1,8 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 
 export function ShapesAndStacks() {
 	return (
-		<Canvas
+		<Graphic
 			style={{
 				border: "1px solid #ddd",
 				borderRadius: "8px",
@@ -21,6 +21,6 @@ export function ShapesAndStacks() {
 					<rect width={30} height={30} fill="mediumpurple" />
 				</stackH>
 			</stackV>
-		</Canvas>
+		</Graphic>
 	);
 }

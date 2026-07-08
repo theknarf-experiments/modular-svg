@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import { useState } from "react";
 
 export function EventHandlers() {
@@ -34,7 +34,7 @@ export function EventHandlers() {
 			<p style={{ color: "#333", fontSize: "14px", marginBottom: "1rem" }}>
 				{clicked ? `You clicked: ${clicked}` : "Click on any circle below"}
 			</p>
-			<Canvas
+			<Graphic
 				style={{
 					border: "1px solid #ddd",
 					borderRadius: "8px",
@@ -58,7 +58,7 @@ export function EventHandlers() {
 						/>
 					))}
 				</stackH>
-			</Canvas>
+			</Graphic>
 		</div>
 	);
 }

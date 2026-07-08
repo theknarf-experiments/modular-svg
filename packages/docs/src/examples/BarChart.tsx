@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import { useState } from "react";
 
 const data = [
@@ -63,7 +63,7 @@ export function BarChart() {
 					/>
 				</label>
 			</div>
-			<Canvas
+			<Graphic
 				style={{
 					border: "1px solid #ddd",
 					borderRadius: "8px",
@@ -107,7 +107,7 @@ export function BarChart() {
 						<ref target={peak.id} />
 					</arrow>
 				</group>
-			</Canvas>
+			</Graphic>
 		</div>
 	);
 }

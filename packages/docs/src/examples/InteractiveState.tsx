@@ -1,4 +1,4 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 import { useState } from "react";
 
 export function InteractiveState() {
@@ -33,7 +33,7 @@ export function InteractiveState() {
 					/>
 				</label>
 				<label style={{ display: "block", marginBottom: "0.5rem" }}>
-					Canvas margin: {margin}px
+					Graphic margin: {margin}px
 					<input
 						type="range"
 						min="0"
@@ -53,7 +53,7 @@ export function InteractiveState() {
 					Show Rectangle
 				</label>
 			</div>
-			<Canvas
+			<Graphic
 				style={{
 					border: "1px solid #ddd",
 					borderRadius: "8px",
@@ -66,7 +66,7 @@ export function InteractiveState() {
 					{showRect && <rect width={radius * 2} height={radius} fill="gold" />}
 					<circle r={radius} fill="cyan" />
 				</stackH>
-			</Canvas>
+			</Graphic>
 		</div>
 	);
 }

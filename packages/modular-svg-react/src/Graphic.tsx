@@ -12,7 +12,7 @@ import {
 	type ReconcilerRoot,
 } from "./reconciler";
 
-export interface CanvasProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface GraphicProps extends React.HTMLAttributes<HTMLDivElement> {
 	children?: React.ReactNode;
 	margin?: number;
 	title?: string;
@@ -156,8 +156,8 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 	return null;
 }
 
-// Internal Canvas component that uses context bridge
-function CanvasImpl({ children, margin = 0, title, ...props }: CanvasProps) {
+// Internal Graphic component that uses context bridge
+function GraphicImpl({ children, margin = 0, title, ...props }: GraphicProps) {
 	const rootRef = React.useRef<ReconcilerRoot | null>(null);
 	const [ast, setAst] = React.useState<SvgDocument | null>(null);
 
@@ -225,12 +225,12 @@ function CanvasImpl({ children, margin = 0, title, ...props }: CanvasProps) {
 	);
 }
 
-// Public Canvas component that wraps CanvasImpl with FiberProvider
+// Public Graphic component that wraps GraphicImpl with FiberProvider
 // This enables context forwarding from react-dom to our custom reconciler
-export function Canvas(props: CanvasProps) {
+export function Graphic(props: GraphicProps) {
 	return (
 		<FiberProvider>
-			<CanvasImpl {...props} />
+			<GraphicImpl {...props} />
 		</FiberProvider>
 	);
 }

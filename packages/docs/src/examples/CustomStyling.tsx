@@ -1,8 +1,8 @@
-import { Canvas } from "@modular-svg/react";
+import { Graphic } from "@modular-svg/react";
 
 export function CustomStyling() {
 	return (
-		<Canvas
+		<Graphic
 			className="custom-canvas"
 			style={{
 				border: "3px solid #333",
@@ -18,6 +18,6 @@ export function CustomStyling() {
 				<circle r={20} fill="indigo" />
 				<rect width={60} height={40} fill="tomato" />
 			</stackV>
-		</Canvas>
+		</Graphic>
 	);
 }
