@@ -69,6 +69,24 @@ describe("layoutToSvg", () => {
 		expect(svg).toContain('font-family="sans-serif"');
 	});
 
+	it("passes extra SVG attributes through", () => {
+		const nodes: NodeRecord[] = [
+			{
+				id: "R",
+				type: "rect",
+				x: 0,
+				y: 0,
+				width: 10,
+				height: 10,
+				attrs: { rx: 10, "data-label": "a<b" },
+			},
+		];
+		const layout: LayoutResult = { R: { x: 0, y: 0, width: 10, height: 10 } };
+		const svg = layoutToSvg(layout, nodes);
+		expect(svg).toContain('rx="10"');
+		expect(svg).toContain('data-label="a&lt;b"');
+	});
+
 	it("renders arrows", () => {
 		const nodes: NodeRecord[] = [
 			{ id: "A", x: 0, y: 0, width: 10, height: 10 },
@@ -90,7 +108,7 @@ describe("layoutToSvg", () => {
 			L: { x: 0, y: 0, width: 0, height: 0 },
 		};
 		const svg = layoutToSvg(layout, nodes);
-		expect(svg).toContain('<line id="L"');
+		expect(svg).toContain('<path id="L"');
 		expect(svg).toContain("<polygon");
 		expect(svg).not.toContain("marker-end");
 		expect(svg).toContain('stroke-width="3"');

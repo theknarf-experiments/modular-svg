@@ -17,11 +17,11 @@ Status legend:
 
 | Feature | Bluefish (source of truth) | modular-svg | Status |
 |---|---|---|---|
-| **Rect** | `x? y? width? height?` + all SVG attrs pass through (incl. `rx`/`ry`); unset dims stay unowned so relations can size it | `x y width height fill stroke stroke-width(3)`; no arbitrary attr passthrough; unset dims default 0 | 🟡 |
-| **Circle** | `cx? cy?` (center), `r` required; paint derives r from `bbox.width/2`, so parents can resize | `x y` (top-left), `r`; r fixed at parse; `stroke-width` default 1 vs Bluefish none | 🟡 |
+| **Rect** | `x? y? width? height?` + all SVG attrs pass through (incl. `rx`/`ry`); unset dims stay unowned so relations can size it | same + arbitrary SVG attr passthrough; unset extents are unowned (assignable by total modes) | ✅ |
+| **Circle** | `cx? cy?` (center), `r` required; paint derives r from `bbox.width/2`, so parents can resize | `cx cy` and top-left `x y` both accepted (fixture); r fixed at parse; no stroke-width default (matches Bluefish) | ✅ / 🟡 parent-resize |
 | **Ellipse** | in src, **not exported** from either package (doc stub exists) | — | 🚫 |
 | **Text** | Alegreya Sans 700 14px, canvas-measured; word wrap via `width`, `scaleToFit`, `angle`, `vertical-anchor`, `dx/dy`, line-height/cap-height | heuristic 8px/char × 16px line, single line, `fill` default black | ➖ text metrics (see below) / 🟡 props |
-| **Image** | `x? y? width? height?` + `href`; layout identical to Rect | — | ❌ |
+| **Image** | `x? y? width? height?` + `href`; layout identical to Rect | same (fixture: image in a stack) | ✅ |
 | **Path** | `d` required, `x? y?`, `position: relative\|absolute`; bounds measured via paper.js; defaults stroke black, sw 3, fill none | — | ❌ |
 | **Blob** | takes a **paper.js `Path` instance** as a prop (not serializable); exported but experimental | — | ➖ not expressible in JSON scenes |
 
@@ -30,15 +30,15 @@ Status legend:
 | Feature | Bluefish | modular-svg | Status |
 |---|---|---|---|
 | **StackH / StackV** | spacing default 10; alignment centerY/centerX; anchored on first owned child; bbox = union | same (fixtures: spacing, all 6 alignments, defaults, nesting, ref anchoring) | ✅ |
-| Stack `total` modes | `total` only → spacing computed; `total`+`spacing` → children with unowned extent share leftover **size**; `spacing` with unowned extents → `DimUnownedError` | only `spacing`; no extent ownership concept | ❌ |
+| Stack `total` modes | `total` only → spacing computed; `total`+`spacing` → children with unowned extent share leftover **size** (Bluefish quirk: gaps not subtracted — preserved); `spacing` with unowned extents → `DimUnownedError` | same three modes via extent ownership (fixtures); unowned-extent violations land in `warnings` | ✅ |
 | **Stack (generic)** | in src, **not exported**; StackH/V wrap it | — | 🚫 |
 | **Align** | 1D + 2D keywords; first-owned child anchors; bbox exposes only aligned axis | same keywords + anchor (fixtures); container bbox is full union of both axes | ✅ / 🟡 bbox axes |
 | `guidePrimary` per-child override | commented out upstream — not implemented | — | 🚫 |
-| **Distribute** | `direction` required; `spacing`, `total`, or both; first-owned child anchors; bbox exposes main axis only | `axis`/`direction` + `spacing` (fixture); `total` missing; spacing-less → even-spread **extension** (Bluefish throws) | 🟡 |
-| **Background** | padding 10; stroke black / fill none / sw 3; extra rect attrs pass through (`rx` in tutorial!); custom `background` render prop; `width`/`height`; centers unowned content; errors if frame pos owned | padding 10 + fill/stroke/sw (fixtures: default + explicit padding); no `rx`/attr passthrough, no custom frame, no content centering | 🟡 |
+| **Distribute** | `direction` required; `spacing`, `total`, or both; first-owned child anchors; bbox exposes main axis only | `direction` horizontal/vertical or `axis` x/y; all three sizing modes (fixtures); spacing-less → even-spread **extension** (Bluefish throws) | ✅ |
+| **Background** | padding 10; stroke black / fill none / sw 3; extra rect attrs pass through (`rx` in tutorial!); custom `background` render prop; `width`/`height`; centers unowned content; errors if frame pos owned | padding 10 + fill/stroke/sw + attr passthrough incl. `rx` (fixtures); no custom frame, no content centering | ✅ core / 🟡 details |
 | **Group** | defaults unowned left/top to 0 (claims them); union skipping undefined; `rels` prop; extra attrs on `<g>` | union bbox; relations are just sibling children in JSON (≈ `rels`) | ✅ core / 🟡 details |
-| **Line** | connects 2 children (Refs); `source`/`target` fractional [0..1,0..1] bbox anchors, clamped-to-box endpoint defaults; stroke black sw 3, dasharray | — | ❌ |
-| **Arrow** | perfect-arrows curved quad path: bow .2, stretch .5, stretchMin 40, stretchMax 420, padStart 5, padEnd 20, flip, straights, `start` dot; bbox = union of endpoints' boxes | straight line + polygon head, fixed 5px margins, vertical-biased anchor points; bbox = union (via unionOp) | 🟡 geometry |
+| **Line** | connects 2 children (Refs); `source`/`target` fractional [0..1,0..1] bbox anchors, clamped-to-box endpoint defaults; stroke black sw 3, dasharray | same, ported endpoint algorithm incl. center-bias quirk (fixtures: both anchors / source only / none); dasharray via attr passthrough | ✅ |
+| **Arrow** | perfect-arrows curved quad path: bow .2, stretch .5, stretchMin 40, stretchMax 420, padStart 5, padEnd 20, flip, straights, `start` dot; bbox = union of endpoints' boxes | same: perfect-arrows dependency, identical defaults, path + rotated polygon head + optional start dot (fixture compares path coords exactly) | ✅ |
 | **GraphLayered / Node / Edge** | dagre layered graph layout; **not exported** | — | 🚫 |
 | **Gradient** | linearGradient defs helper; **not exported** | — | 🚫 |
 
@@ -49,7 +49,7 @@ Status legend:
 | **Bluefish root** | padding 10; optional width/height override; viewBox from content bbox; `debug` scenegraph dump | Group root + `layoutToSvg(margin)` (default 0; CLI default 3); width/height always derived | 🟡 |
 | **Ref** | `select: Id \| [Id, ...names]` — path selection through scoped names; helpful "Available names" errors; ref-of-ref throws | flat `target` id (global unique ids); unknown ref throws | ✅ core / ➖ scoped paths (our ids are globally unique, scoping is moot in JSON) |
 | **name / createName scoping** | scope tree, `name(uid)` ids, `data-bluefish-id` attr on `<g>` | `id`/`key` on nodes → `id` attr on emitted elements | ➖ equivalent-by-design |
-| **zOrder** (new in 0.0.39) | `zOrder?: number` on every component; paint order sorted stably | paint order = node order | ❌ |
+| **zOrder** (new in 0.0.39) | `zOrder?: number` on every component; paint order sorted stably per parent | `zOrder` prop, global stable sort in layoutToAst (fixture); nuance: Bluefish sorts per parent, we sort globally | ✅ / 🟡 nuance |
 | **withBluefish HOC** | wraps custom components; naming + zOrder | react package reconciler plays this role | ➖ framework-specific |
 | **Layout / LayoutFunction** | custom layout escape hatches (function props) | custom `LayoutOperator` via `solveLayout` API | ➖ equivalent-by-design (not JSON-expressible upstream either) |
 | **Ownership errors** | typed errors (DimAlreadyOwned w/ provenance, DimUnowned, NaN, …) — but currently soft (`console.warn`) | `JsonScene.warnings` for double hard ownership; hard throws for dup ids / unknown refs | ✅ comparable |
@@ -66,16 +66,11 @@ Status legend:
 - Distribute/Align in Bluefish expose partial bboxes (one axis); our containers always
   get full union bboxes. Only observable when another relation targets those containers.
 
-## Suggested closing order
+## Remaining gaps (deliberate or low priority)
 
-1. **zOrder** — trivial (sort in `layoutToAst`), new upstream feature.
-2. **Image** — Rect-clone with `href` passthrough.
-3. **Rect/Background SVG attr passthrough** (`rx` is used in the official tutorial).
-4. **Stack/Distribute `total` modes** — needs extent ownership (we already track
-   whether `width`/`height` props were given, same mechanism as position ownership).
-5. **Line** — fractional-anchor endpoints between two refs.
-6. **Arrow geometry** — port/adopt perfect-arrows' `getBoxToBoxArrow` for curve parity.
-7. **Circle `cx`/`cy`** — accept center coords alongside top-left.
+- Text props/metrics; Path mark; Blob; parent-resizable circles; Background
+  custom frame + content centering; Bluefish-root width/height overrides;
+  per-parent zOrder scoping; partial-axis container bboxes.
 
 Non-goals (revisit only deliberately): text metrics (needs real font measurement),
 Path/Blob (paper.js), anything unexported upstream (Ellipse, generic Stack, Gradient,

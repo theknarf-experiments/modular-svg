@@ -16,7 +16,9 @@
 				"Distribute",
 				"Ref",
 				"Text",
-				"Arrow"
+				"Arrow",
+				"Line",
+				"Image"
 			]
 		},
 		"id": { "type": "string" },
@@ -28,7 +30,10 @@
 				"x": { "type": "number" },
 				"y": { "type": "number" },
 				"r": { "type": "number" },
+				"cx": { "type": "number" },
+				"cy": { "type": "number" },
 				"spacing": { "type": "number" },
+				"total": { "type": "number" },
 				"alignment": { "type": "string" },
 				"axis": { "type": "string" },
 				"direction": { "type": "string" },
@@ -36,7 +41,30 @@
 				"stroke": { "type": "string" },
 				"stroke-width": { "type": "number" },
 				"text": { "type": "string" },
-				"padding": { "type": "number" }
+				"padding": { "type": "number" },
+				"zOrder": { "type": "number" },
+				"href": { "type": "string" },
+				"source": {
+					"type": "array",
+					"items": { "type": "number" },
+					"minItems": 2,
+					"maxItems": 2
+				},
+				"target": {
+					"type": "array",
+					"items": { "type": "number" },
+					"minItems": 2,
+					"maxItems": 2
+				},
+				"bow": { "type": "number" },
+				"stretch": { "type": "number" },
+				"stretchMin": { "type": "number" },
+				"stretchMax": { "type": "number" },
+				"padStart": { "type": "number" },
+				"padEnd": { "type": "number" },
+				"flip": { "type": "boolean" },
+				"straights": { "type": "boolean" },
+				"start": { "type": "boolean" }
 			},
 			"additionalProperties": true
 		},

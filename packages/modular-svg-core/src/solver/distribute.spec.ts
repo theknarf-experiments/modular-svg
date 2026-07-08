@@ -11,7 +11,7 @@ describe("Distribute operator", () => {
 			{ id: "C", x: 30, y: 0, width: 0, height: 0 },
 		];
 		const children = nodes.map((_n, i) => ({ base: i * 4, subtree: [i * 4] }));
-		const op = distributeX(children, 0, 0);
+		const op = distributeX(children);
 		const scene = { nodes, operators: [op as LayoutOperator] };
 		const result = solveLayout(scene, { damping: 1 });
 		expect(result.B.x).toBeCloseTo(15);

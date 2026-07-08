@@ -45,6 +45,7 @@ function serializeElement(element: SvgElement): string {
 			fill: element.fill,
 			stroke: element.stroke,
 			"stroke-width": element.strokeWidth,
+			...element.attrs,
 		});
 	}
 
@@ -57,6 +58,7 @@ function serializeElement(element: SvgElement): string {
 			fill: element.fill,
 			stroke: element.stroke,
 			"stroke-width": element.strokeWidth,
+			...element.attrs,
 		});
 	}
 
@@ -72,6 +74,7 @@ function serializeElement(element: SvgElement): string {
 				fill: element.fill,
 				stroke: element.stroke,
 				"stroke-width": element.strokeWidth,
+				...element.attrs,
 			},
 			escapeXml(element.text),
 		);
@@ -87,6 +90,7 @@ function serializeElement(element: SvgElement): string {
 			fill: element.fill,
 			stroke: element.stroke,
 			"stroke-width": element.strokeWidth,
+			...element.attrs,
 		});
 	}
 
@@ -94,9 +98,34 @@ function serializeElement(element: SvgElement): string {
 		return xml("polygon", {
 			id: element.id,
 			points: element.points,
+			transform: element.transform,
 			fill: element.fill,
 			stroke: element.stroke,
 			"stroke-width": element.strokeWidth,
+			...element.attrs,
+		});
+	}
+
+	if (element.type === "path") {
+		return xml("path", {
+			id: element.id,
+			d: element.d,
+			fill: element.fill,
+			stroke: element.stroke,
+			"stroke-width": element.strokeWidth,
+			...element.attrs,
+		});
+	}
+
+	if (element.type === "image") {
+		return xml("image", {
+			id: element.id,
+			x: element.x,
+			y: element.y,
+			width: element.width,
+			height: element.height,
+			href: element.href,
+			...element.attrs,
 		});
 	}
 
