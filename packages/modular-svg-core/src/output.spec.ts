@@ -25,9 +25,11 @@ describe("layoutToSvg", () => {
 		];
 		const layout: LayoutResult = { C: { x: 2, y: 3, width: 10, height: 10 } };
 		const svg = layoutToSvg(layout, nodes);
+		// The layout is translated so its bounds start at the margin (0 here),
+		// so the circle at (2,3) ends up centered at (5,5) in a 10x10 viewport.
 		expect(svg).toContain('<circle id="C"');
-		expect(svg).toContain('cx="7"');
-		expect(svg).toContain('cy="8"');
+		expect(svg).toContain('cx="5"');
+		expect(svg).toContain('cy="5"');
 	});
 
 	it("applies fill and stroke and text", () => {

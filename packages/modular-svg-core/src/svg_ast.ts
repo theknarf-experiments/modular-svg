@@ -253,10 +253,9 @@ export function layoutToAst(
 	const bounds = layoutBounds(layout, nodes);
 	const min = bounds.start;
 	const max = bounds.end;
-	const offset = vec(
-		(min.x < 0 ? -min.x : 0) + margin,
-		(min.y < 0 ? -min.y : 0) + margin,
-	);
+	// Translate the layout so its bounds start at the margin; otherwise
+	// content with a positive minimum would sit outside the viewport.
+	const offset = vec(-min.x + margin, -min.y + margin);
 
 	const children: SvgElement[] = [];
 
