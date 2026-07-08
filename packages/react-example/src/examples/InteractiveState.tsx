@@ -5,6 +5,7 @@ export function InteractiveState() {
 	const [radius, setRadius] = useState(20);
 	const [spacing, setSpacing] = useState(10);
 	const [showRect, setShowRect] = useState(true);
+	const [margin, setMargin] = useState(10);
 
 	return (
 		<div>
@@ -32,6 +33,17 @@ export function InteractiveState() {
 					/>
 				</label>
 				<label style={{ display: "block", marginBottom: "0.5rem" }}>
+					Canvas margin: {margin}px
+					<input
+						type="range"
+						min="0"
+						max="50"
+						value={margin}
+						onChange={(e) => setMargin(Number(e.target.value))}
+						style={{ marginLeft: "1rem", width: "200px" }}
+					/>
+				</label>
+				<label style={{ display: "block", marginBottom: "0.5rem" }}>
 					<input
 						type="checkbox"
 						checked={showRect}
@@ -47,7 +59,7 @@ export function InteractiveState() {
 					borderRadius: "8px",
 					display: "inline-block",
 				}}
-				margin={10}
+				margin={margin}
 			>
 				<stackH spacing={spacing}>
 					<circle r={radius} fill="hotpink" />
