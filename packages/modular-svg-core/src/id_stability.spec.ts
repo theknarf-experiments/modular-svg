@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSceneFromJson } from "./parser";
+import { buildSceneFromJson } from "./parser.ts";
 
 describe("ID Stability", () => {
 	describe("user-provided keys", () => {

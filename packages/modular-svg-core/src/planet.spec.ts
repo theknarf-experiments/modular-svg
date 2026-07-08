@@ -9,10 +9,10 @@ import {
 	Ref,
 	StackH,
 	Text,
-} from "./builder";
-import { layoutToSvg } from "./output";
-import { buildSceneFromJson } from "./parser";
-import { solveLayout } from "./solver";
+} from "./builder.ts";
+import { layoutToSvg } from "./output.ts";
+import { buildSceneFromJson } from "./parser.ts";
+import { solveLayout } from "./solver/index.ts";
 
 const scene = buildSceneFromJson(
 	Bluefish(

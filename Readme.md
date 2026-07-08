@@ -10,7 +10,7 @@ produces an SVG string.
 ## Usage
 
 ```bash
-bun ./bin/modular-svg examples/planet.json planet.svg
+./bin/modular-svg.ts examples/planet.json planet.svg
 ```
 
 The CLI reads a JSON scene either from a file or from `stdin` and writes the

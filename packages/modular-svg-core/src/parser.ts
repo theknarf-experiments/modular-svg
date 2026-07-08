@@ -3,7 +3,7 @@ import type {
 	NodeRecord,
 	StackAlignment,
 	StackChild,
-} from "./solver/operators";
+} from "./solver/operators.ts";
 import {
 	alignXCenter,
 	alignXCenterTo,
@@ -17,7 +17,7 @@ import {
 	distributeY,
 	stackH,
 	stackV,
-} from "./solver/operators";
+} from "./solver/operators.ts";
 
 export type JsonScene = { nodes: NodeRecord[]; operators: LayoutOperator[] };
 type AnyNode = {

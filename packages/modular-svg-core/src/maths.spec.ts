@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { unionBoundingBox2d } from "./math";
+import { unionBoundingBox2d } from "./math.ts";
 
 describe("unionBoundingBox2d", () => {
 	const boxArb = fc

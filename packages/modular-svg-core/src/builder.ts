@@ -1,8 +1,8 @@
 // Helper functions to build JSON scene descriptions in a Bluefish-like style
 
-import { layoutToSvg } from "./output";
-import { buildSceneFromJson } from "./parser";
-import { solveLayout } from "./solver";
+import { layoutToSvg } from "./output.ts";
+import { buildSceneFromJson } from "./parser.ts";
+import { solveLayout } from "./solver/index.ts";
 
 let counter = 0;
 function uid(prefix: string): string {
