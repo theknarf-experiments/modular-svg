@@ -1,6 +1,4 @@
 import { ExampleSection } from "./ExampleSection";
-import { BasicShapes } from "./examples/BasicShapes";
-import basicShapesCode from "./examples/BasicShapes.tsx?raw";
 import { CanvasMargin } from "./examples/CanvasMargin";
 import canvasMarginCode from "./examples/CanvasMargin.tsx?raw";
 import { ComplexPlanetSystem } from "./examples/ComplexPlanetSystem";
@@ -11,20 +9,16 @@ import { CustomStyling } from "./examples/CustomStyling";
 import customStylingCode from "./examples/CustomStyling.tsx?raw";
 import { EventHandlers } from "./examples/EventHandlers";
 import eventHandlersCode from "./examples/EventHandlers.tsx?raw";
-import { HorizontalStack } from "./examples/HorizontalStack";
-import horizontalStackCode from "./examples/HorizontalStack.tsx?raw";
 import { InteractivePlanetExample } from "./examples/InteractivePlanetExample";
 import interactivePlanetExampleCode from "./examples/InteractivePlanetExample.tsx?raw";
 import { InteractiveState } from "./examples/InteractiveState";
 import interactiveStateCode from "./examples/InteractiveState.tsx?raw";
-import { NestedLayouts } from "./examples/NestedLayouts";
-import nestedLayoutsCode from "./examples/NestedLayouts.tsx?raw";
 import { PlanetExample } from "./examples/PlanetExample";
 import planetExampleCode from "./examples/PlanetExample.tsx?raw";
 import { ReactComponents } from "./examples/ReactComponents";
 import reactComponentsCode from "./examples/ReactComponents.tsx?raw";
-import { VerticalStack } from "./examples/VerticalStack";
-import verticalStackCode from "./examples/VerticalStack.tsx?raw";
+import { ShapesAndStacks } from "./examples/ShapesAndStacks";
+import shapesAndStacksCode from "./examples/ShapesAndStacks.tsx?raw";
 import "./modular-svg.d.ts";
 
 function App() {
@@ -36,35 +30,11 @@ function App() {
 			</p>
 
 			<ExampleSection
-				title="Basic Shapes"
-				description="Simple circle and rectangle with default styling"
-				code={basicShapesCode}
+				title="Shapes and Stacks"
+				description="Circles and rectangles arranged with stackH and stackV - stacks nest to build up larger layouts"
+				code={shapesAndStacksCode}
 			>
-				<BasicShapes />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Horizontal Stack"
-				description="Using stackH to arrange circles horizontally with spacing"
-				code={horizontalStackCode}
-			>
-				<HorizontalStack />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Vertical Stack"
-				description="Using stackV to arrange shapes vertically with spacing"
-				code={verticalStackCode}
-			>
-				<VerticalStack />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Nested Layouts"
-				description="Combining stackH and stackV to create complex layouts"
-				code={nestedLayoutsCode}
-			>
-				<NestedLayouts />
+				<ShapesAndStacks />
 			</ExampleSection>
 
 			<ExampleSection

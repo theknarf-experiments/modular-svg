@@ -1,6 +1,6 @@
 import { Canvas } from "@modular-svg/react";
 
-export function NestedLayouts() {
+export function ShapesAndStacks() {
 	return (
 		<Canvas
 			style={{
