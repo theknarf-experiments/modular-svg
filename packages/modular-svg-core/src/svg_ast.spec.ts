@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildSceneFromJson } from "./parser";
-import { solveLayout } from "./solver";
-import { layoutToAst } from "./svg_ast";
+import { buildSceneFromJson } from "./parser.ts";
+import { solveLayout } from "./solver/index.ts";
+import { layoutToAst } from "./svg_ast.ts";
 
 describe("SVG AST", () => {
 	it("generates structured AST from layout", () => {

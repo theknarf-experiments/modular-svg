@@ -1,7 +1,11 @@
 import fc from "fast-check";
 import { describe, it } from "vitest";
-import { solveLayout } from ".";
-import type { LayoutOperator, NodeRecord, StackAlignment } from "./operators";
+import { solveLayout } from "./index.ts";
+import type {
+	LayoutOperator,
+	NodeRecord,
+	StackAlignment,
+} from "./operators.ts";
 import {
 	alignXCenter,
 	alignXCenterTo,
@@ -15,7 +19,7 @@ import {
 	distributeY,
 	stackH,
 	stackV,
-} from "./operators";
+} from "./operators.ts";
 
 describe("property based primitives", () => {
 	it("align left sets all x to min", () => {

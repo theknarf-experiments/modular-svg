@@ -1,8 +1,8 @@
-import type { LayoutResult, NodeRecord } from "./solver";
-import { layoutToAst, type SvgDocument, type SvgElement } from "./svg_ast";
+import type { LayoutResult, NodeRecord } from "./solver/index.ts";
+import { layoutToAst, type SvgDocument, type SvgElement } from "./svg_ast.ts";
 
 // Re-export for convenience
-export { layoutBounds } from "./svg_ast";
+export { layoutBounds } from "./svg_ast.ts";
 
 // XML serialization helper
 export function xml(

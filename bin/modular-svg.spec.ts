@@ -6,9 +6,9 @@ import {
 	buildSceneFromJson,
 	layoutToSvg,
 	solveLayout,
-} from "../packages/modular-svg-core/src/index";
+} from "../packages/modular-svg-core/src/index.ts";
 
-const bin = join(__dirname, "modular-svg");
+const bin = join(__dirname, "modular-svg.ts");
 const example = join(__dirname, "../examples/stack.json");
 
 describe("CLI", () => {

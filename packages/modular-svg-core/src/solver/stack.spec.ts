@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { solveLayout } from ".";
-import type { LayoutOperator, NodeRecord } from "./operators";
-import { stackV } from "./operators";
+import { solveLayout } from "./index.ts";
+import type { LayoutOperator, NodeRecord } from "./operators.ts";
+import { stackV } from "./operators.ts";
 
 describe("Stack operator", () => {
 	it("stacks children vertically with spacing and centers them", () => {

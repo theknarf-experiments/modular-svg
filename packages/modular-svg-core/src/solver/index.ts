@@ -15,5 +15,5 @@ export {
 	type StackChild,
 	stackH,
 	stackV,
-} from "./operators";
-export * from "./solver";
+} from "./operators.ts";
+export * from "./solver.ts";

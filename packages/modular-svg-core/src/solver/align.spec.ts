@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { solveLayout } from ".";
-import type { LayoutOperator, NodeRecord } from "./operators";
-import { alignXLeft } from "./operators";
+import { solveLayout } from "./index.ts";
+import type { LayoutOperator, NodeRecord } from "./operators.ts";
+import { alignXLeft } from "./operators.ts";
 
 describe("Align operator", () => {
 	it("aligns multiple nodes to the leftmost X", () => {

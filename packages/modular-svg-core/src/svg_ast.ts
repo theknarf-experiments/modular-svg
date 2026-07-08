@@ -10,8 +10,8 @@ import {
 	unionBoundingBox2d,
 	type Vec2,
 	vec,
-} from "./math";
-import type { LayoutResult, NodeRecord } from "./solver";
+} from "./math.ts";
+import type { LayoutResult, NodeRecord } from "./solver/index.ts";
 
 // SVG AST Element Types
 export type SvgElement =
