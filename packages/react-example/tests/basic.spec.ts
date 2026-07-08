@@ -61,3 +61,14 @@ test("Canvas renders SVG elements with console diagnostics", async ({
 	expect(svgCount).toBeGreaterThan(0);
 	expect(circleCount).toBeGreaterThan(0);
 });
+
+test("arrows render as curved paths with polygon heads", async ({ page }) => {
+	await page.goto("http://localhost:5173");
+	await page.waitForTimeout(2000);
+
+	// The Full Planet Example draws arrows between labels and planets
+	const arrowPaths = page.locator('svg path[d*="Q"]');
+	expect(await arrowPaths.count()).toBeGreaterThan(0);
+	const heads = page.locator('svg polygon[transform*="rotate"]');
+	expect(await heads.count()).toBeGreaterThan(0);
+});
