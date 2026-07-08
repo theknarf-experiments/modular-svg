@@ -1,3 +1,4 @@
+import { parseColor } from "./color.ts";
 import type {
 	AlignmentX,
 	AlignmentY,
@@ -9,9 +10,12 @@ import {
 	alignX,
 	alignY,
 	backgroundOp,
+	contrastOp,
+	distinctColorsOp,
 	distributeX,
 	distributeY,
 	lineOp,
+	sameColorOp,
 	spanOp,
 	stackH,
 	stackV,
@@ -21,6 +25,12 @@ import {
 export type JsonScene = {
 	nodes: NodeRecord[];
 	operators: LayoutOperator[];
+	/** operators over the color array (3 slots per node: h, s, l) */
+	colorOperators: LayoutOperator[];
+	/** initial h,s,l per node */
+	colorSeed: number[];
+	/** ids whose solved color should be emitted */
+	coloredIds: string[];
 	/** Ownership conflicts detected at parse time (over-constrained scenes) */
 	warnings: string[];
 };
@@ -247,6 +257,17 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				props: Record<string, unknown>;
 		  }
 		| { kind: "span"; axis: "x" | "y"; children: NodeRecord[] }
+		| {
+				kind: "distinctColors";
+				children: NodeRecord[];
+				props: Record<string, unknown>;
+		  }
+		| { kind: "sameColor"; children: NodeRecord[] }
+		| {
+				kind: "contrast";
+				children: NodeRecord[];
+				props: Record<string, unknown>;
+		  }
 		| { kind: "line"; line: NodeRecord; children: NodeRecord[] }
 		| { kind: "union"; container: NodeRecord; children: NodeRecord[] };
 	const descs: Desc[] = [];
@@ -556,6 +577,19 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					children,
 				});
 				descs.push({ kind: "union", container: rec, children });
+			} else if (node.type === "DistinctColors" && children.length > 0) {
+				descs.push({
+					kind: "distinctColors",
+					children,
+					props: node.props ?? {},
+				});
+				descs.push({ kind: "union", container: rec, children });
+			} else if (node.type === "SameColor" && children.length >= 2) {
+				descs.push({ kind: "sameColor", children });
+				descs.push({ kind: "union", container: rec, children });
+			} else if (node.type === "Contrast" && children.length >= 2) {
+				descs.push({ kind: "contrast", children, props: node.props ?? {} });
+				descs.push({ kind: "union", container: rec, children });
 			} else if (children.length > 0) {
 				// Group and any other plain container: bbox = union of children
 				descs.push({ kind: "union", container: rec, children });
@@ -673,6 +707,24 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	}
 
 	const ops: LayoutOperator[] = [];
+	const colorOps: LayoutOperator[] = [];
+	const coloredIds = new Set<string>();
+	// Color slots: 3 per node (h, s, l), seeded from parseable fills.
+	// A parseable explicit fill is a pinned (owned) color.
+	const nodeIndex = new Map(nodes.map((n, i) => [n.id, i]));
+	const colorSeed: number[] = [];
+	const colorOwned: boolean[] = [];
+	for (const n of nodes) {
+		const parsed = n.fill !== undefined ? parseColor(n.fill) : undefined;
+		colorSeed.push(parsed?.h ?? 0, parsed?.s ?? 0, parsed?.l ?? 0.5);
+		colorOwned.push(n.fill !== undefined);
+	}
+	const colorBase = (rec: NodeRecord): number => {
+		const i = nodeIndex.get(rec.id);
+		if (i === undefined) throw new Error(`Unknown id ${rec.id}`);
+		return i * 3;
+	};
+
 	for (const d of descs) {
 		if (d.kind === "stackV" || d.kind === "stackH") {
 			const mainAxis = d.kind === "stackV" ? "y" : "x";
@@ -818,6 +870,43 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			hardOwned.add(`${d.line.id}:w`);
 			hardOwned.add(`${d.line.id}:h`);
 			markGuide(d.line.id);
+		} else if (d.kind === "distinctColors") {
+			const owned = d.children.map((c) => colorOwned[nodeIndex.get(c.id) ?? 0]);
+			colorOps.push(
+				distinctColorsOp(
+					d.children.map((c) => colorBase(c)),
+					{
+						saturation: (d.props.saturation as number) ?? 0.6,
+						lightness: (d.props.lightness as number) ?? 0.55,
+						startHue: (d.props.startHue as number) ?? 30,
+						owned,
+					},
+				),
+			);
+			d.children.forEach((c, i) => {
+				if (!owned[i]) coloredIds.add(c.id);
+			});
+		} else if (d.kind === "sameColor") {
+			const [source, ...targets] = d.children;
+			colorOps.push(
+				sameColorOp(
+					colorBase(source),
+					targets.map((t) => colorBase(t)),
+				),
+			);
+			for (const t of targets) {
+				coloredIds.add(t.id);
+			}
+		} else if (d.kind === "contrast") {
+			const [fg, bg] = d.children;
+			colorOps.push(
+				contrastOp(
+					colorBase(fg),
+					colorBase(bg),
+					(d.props.ratio as number) ?? 4.5,
+				),
+			);
+			coloredIds.add(fg.id);
 		} else if (d.kind === "union") {
 			ops.push(
 				unionOp(
@@ -831,5 +920,12 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		}
 	}
 
-	return { nodes, operators: ops, warnings };
+	return {
+		nodes,
+		operators: ops,
+		colorOperators: colorOps,
+		colorSeed,
+		coloredIds: [...coloredIds],
+		warnings,
+	};
 }

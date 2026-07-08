@@ -1,3 +1,5 @@
+import { contrastingLightness, luminanceOfHsl } from "../color.ts";
+
 export type LayoutOperator = (cur: Float64Array, next: Float64Array) => void;
 
 export type ArrowGeometry = {
@@ -630,5 +632,68 @@ export function unionOp(
 			hs.push(cur[base + 3]);
 		}
 		writeUnion(next, containerIndex, xs, ys, ws, hs);
+	};
+}
+
+// --- Color operators -------------------------------------------------------
+// Colors are solver variables too: each node has (h, s, l) slots in a
+// separate color array, solved by the same damped fixed-point loop.
+
+export type DistinctColorsOptions = {
+	saturation: number;
+	lightness: number;
+	startHue: number;
+	/** children with a user-pinned color are skipped */
+	owned?: readonly boolean[];
+};
+
+// Spread the children's hues evenly around the wheel (a distribute in hue
+// space); saturation and lightness are set uniformly.
+export function distinctColorsOp(
+	colorBases: readonly number[],
+	opts: DistinctColorsOptions,
+): LayoutOperator {
+	return (_cur, next) => {
+		const n = colorBases.length;
+		for (let i = 0; i < n; i++) {
+			if (opts.owned?.[i]) continue;
+			const base = colorBases[i];
+			next[base] = (opts.startHue + (i * 360) / n) % 360;
+			next[base + 1] = opts.saturation;
+			next[base + 2] = opts.lightness;
+		}
+	};
+}
+
+// Copy the first child's color onto the rest (the Span of color space)
+export function sameColorOp(
+	sourceBase: number,
+	targetBases: readonly number[],
+): LayoutOperator {
+	return (cur, next) => {
+		for (const base of targetBases) {
+			next[base] = cur[sourceBase];
+			next[base + 1] = cur[sourceBase + 1];
+			next[base + 2] = cur[sourceBase + 2];
+		}
+	};
+}
+
+// Adjust the foreground's lightness (keeping hue and saturation) until the
+// WCAG contrast ratio against the background's current color is satisfied.
+export function contrastOp(
+	fgBase: number,
+	bgBase: number,
+	ratio: number,
+): LayoutOperator {
+	return (cur, next) => {
+		const bgY = luminanceOfHsl(cur[bgBase], cur[bgBase + 1], cur[bgBase + 2]);
+		next[fgBase + 2] = contrastingLightness(
+			cur[fgBase],
+			cur[fgBase + 1],
+			cur[fgBase + 2],
+			bgY,
+			ratio,
+		);
 	};
 }

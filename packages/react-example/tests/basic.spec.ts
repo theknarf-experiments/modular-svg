@@ -210,4 +210,21 @@ test("the git graph renders lanes, edges, and the merge", async ({ page }) => {
 	// tag pills with pointer lines to their commits
 	await expect(page.locator('svg line[id$="-tagline"]')).toHaveCount(2);
 	await expect(page.locator("svg text", { hasText: "v1.0" })).toHaveCount(2);
+
+	// color constraints: each branch lane gets a distinct fill (no colors
+	// are hardcoded in the example), and a commit dot inherits its branch's
+	const svg = page.locator("svg").first();
+	const laneFill = async (branch: string) =>
+		svg.locator(`rect[id="lane-${branch}"]`).getAttribute("fill");
+	const [main, develop, feature] = await Promise.all([
+		laneFill("main"),
+		laneFill("develop"),
+		laneFill("feature"),
+	]);
+	expect(new Set([main, develop, feature]).size).toBe(3);
+	// a1f9 is on main, so its dot follows main's color
+	const dotFill = await svg
+		.locator('circle[id="commit-a1f9-dot"]')
+		.getAttribute("fill");
+	expect(dotFill).toBe(main);
 });

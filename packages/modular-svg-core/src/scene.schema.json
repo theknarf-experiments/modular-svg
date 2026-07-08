@@ -21,7 +21,10 @@
 				"Curve",
 				"Image",
 				"Path",
-				"Span"
+				"Span",
+				"DistinctColors",
+				"SameColor",
+				"Contrast"
 			]
 		},
 		"id": { "type": "string" },
@@ -62,7 +65,11 @@
 					"maxItems": 2
 				},
 				"padStart": { "type": "number" },
-				"padEnd": { "type": "number" }
+				"padEnd": { "type": "number" },
+				"saturation": { "type": "number" },
+				"lightness": { "type": "number" },
+				"startHue": { "type": "number" },
+				"ratio": { "type": "number" }
 			},
 			"additionalProperties": true
 		},

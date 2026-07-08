@@ -68,6 +68,21 @@ measurement element) while height comes from the prop; the pulley w1/w2
 centerY align anchors on w2 because an undefined-height rect disqualifies
 w1's bbox upstream (our variants order the anchor first).
 
+## Extensions beyond Bluefish
+
+Features with no Bluefish equivalent, modeled as constraints in the same solver:
+
+- **Curve** — a `Line` sibling rendered as a smooth cubic (see Line row above).
+- **Span** — copies one axis' position + extent from a source to targets
+  (our JSON stand-in for Bluefish's `LayoutFunction` span-copy idiom).
+- **Color constraints** — colors are `(h, s, l)` solver variables in a second
+  fixed-point pass, with an explicit `fill` acting as a pinned (owned) color:
+  - `DistinctColors` — spreads children's hues evenly (a distribute in hue space).
+  - `SameColor` — copies a source color onto targets (a Span in color space).
+  - `Contrast` — adjusts a foreground's lightness to meet a WCAG ratio (default
+    4.5) against a background's solved color.
+  Resolved colors flow into `fill` (or `stroke` for line/curve/arrow marks).
+
 ## Layout-model differences (accepted)
 
 - Bluefish: linear-system bbox (any 2 dims per axis determine all 4; over-determination throws),
