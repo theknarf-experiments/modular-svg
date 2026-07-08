@@ -105,6 +105,16 @@ declare module "react" {
 				target?: number[];
 				children?: React.ReactNode;
 			};
+			curve: {
+				key?: React.Key;
+				stroke?: string;
+				"stroke-width"?: number;
+				"stroke-dasharray"?: string;
+				source?: number[];
+				target?: number[];
+				direction?: "horizontal" | "vertical";
+				children?: React.ReactNode;
+			};
 			path: {
 				key?: React.Key;
 				d?: string;

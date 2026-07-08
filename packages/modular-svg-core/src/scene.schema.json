@@ -18,6 +18,7 @@
 				"Text",
 				"Arrow",
 				"Line",
+				"Curve",
 				"Image",
 				"Path",
 				"Span"

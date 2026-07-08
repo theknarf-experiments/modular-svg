@@ -109,6 +109,33 @@ describe("layoutToSvg", () => {
 		expect(svg).toContain('transform="translate(91,45.5)"');
 	});
 
+	it("renders curves as smooth cubics between boxes", () => {
+		const nodes: NodeRecord[] = [
+			{ id: "A", x: 0, y: 0, width: 10, height: 10, type: "rect" },
+			{ id: "B", x: 40, y: 30, width: 10, height: 10, type: "rect" },
+			{
+				id: "C",
+				type: "curve",
+				from: "A",
+				to: "B",
+				source: [1, 0.5],
+				target: [0, 0.5],
+				curveDirection: "horizontal",
+				x: 0,
+				y: 0,
+				width: 0,
+				height: 0,
+			},
+		];
+		const layout: LayoutResult = {
+			A: { x: 0, y: 0, width: 10, height: 10 },
+			B: { x: 40, y: 30, width: 10, height: 10 },
+			C: { x: 10, y: 5, width: 30, height: 30 },
+		};
+		const svg = layoutToSvg(layout, nodes);
+		expect(svg).toContain('d="M 10,5 C 25,5 25,35 40,35"');
+	});
+
 	it("renders arrows", () => {
 		const nodes: NodeRecord[] = [
 			{ id: "A", x: 0, y: 0, width: 10, height: 10 },

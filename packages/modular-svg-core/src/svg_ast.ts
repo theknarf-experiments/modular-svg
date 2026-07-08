@@ -288,6 +288,44 @@ function buildLine(
 	};
 }
 
+// Build a smooth cubic between two boxes: same endpoints as a Line, with
+// control points at the midpoint along the control axis (d3-style link)
+function buildCurve(
+	id: string,
+	n: NodeRecord,
+	layout: LayoutResult,
+	offset: Vec2,
+): PathElement | undefined {
+	const a = n.from ? layout[n.from] : undefined;
+	const b = n.to ? layout[n.to] : undefined;
+	if (!a || !b) return;
+	const { fromX, fromY, toX, toY } = lineEndpoints(
+		toBox(a, offset),
+		toBox(b, offset),
+		n.source,
+		n.target,
+	);
+	const dir =
+		n.curveDirection === "auto" || n.curveDirection === undefined
+			? Math.abs(toX - fromX) >= Math.abs(toY - fromY)
+				? "horizontal"
+				: "vertical"
+			: n.curveDirection;
+	const d =
+		dir === "horizontal"
+			? `M ${fromX},${fromY} C ${(fromX + toX) / 2},${fromY} ${(fromX + toX) / 2},${toY} ${toX},${toY}`
+			: `M ${fromX},${fromY} C ${fromX},${(fromY + toY) / 2} ${toX},${(fromY + toY) / 2} ${toX},${toY}`;
+	return {
+		type: "path",
+		id,
+		d,
+		fill: "none",
+		stroke: n.stroke ?? "black",
+		strokeWidth: n.strokeWidth ?? 3,
+		...(n.attrs ? { attrs: n.attrs } : {}),
+	};
+}
+
 // Build path element: the stored d is emitted with a translation from its
 // parsed origin to wherever layout placed the node
 function buildPath(
@@ -421,6 +459,9 @@ export function layoutToAst(
 		} else if (n.type === "line") {
 			const line = buildLine(id, n, layout, offset);
 			elements = line ? [line] : undefined;
+		} else if (n.type === "curve") {
+			const curve = buildCurve(id, n, layout, offset);
+			elements = curve ? [curve] : undefined;
 		} else if (n.type === "path") {
 			elements = [buildPath(id, box, n, offset)];
 		} else if (n.type === "arrow") {

@@ -205,8 +205,8 @@ test("the git graph renders lanes, edges, and the merge", async ({ page }) => {
 
 	// 7 commit circles in each of the two directions
 	await expect(page.locator('svg circle[id*="commit-"]')).toHaveCount(14);
-	// 8 edges each: 6 first parents + one extra per merge
-	await expect(page.locator('svg line[id^="edge-"]')).toHaveCount(16);
+	// 8 edges each (curved paths): 6 first parents + one extra per merge
+	await expect(page.locator('svg path[id^="edge-"]')).toHaveCount(16);
 	// tag pills with pointer lines to their commits
 	await expect(page.locator('svg line[id$="-tagline"]')).toHaveCount(2);
 	await expect(page.locator("svg text", { hasText: "v1.0" })).toHaveCount(2);
