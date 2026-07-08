@@ -446,8 +446,14 @@ export function layoutToAst(
 	const groups: { zOrder: number; elements: SvgElement[] }[] = [];
 
 	for (const [id, box] of Object.entries(layout)) {
-		const n = byId.get(id);
-		if (!n?.type) continue;
+		const raw = byId.get(id);
+		if (!raw?.type) continue;
+		// Solved constraint colors: strokes for connector marks, fills otherwise
+		const n = box.fill
+			? raw.type === "line" || raw.type === "curve" || raw.type === "arrow"
+				? { ...raw, stroke: box.fill }
+				: { ...raw, fill: box.fill }
+			: raw;
 
 		let elements: SvgElement[] | undefined;
 		if (n.type === "circle") {

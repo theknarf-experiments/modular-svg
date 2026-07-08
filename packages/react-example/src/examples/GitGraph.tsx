@@ -24,29 +24,29 @@ export type GitGraphProps = {
 	fontSize?: number;
 };
 
-const DEFAULT_COLORS = ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B3"];
-
 const laneId = (branch: string) => `lane-${branch}`;
+const labelId = (branch: string) => `lane-${branch}-label`;
 const anchorId = (commit: string) => `commit-${commit}`;
+const dotId = (commit: string) => `commit-${commit}-dot`;
+const edgeId = (from: string, to: string) => `edge-${from}-${to}`;
 
 // Edges reference invisible anchors declared before them, so the visible
 // circles (declared after) paint on top without any z-order juggling.
-// Same-lane edges stay straight; lane changes get a smooth curve.
+// The stroke color is left to the constraint solver (SameColor), so no
+// color is set here.
 function Edge({
 	id,
 	from,
 	to,
-	color,
 	direction,
 }: {
 	id: string;
 	from: string;
 	to: string;
-	color: string;
 	direction: "horizontal" | "vertical";
 }) {
 	return (
-		<curve key={id} stroke={color} stroke-width={2} direction={direction}>
+		<curve key={id} stroke-width={2} direction={direction}>
 			<ref target={anchorId(from)} />
 			<ref target={anchorId(to)} />
 		</curve>
@@ -61,16 +61,36 @@ export function GitGraph({
 	laneSpacing = 34,
 	fontSize = 12,
 }: GitGraphProps) {
-	const color = new Map(
-		branches.map((b, i) => [
-			b.name,
-			b.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length],
-		]),
-	);
 	const horizontal = direction === "horizontal";
 	// the axis commits chain along, and the axis lanes align across
 	const chainAxis = horizontal ? "x" : "y";
 	const laneAlign = horizontal ? "centerY" : "centerX";
+
+	// Every element that should follow a branch's color, grouped by branch:
+	// the commit dots on that branch and the edges landing on those commits.
+	const branchElements = new Map<string, string[]>(
+		branches.map((b) => [b.name, []]),
+	);
+	for (const c of commits) {
+		branchElements.get(c.branch)?.push(dotId(c.id));
+		for (const p of c.parents ?? []) {
+			branchElements.get(c.branch)?.push(edgeId(p, c.id));
+		}
+	}
+
+	const LanePill = ({ branch }: { branch: Branch }) => (
+		<background
+			key={laneId(branch.name)}
+			padding={4}
+			fill={branch.color}
+			stroke-width={0}
+			rx={6}
+		>
+			<text key={labelId(branch.name)} font-size={fontSize}>
+				{branch.name}
+			</text>
+		</background>
+	);
 
 	return (
 		<Canvas
@@ -86,33 +106,13 @@ export function GitGraph({
 				{horizontal ? (
 					<stackV key="lanes" spacing={laneSpacing} alignment="right">
 						{branches.map((b) => (
-							<background
-								key={laneId(b.name)}
-								padding={4}
-								fill={color.get(b.name)}
-								stroke-width={0}
-								rx={6}
-							>
-								<text font-size={fontSize} fill="white">
-									{b.name}
-								</text>
-							</background>
+							<LanePill key={b.name} branch={b} />
 						))}
 					</stackV>
 				) : (
 					<stackH key="lanes" spacing={laneSpacing} alignment="bottom">
 						{branches.map((b) => (
-							<background
-								key={laneId(b.name)}
-								padding={4}
-								fill={color.get(b.name)}
-								stroke-width={0}
-								rx={6}
-							>
-								<text font-size={fontSize} fill="white">
-									{b.name}
-								</text>
-							</background>
+							<LanePill key={b.name} branch={b} />
 						))}
 					</stackH>
 				)}
@@ -136,11 +136,10 @@ export function GitGraph({
 				{commits.flatMap((c) =>
 					(c.parents ?? []).map((p) => (
 						<Edge
-							key={`edge-${p}-${c.id}`}
-							id={`edge-${p}-${c.id}`}
+							key={edgeId(p, c.id)}
+							id={edgeId(p, c.id)}
 							from={p}
 							to={c.id}
-							color={color.get(c.branch) ?? "#333"}
 							direction={horizontal ? "horizontal" : "vertical"}
 						/>
 					)),
@@ -148,16 +147,10 @@ export function GitGraph({
 
 				{commits.map((c) => (
 					<React.Fragment key={`commit-${c.id}-dot`}>
-						<circle
-							key={`${anchorId(c.id)}-dot`}
-							r={8}
-							fill={color.get(c.branch)}
-							stroke="#333"
-							stroke-width={1.5}
-						/>
+						<circle key={dotId(c.id)} r={8} stroke="#333" stroke-width={1.5} />
 						<align alignment="center">
 							<ref target={anchorId(c.id)} />
-							<ref target={`${anchorId(c.id)}-dot`} />
+							<ref target={dotId(c.id)} />
 						</align>
 
 						<text
@@ -211,6 +204,30 @@ export function GitGraph({
 							</>
 						)}
 					</React.Fragment>
+				))}
+
+				{/* Color constraints (declared last so every dot and edge they
+				    reference already exists): pick a distinct color per branch,
+				    copy it onto that branch's dots and edges, and make each
+				    label readable against its pill */}
+				<distinctColors>
+					{branches.map((b) => (
+						<ref key={b.name} target={laneId(b.name)} />
+					))}
+				</distinctColors>
+				{branches.map((b) => (
+					<sameColor key={`same-${b.name}`}>
+						<ref target={laneId(b.name)} />
+						{(branchElements.get(b.name) ?? []).map((el) => (
+							<ref key={el} target={el} />
+						))}
+					</sameColor>
+				))}
+				{branches.map((b) => (
+					<contrast key={`contrast-${b.name}`} ratio={4.5}>
+						<ref target={labelId(b.name)} />
+						<ref target={laneId(b.name)} />
+					</contrast>
 				))}
 			</group>
 		</Canvas>

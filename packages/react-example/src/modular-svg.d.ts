@@ -63,6 +63,23 @@ declare module "react" {
 				axis?: "x" | "y";
 				children?: React.ReactNode;
 			};
+			// Color constraints
+			distinctColors: {
+				key?: React.Key;
+				saturation?: number;
+				lightness?: number;
+				startHue?: number;
+				children?: React.ReactNode;
+			};
+			sameColor: {
+				key?: React.Key;
+				children?: React.ReactNode;
+			};
+			contrast: {
+				key?: React.Key;
+				ratio?: number;
+				children?: React.ReactNode;
+			};
 
 			// Special elements
 			text: {

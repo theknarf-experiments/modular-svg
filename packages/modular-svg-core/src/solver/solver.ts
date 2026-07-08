@@ -1,13 +1,20 @@
+import { hslToHex } from "../color.ts";
 import type { LayoutOperator, NodeRecord } from "./index.ts";
 
 export type Scene = {
 	nodes: NodeRecord[];
 	operators: LayoutOperator[];
+	/** operators over the color array (3 slots per node: h, s, l) */
+	colorOperators?: LayoutOperator[];
+	/** initial h,s,l per node (length nodes * 3) */
+	colorSeed?: number[];
+	/** ids whose solved color should be emitted into the result */
+	coloredIds?: string[];
 };
 
 export type LayoutResult = Record<
 	string,
-	{ x: number; y: number; width: number; height: number }
+	{ x: number; y: number; width: number; height: number; fill?: string }
 >;
 
 export function compileScene(scene: Scene): {
@@ -55,15 +62,43 @@ export function solveLayout(
 		}
 		iter++;
 	}
+	// Colors are solved by the same damped iteration over their own array
+	const colors = new Float64Array(scene.colorSeed ?? []);
+	if (scene.colorOperators?.length) {
+		const cNext = new Float64Array(colors.length);
+		let cIter = 0;
+		let cResidual = Infinity;
+		while (cIter < maxIter && cResidual > epsilon) {
+			cResidual = 0;
+			for (const op of scene.colorOperators) {
+				cNext.set(colors);
+				op(colors, cNext);
+				for (let i = 0; i < colors.length; i++) {
+					const diff = cNext[i] - colors[i];
+					const abs = Math.abs(diff);
+					if (abs > cResidual) cResidual = abs;
+					colors[i] += lambda * diff;
+				}
+			}
+			cIter++;
+		}
+	}
+	const colored = new Set(scene.coloredIds ?? []);
+
 	const result: LayoutResult = {};
-	for (const n of scene.nodes) {
+	scene.nodes.forEach((n, i) => {
 		const base = indexMap.get(n.id) as number;
 		result[n.id] = {
 			x: cur[base],
 			y: cur[base + 1],
 			width: cur[base + 2],
 			height: cur[base + 3],
+			...(colored.has(n.id)
+				? {
+						fill: hslToHex(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]),
+					}
+				: {}),
 		};
-	}
+	});
 	return result;
 }
