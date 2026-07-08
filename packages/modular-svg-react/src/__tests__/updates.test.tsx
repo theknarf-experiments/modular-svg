@@ -1,26 +1,6 @@
 import { solveLayout } from "@modular-svg/core";
-import type * as React from "react";
 import { describe, expect, it } from "vitest";
 import { act, createRoot } from "../reconciler";
-
-declare module "react" {
-	namespace JSX {
-		interface IntrinsicElements {
-			stackH: {
-				key?: React.Key;
-				spacing?: number;
-				children?: React.ReactNode;
-			};
-			align: {
-				key?: React.Key;
-				axis?: string;
-				alignment?: string;
-				children?: React.ReactNode;
-			};
-			ref: { key?: React.Key; target: string };
-		}
-	}
-}
 
 function Scene({ target, label }: { target: string; label: string }) {
 	return (

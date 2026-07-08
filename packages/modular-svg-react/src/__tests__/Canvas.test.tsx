@@ -5,33 +5,6 @@ import { Canvas } from "../Canvas";
 
 // Extend JSX intrinsic elements for testing
 // Using module augmentation to extend, not replace React's types
-declare module "react" {
-	namespace JSX {
-		interface IntrinsicElements {
-			stackH: { spacing?: number; children?: React.ReactNode };
-			stackV: { spacing?: number; children?: React.ReactNode };
-			arrow: { key?: React.Key; children?: React.ReactNode };
-			ref: { key?: React.Key; target: string };
-			background: {
-				key?: React.Key;
-				padding?: number;
-				children?: React.ReactNode;
-			};
-			align: {
-				key?: React.Key;
-				axis?: "x" | "y";
-				alignment?: string;
-				children?: React.ReactNode;
-			};
-			distribute: {
-				key?: React.Key;
-				axis?: "x" | "y";
-				spacing?: number;
-				children?: React.ReactNode;
-			};
-		}
-	}
-}
 
 describe("Canvas component", () => {
 	describe("Basic Rendering", () => {
