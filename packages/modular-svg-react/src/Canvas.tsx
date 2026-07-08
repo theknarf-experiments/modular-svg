@@ -32,6 +32,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
+				{...element.attrs}
 				{...handlers}
 			/>
 		);
@@ -48,6 +49,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
+				{...element.attrs}
 				{...handlers}
 			/>
 		);
@@ -59,9 +61,12 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				id={element.id}
 				x={element.x}
 				y={element.y}
+				dominantBaseline="hanging"
+				fontFamily="sans-serif"
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
+				{...element.attrs}
 				{...handlers}
 			>
 				{element.text}
@@ -79,6 +84,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				y2={element.y2}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
+				{...element.attrs}
 				{...handlers}
 			/>
 		);
@@ -89,9 +95,40 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 			<polygon
 				id={element.id}
 				points={element.points}
+				transform={element.transform}
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
+				{...element.attrs}
+				{...handlers}
+			/>
+		);
+	}
+
+	if (element.type === "path") {
+		return (
+			<path
+				id={element.id}
+				d={element.d}
+				fill={element.fill}
+				stroke={element.stroke}
+				strokeWidth={element.strokeWidth}
+				{...element.attrs}
+				{...handlers}
+			/>
+		);
+	}
+
+	if (element.type === "image") {
+		return (
+			<image
+				id={element.id}
+				x={element.x}
+				y={element.y}
+				width={element.width}
+				height={element.height}
+				href={element.href}
+				{...element.attrs}
 				{...handlers}
 			/>
 		);

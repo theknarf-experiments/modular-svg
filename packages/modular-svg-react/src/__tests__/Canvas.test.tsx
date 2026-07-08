@@ -10,6 +10,8 @@ declare module "react" {
 		interface IntrinsicElements {
 			stackH: { spacing?: number; children?: React.ReactNode };
 			stackV: { spacing?: number; children?: React.ReactNode };
+			arrow: { children?: React.ReactNode };
+			ref: { target: string };
 		}
 	}
 }
@@ -303,6 +305,30 @@ describe("Canvas component", () => {
 			await waitFor(() => {
 				const circles = container.querySelectorAll("circle");
 				expect(circles.length).toBe(2);
+			});
+		});
+	});
+
+	describe("Arrow rendering", () => {
+		it("renders arrows as a curved path with a polygon head", async () => {
+			const { container } = render(
+				<Canvas>
+					<rect key="a" width={40} height={30} />
+					<rect key="b" x={120} y={90} width={40} height={30} />
+					<arrow key="arr">
+						<ref target="a" />
+						<ref target="b" />
+					</arrow>
+				</Canvas>,
+			);
+
+			await waitFor(() => {
+				const path = container.querySelector("path");
+				expect(path).toBeTruthy();
+				expect(path?.getAttribute("d")).toMatch(/^M.+ Q.+/);
+				const polygon = container.querySelector("polygon");
+				expect(polygon).toBeTruthy();
+				expect(polygon?.getAttribute("transform")).toContain("rotate");
 			});
 		});
 	});
