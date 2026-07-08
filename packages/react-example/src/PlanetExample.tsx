@@ -2,19 +2,25 @@ import { Canvas } from "@modular-svg/react";
 import "./modular-svg.d.ts";
 
 /**
- * Planet Example - Adapted from examples/planet.json
+ * Planet Example - Complete adaptation of examples/planet.json
  *
- * This demonstrates a horizontal layout of planets with proper spacing.
- * The full JSON feature set (background, align, distribute, text, arrow,
- * ref) is shown in FullPlanetExample.
+ * This demonstrates ALL features from the original JSON:
+ * - Background container with padding
+ * - Horizontal stack with planets
+ * - Text label
+ * - Align operator for centering
+ * - Distribute operator for vertical spacing
+ * - Arrow connector
+ * - Ref (references to other elements)
  */
 export function PlanetExample() {
 	return (
 		<div style={{ fontFamily: "system-ui, sans-serif" }}>
 			<h2>Planet Example</h2>
-			<p style={{ color: "#666", fontSize: "14px" }}>
-				Inner planets (Mercury, Venus, Earth, Mars) arranged horizontally with
-				vertical centering
+			<p style={{ color: "#666", fontSize: "14px", marginBottom: "1rem" }}>
+				This is a complete adaptation of <code>examples/planet.json</code> using
+				all available JSX features: Background, StackH, Text, Align, Distribute,
+				Arrow, and Ref.
 			</p>
 
 			<Canvas
@@ -22,80 +28,79 @@ export function PlanetExample() {
 					border: "1px solid #ddd",
 					borderRadius: "8px",
 					display: "inline-block",
-					backgroundColor: "#f9f9f9",
 				}}
 				margin={20}
 			>
-				<stackH spacing={50}>
-					{/* Mercury */}
-					<circle r={15} fill="#EBE3CF" stroke="black" strokeWidth={3} />
+				<group>
+					{/* Background container with padding around planets */}
+					<background padding={10}>
+						<stackH key="planets" spacing={50} alignment="centerY">
+							<circle
+								key="mercury"
+								r={15}
+								fill="#EBE3CF"
+								stroke="black"
+								stroke-width={3}
+							/>
+							<circle
+								key="venus"
+								r={36}
+								fill="#DC933C"
+								stroke="black"
+								stroke-width={3}
+							/>
+							<circle
+								key="earth"
+								r={38}
+								fill="#179DD7"
+								stroke="black"
+								stroke-width={3}
+							/>
+							<circle
+								key="mars"
+								r={21}
+								fill="#F1CF8E"
+								stroke="black"
+								stroke-width={3}
+							/>
+						</stackH>
+					</background>
 
-					{/* Venus */}
-					<circle r={36} fill="#DC933C" stroke="black" strokeWidth={3} />
+					{/* Text label centered above Mercury */}
+					<align key="alignLabel" axis="x" alignment="center">
+						<text key="label" fill="black">
+							Mercury
+						</text>
+						<ref target="mercury" />
+					</align>
 
-					{/* Earth */}
-					<circle r={38} fill="#179DD7" stroke="black" strokeWidth={3} />
+					{/* Vertical spacing between label and Mercury */}
+					<distribute key="distVertical" axis="y" spacing={60}>
+						<ref target="label" />
+						<ref target="mercury" />
+					</distribute>
 
-					{/* Mars */}
-					<circle r={21} fill="#F1CF8E" stroke="black" strokeWidth={3} />
-				</stackH>
+					{/* Arrow connecting label to Mercury */}
+					<arrow key="arrow1" stroke="black" stroke-width={2}>
+						<ref target="label" />
+						<ref target="mercury" />
+					</arrow>
+				</group>
 			</Canvas>
-
-			<div style={{ marginTop: "1rem", fontSize: "14px", color: "#666" }}>
-				<p>
-					<strong>Planet Sizes (to scale):</strong>
-				</p>
-				<ul style={{ paddingLeft: "1.5rem" }}>
-					<li>Mercury: r=15 (4,879 km)</li>
-					<li>Venus: r=36 (12,104 km)</li>
-					<li>Earth: r=38 (12,742 km)</li>
-					<li>Mars: r=21 (6,779 km)</li>
-				</ul>
-			</div>
 		</div>
 	);
 }
 
 /**
- * Interactive Planet Example with Size Control
+ * Complex Planet System - Shows multiple advanced features
  */
-export function InteractivePlanetExample() {
-	const [scale, setScale] = React.useState(1);
-	const [spacing, setSpacing] = React.useState(50);
-
+export function ComplexPlanetSystem() {
 	return (
 		<div style={{ fontFamily: "system-ui, sans-serif" }}>
-			<h2>Interactive Planet Example</h2>
-			<p style={{ color: "#666", fontSize: "14px" }}>
-				Adjust the scale and spacing to explore the layout
+			<h2>Complex Planet System</h2>
+			<p style={{ color: "#666", fontSize: "14px", marginBottom: "1rem" }}>
+				Demonstrating multiple labels, alignments, and arrows
 			</p>
-
-			<div style={{ marginBottom: "1rem" }}>
-				<label style={{ display: "block", marginBottom: "0.5rem" }}>
-					Scale: {scale.toFixed(1)}x
-					<input
-						type="range"
-						min="0.5"
-						max="2"
-						step="0.1"
-						value={scale}
-						onChange={(e) => setScale(Number(e.target.value))}
-						style={{ marginLeft: "1rem", width: "200px" }}
-					/>
-				</label>
-				<label style={{ display: "block", marginBottom: "0.5rem" }}>
-					Spacing: {spacing}px
-					<input
-						type="range"
-						min="10"
-						max="100"
-						step="5"
-						value={spacing}
-						onChange={(e) => setSpacing(Number(e.target.value))}
-						style={{ marginLeft: "1rem", width: "200px" }}
-					/>
-				</label>
-			</div>
 
 			<Canvas
 				style={{
@@ -104,18 +109,133 @@ export function InteractivePlanetExample() {
 					display: "inline-block",
 					backgroundColor: "#0a0a0a",
 				}}
-				margin={20}
+				margin={30}
 			>
-				<stackH spacing={spacing}>
-					<circle r={15 * scale} fill="#EBE3CF" stroke="#666" strokeWidth={2} />
-					<circle r={36 * scale} fill="#DC933C" stroke="#666" strokeWidth={2} />
-					<circle r={38 * scale} fill="#179DD7" stroke="#666" strokeWidth={2} />
-					<circle r={21 * scale} fill="#F1CF8E" stroke="#666" strokeWidth={2} />
-				</stackH>
+				<group>
+					{/* Main planet layout */}
+					<background
+						padding={15}
+						fill="#1a1a1a"
+						stroke="#333"
+						stroke-width={1}
+					>
+						<stackH key="planets" spacing={60} alignment="centerY">
+							<circle
+								key="mercury"
+								r={15}
+								fill="#EBE3CF"
+								stroke="#666"
+								stroke-width={2}
+							/>
+							<circle
+								key="venus"
+								r={36}
+								fill="#DC933C"
+								stroke="#666"
+								stroke-width={2}
+							/>
+							<circle
+								key="earth"
+								r={38}
+								fill="#179DD7"
+								stroke="#666"
+								stroke-width={2}
+							/>
+							<circle
+								key="mars"
+								r={21}
+								fill="#F1CF8E"
+								stroke="#666"
+								stroke-width={2}
+							/>
+						</stackH>
+					</background>
+
+					{/* Labels for each planet */}
+					<align key="alignMercuryLabel" axis="x" alignment="center">
+						<text key="mercuryLabel" fill="#EBE3CF">
+							Mercury
+						</text>
+						<ref target="mercury" />
+					</align>
+
+					<align key="alignVenusLabel" axis="x" alignment="center">
+						<text key="venusLabel" fill="#DC933C">
+							Venus
+						</text>
+						<ref target="venus" />
+					</align>
+
+					<align key="alignEarthLabel" axis="x" alignment="center">
+						<text key="earthLabel" fill="#179DD7">
+							Earth
+						</text>
+						<ref target="earth" />
+					</align>
+
+					<align key="alignMarsLabel" axis="x" alignment="center">
+						<text key="marsLabel" fill="#F1CF8E">
+							Mars
+						</text>
+						<ref target="mars" />
+					</align>
+
+					{/* Vertical spacing for labels */}
+					<distribute key="distMercury" axis="y" spacing={50}>
+						<ref target="mercuryLabel" />
+						<ref target="mercury" />
+					</distribute>
+
+					<distribute key="distVenus" axis="y" spacing={50}>
+						<ref target="venusLabel" />
+						<ref target="venus" />
+					</distribute>
+
+					<distribute key="distEarth" axis="y" spacing={50}>
+						<ref target="earthLabel" />
+						<ref target="earth" />
+					</distribute>
+
+					<distribute key="distMars" axis="y" spacing={50}>
+						<ref target="marsLabel" />
+						<ref target="mars" />
+					</distribute>
+
+					{/* Arrows connecting labels to planets */}
+					<arrow key="arrowMercury" stroke="#EBE3CF" stroke-width={1}>
+						<ref target="mercuryLabel" />
+						<ref target="mercury" />
+					</arrow>
+
+					<arrow key="arrowVenus" stroke="#DC933C" stroke-width={1}>
+						<ref target="venusLabel" />
+						<ref target="venus" />
+					</arrow>
+
+					<arrow key="arrowEarth" stroke="#179DD7" stroke-width={1}>
+						<ref target="earthLabel" />
+						<ref target="earth" />
+					</arrow>
+
+					<arrow key="arrowMars" stroke="#F1CF8E" stroke-width={1}>
+						<ref target="marsLabel" />
+						<ref target="mars" />
+					</arrow>
+				</group>
 			</Canvas>
+
+			<div style={{ marginTop: "1.5rem", fontSize: "14px", color: "#666" }}>
+				<p>
+					This example shows how to create complex diagrams with multiple labels
+					and connectors. Each planet has:
+				</p>
+				<ul style={{ paddingLeft: "1.5rem" }}>
+					<li>A colored text label</li>
+					<li>Centered alignment above the planet</li>
+					<li>Precise vertical spacing (50px)</li>
+					<li>A colored arrow connector</li>
+				</ul>
+			</div>
 		</div>
 	);
 }
-
-// Need to import React for useState
-import * as React from "react";
