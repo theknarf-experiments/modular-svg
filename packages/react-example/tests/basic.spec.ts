@@ -46,7 +46,9 @@ test("Canvas renders SVG elements with console diagnostics", async ({
 
 	// Print all captured console messages
 	console.log("\n=== All Console Messages ===");
-	consoleMessages.forEach((msg) => console.log(msg));
+	consoleMessages.forEach((msg) => {
+		console.log(msg);
+	});
 	console.log("=== End Console Messages ===\n");
 
 	// Take a screenshot for debugging
