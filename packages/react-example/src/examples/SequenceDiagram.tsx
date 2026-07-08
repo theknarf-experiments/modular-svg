@@ -16,10 +16,11 @@ export type SequenceDiagramProps = {
 	activations?: Activation[];
 	/** horizontal gap between actors; make room for the longest label */
 	actorSpacing?: number;
+	/** vertical gap between consecutive messages */
+	messageGap?: number;
+	/** font size for actor names and message labels */
+	fontSize?: number;
 };
-
-const FONT = 13;
-const MSG_GAP = 40;
 
 const boxId = (actor: string) => `actor-${actor}`;
 const bottomId = (actor: string) => `actor-${actor}-bottom`;
@@ -32,7 +33,15 @@ function anchorOn(messages: Message[], actor: string, i: number): string {
 	return anchorId(i, messages[i].from === actor ? "from" : "to");
 }
 
-function ActorBox({ id, name }: { id: string; name: string }) {
+function ActorBox({
+	id,
+	name,
+	fontSize,
+}: {
+	id: string;
+	name: string;
+	fontSize: number;
+}) {
 	return (
 		<background
 			key={id}
@@ -41,7 +50,7 @@ function ActorBox({ id, name }: { id: string; name: string }) {
 			stroke="#555"
 			stroke-width={1}
 		>
-			<text font-size={FONT}>{name}</text>
+			<text font-size={fontSize}>{name}</text>
 		</background>
 	);
 }
@@ -81,6 +90,8 @@ export function SequenceDiagram({
 	messages,
 	activations = [],
 	actorSpacing = 170,
+	messageGap = 40,
+	fontSize = 13,
 }: SequenceDiagramProps) {
 	return (
 		<Canvas
@@ -95,11 +106,16 @@ export function SequenceDiagram({
 				{/* Actor boxes, top and bottom (painted first: declared first) */}
 				<stackH key="actors" spacing={actorSpacing} alignment="top">
 					{actors.map((a) => (
-						<ActorBox key={a} id={boxId(a)} name={a} />
+						<ActorBox key={a} id={boxId(a)} name={a} fontSize={fontSize} />
 					))}
 				</stackH>
 				{actors.map((a) => (
-					<ActorBox key={`${a}-b`} id={bottomId(a)} name={a} />
+					<ActorBox
+						key={`${a}-b`}
+						id={bottomId(a)}
+						name={a}
+						fontSize={fontSize}
+					/>
 				))}
 
 				{/* Lifelines: dashed lines from each top box to its bottom copy */}
@@ -134,7 +150,7 @@ export function SequenceDiagram({
 									<ref target={anchorId(0, "from")} />
 								</distribute>
 							) : (
-								<distribute axis="y" spacing={MSG_GAP}>
+								<distribute axis="y" spacing={messageGap}>
 									<ref target={anchorId(i - 1, "from")} />
 									<ref target={anchorId(i, "from")} />
 								</distribute>
@@ -153,7 +169,7 @@ export function SequenceDiagram({
 								</>
 							)}
 
-							<text key={labelId(i)} font-size={FONT}>
+							<text key={labelId(i)} font-size={fontSize}>
 								{m.label}
 							</text>
 							{selfMessage ? (
