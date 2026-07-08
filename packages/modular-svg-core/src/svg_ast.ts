@@ -159,7 +159,9 @@ function getAttrs(n?: NodeRecord): {
 	if (!n) return {};
 	const fill =
 		n.fill !== undefined ? n.fill : n.type === "text" ? "black" : "none";
-	const stroke = n.stroke ?? "black";
+	// Text is filled, not stroked; a default black stroke would outline every
+	// glyph (a 1px outline, invisible only while the fill is also dark).
+	const stroke = n.stroke ?? (n.type === "text" ? "none" : "black");
 	const sw = n.strokeWidth ?? (n.type === "arrow" ? 3 : undefined);
 	return {
 		fill,
