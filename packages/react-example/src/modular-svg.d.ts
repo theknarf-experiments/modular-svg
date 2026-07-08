@@ -85,6 +85,9 @@ declare module "react" {
 				fill?: string;
 				stroke?: string;
 				"stroke-width"?: number;
+				"stroke-dasharray"?: string;
+				padStart?: number;
+				padEnd?: number;
 				children?: React.ReactNode;
 			};
 			ref: {
@@ -95,6 +98,7 @@ declare module "react" {
 				key?: React.Key;
 				stroke?: string;
 				"stroke-width"?: number;
+				"stroke-dasharray"?: string;
 				source?: number[];
 				target?: number[];
 				children?: React.ReactNode;

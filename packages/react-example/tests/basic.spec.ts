@@ -78,6 +78,7 @@ test("every example shows its source code on every page", async ({ page }) => {
 		"/",
 		"/interactive",
 		"/diagrams",
+		"/sequence",
 		"/baking-recipe",
 		"/quantum-circuit",
 		"/pulley",
@@ -128,4 +129,31 @@ test("the Bluefish gallery examples render on their pages", async ({
 	await page.waitForTimeout(1500);
 	expect(await page.locator('svg path[d*="M 10,0"]').count()).toBe(2);
 	expect(await page.locator('svg line[id="l6copy"]').count()).toBe(1);
+});
+
+test("the sequence diagram renders lifelines, arrows and activations", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/sequence");
+	await page.waitForTimeout(1500);
+
+	// three dashed lifelines
+	expect(await page.locator('svg line[stroke-dasharray="4 4"]').count()).toBe(
+		3,
+	);
+	// four message arrows (the self-message has none)
+	expect(await page.locator('svg line[id*="-arrow"]').count()).toBe(4);
+	// two activation bars sit exactly on their lifelines
+	const serverBox = await page
+		.locator('svg rect[id="actor-Server"]')
+		.boundingBox();
+	const serverBar = await page
+		.locator('svg rect[id="act-Server"]')
+		.boundingBox();
+	expect(serverBar).toBeTruthy();
+	if (serverBar && serverBox) {
+		const boxCenter = serverBox.x + serverBox.width / 2;
+		const barCenter = serverBar.x + serverBar.width / 2;
+		expect(Math.abs(boxCenter - barCenter)).toBeLessThan(1);
+	}
 });
