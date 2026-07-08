@@ -85,3 +85,17 @@ test("every example shows its source code", async ({ page }) => {
 	expect(code).toContain("import { Canvas }");
 	expect(code).toContain("<Canvas");
 });
+
+test("planet label dropdown retargets the refs", async ({ page }) => {
+	await page.goto("http://localhost:5173");
+	await page.waitForTimeout(2000);
+
+	const label = page.locator('svg text[id="label"]');
+	await expect(label).toHaveText("Mercury");
+
+	await page.getByLabel("Label planet").selectOption("venus");
+	await expect(label).toHaveText("Venus");
+
+	// arrow still present after retargeting
+	expect(await page.locator('svg line[id="arrow1"]').count()).toBe(1);
+});
