@@ -1,6 +1,6 @@
 import type { LayoutOperator, NodeRecord } from "@modular-svg/core";
 import { buildSceneFromJson } from "@modular-svg/core";
-import type * as React from "react";
+import * as React from "react";
 import Reconciler from "react-reconciler";
 import { DefaultEventPriority } from "react-reconciler/constants";
 
@@ -43,13 +43,14 @@ type TextInstance = null;
 type Type = string;
 type Props = Record<string, unknown>;
 type HydratableInstance = never;
+type FormInstance = never;
 type PublicInstance = Instance;
 type HostContext = object;
-type UpdatePayload = Props;
 type ChildSet = never;
 type TimeoutHandle = number;
 type NoTimeout = -1;
 type SuspenseInstance = never;
+type TransitionStatus = null;
 
 // Helper to convert instance tree to JSON for core library
 function instanceToJson(instance: Instance): Record<string, unknown> {
@@ -89,8 +90,6 @@ function instanceToJson(instance: Instance): Record<string, unknown> {
 }
 
 // HostConfig implementation
-// Note: Using 'as any' cast because @types/react-reconciler 0.31.0 types may not match
-// the actual React 19 runtime behavior (commitUpdate signature changed)
 const hostConfig: Reconciler.HostConfig<
 	Type,
 	Props,
@@ -99,12 +98,13 @@ const hostConfig: Reconciler.HostConfig<
 	TextInstance,
 	SuspenseInstance,
 	HydratableInstance,
+	FormInstance,
 	PublicInstance,
 	HostContext,
-	UpdatePayload,
 	ChildSet,
 	TimeoutHandle,
-	NoTimeout
+	NoTimeout,
+	TransitionStatus
 > = {
 	// Configuration
 	supportsMutation: true,
@@ -262,10 +262,6 @@ const hostConfig: Reconciler.HostConfig<
 		}
 	},
 
-	// React 19: prepareUpdate was removed, signature changed
-	// Signature is now: commitUpdate(instance, type, oldProps, newProps, fiber)
-	// Note: @types/react-reconciler may not be updated yet, but runtime behavior is correct
-	// @ts-expect-error - React 19 changed commitUpdate signature, types not updated
 	commitUpdate(
 		instance: Instance,
 		_type: Type,
@@ -412,10 +408,6 @@ const hostConfig: Reconciler.HostConfig<
 	cancelTimeout: clearTimeout,
 	noTimeout: -1 as NoTimeout,
 
-	getCurrentEventPriority(): number {
-		return DefaultEventPriority;
-	},
-
 	resolveUpdatePriority(): number {
 		return DefaultEventPriority;
 	},
@@ -471,6 +463,36 @@ const hostConfig: Reconciler.HostConfig<
 		typeof queueMicrotask === "function"
 			? queueMicrotask
 			: (callback: () => void) => Promise.resolve().then(callback),
+
+	// Transitions and forms (required by react-reconciler 0.33)
+	NotPendingTransition: null,
+	HostTransitionContext: React.createContext<TransitionStatus>(
+		null,
+	) as unknown as Reconciler.ReactContext<TransitionStatus>,
+
+	resetFormInstance(_form: FormInstance): void {
+		// Not needed
+	},
+
+	requestPostPaintCallback(_callback: (time: number) => void): void {
+		// Not needed
+	},
+
+	shouldAttemptEagerTransition(): boolean {
+		return false;
+	},
+
+	trackSchedulerEvent(): void {
+		// Not needed
+	},
+
+	resolveEventType(): null | string {
+		return null;
+	},
+
+	resolveEventTimeStamp(): number {
+		return -1.1;
+	},
 };
 
 // Create the reconciler
@@ -494,8 +516,14 @@ export function createRoot(): ReconcilerRoot {
 		false, // isStrictMode
 		null, // concurrentUpdatesByDefaultOverride
 		"", // identifierPrefix
+		(error) => {
+			console.error(error);
+		}, // onUncaughtError
+		(error) => {
+			console.error(error);
+		}, // onCaughtError
 		() => {}, // onRecoverableError
-		null, // transitionCallbacks
+		() => {}, // onDefaultTransitionIndicator
 	);
 
 	return {

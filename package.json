@@ -10,14 +10,14 @@
 	},
 	"license": "MIT",
 	"devDependencies": {
-		"@biomejs/biome": "2.1.1",
-		"@types/node": "^24.0.13",
-		"typescript": "^5.8.3",
-		"vitest": "^3.2.4"
+		"@biomejs/biome": "2.5.2",
+		"@types/node": "^24.10.11",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.10"
 	},
 	"packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0",
 	"dependencies": {
-		"commander": "^14.0.0"
+		"commander": "^15.0.0"
 	},
 	"type": "module"
 }

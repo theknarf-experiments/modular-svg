@@ -278,7 +278,9 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	walk(json as AnyNode);
 
 	const indexMap = new Map<string, number>();
-	nodes.forEach((n, i) => indexMap.set(n.id, i * 4));
+	nodes.forEach((n, i) => {
+		indexMap.set(n.id, i * 4);
+	});
 
 	const ops: LayoutOperator[] = [];
 	for (const d of descs) {
