@@ -27,7 +27,15 @@ declare module "react" {
 					| "top"
 					| "bottom"
 					| "centerX"
-					| "centerY";
+					| "centerY"
+					| "topLeft"
+					| "topCenter"
+					| "topRight"
+					| "centerLeft"
+					| "centerRight"
+					| "bottomLeft"
+					| "bottomCenter"
+					| "bottomRight";
 				children?: React.ReactNode;
 			};
 			distribute: {
@@ -39,9 +47,18 @@ declare module "react" {
 			background: {
 				key?: React.Key;
 				padding?: number;
+				width?: number;
+				height?: number;
+				rx?: number;
+				opacity?: number;
 				fill?: string;
 				stroke?: string;
 				"stroke-width"?: number;
+				children?: React.ReactNode;
+			};
+			span: {
+				key?: React.Key;
+				axis?: "x" | "y";
 				children?: React.ReactNode;
 			};
 
@@ -53,6 +70,11 @@ declare module "react" {
 				y?: number;
 				width?: number;
 				height?: number;
+				"font-size"?: number;
+				"font-family"?: string;
+				"font-style"?: string;
+				"font-weight"?: number;
+				dy?: string;
 				fill?: string;
 				stroke?: string;
 				"stroke-width"?: number;
@@ -68,6 +90,21 @@ declare module "react" {
 			ref: {
 				key?: React.Key;
 				target: string;
+			};
+			line: {
+				key?: React.Key;
+				stroke?: string;
+				"stroke-width"?: number;
+				source?: number[];
+				target?: number[];
+				children?: React.ReactNode;
+			};
+			path: {
+				key?: React.Key;
+				d?: string;
+				fill?: string;
+				stroke?: string;
+				"stroke-width"?: number;
 			};
 			group: {
 				key?: React.Key;

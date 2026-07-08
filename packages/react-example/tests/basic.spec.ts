@@ -99,3 +99,20 @@ test("planet label dropdown retargets the refs", async ({ page }) => {
 	// arrow still present after retargeting
 	expect(await page.locator('svg line[id="arrow1"]').count()).toBe(1);
 });
+
+test("the Bluefish gallery examples render", async ({ page }) => {
+	await page.goto("http://localhost:5173");
+	await page.waitForTimeout(2000);
+
+	// Baking recipe: the table cell borders exist and the title cell spans them
+	expect(await page.locator('svg rect[id="cb12"]').count()).toBe(1);
+	expect(await page.locator('svg rect[id="recipeTable"]').count()).toBe(1);
+
+	// Quantum circuit: control-dot circles and connecting lines
+	expect(await page.locator('svg circle[id="c1"]').count()).toBe(1);
+	expect(await page.locator('svg circle[id="c2"]').count()).toBe(1);
+
+	// Pulley: trapezoid weights are paths, ropes are lines
+	expect(await page.locator('svg path[d*="M 10,0"]').count()).toBe(2);
+	expect(await page.locator('svg line[id="l6copy"]').count()).toBe(1);
+});
