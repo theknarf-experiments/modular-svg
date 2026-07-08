@@ -1,16 +1,12 @@
 import { ExampleSection } from "./ExampleSection";
-import { CanvasMargin } from "./examples/CanvasMargin";
-import canvasMarginCode from "./examples/CanvasMargin.tsx?raw";
-import { ComplexPlanetSystem } from "./examples/ComplexPlanetSystem";
-import complexPlanetSystemCode from "./examples/ComplexPlanetSystem.tsx?raw";
+import { BarChart } from "./examples/BarChart";
+import barChartCode from "./examples/BarChart.tsx?raw";
 import { ContextForwarding } from "./examples/ContextForwarding";
 import contextForwardingCode from "./examples/ContextForwarding.tsx?raw";
 import { CustomStyling } from "./examples/CustomStyling";
 import customStylingCode from "./examples/CustomStyling.tsx?raw";
 import { EventHandlers } from "./examples/EventHandlers";
 import eventHandlersCode from "./examples/EventHandlers.tsx?raw";
-import { InteractivePlanetExample } from "./examples/InteractivePlanetExample";
-import interactivePlanetExampleCode from "./examples/InteractivePlanetExample.tsx?raw";
 import { InteractiveState } from "./examples/InteractiveState";
 import interactiveStateCode from "./examples/InteractiveState.tsx?raw";
 import { PlanetExample } from "./examples/PlanetExample";
@@ -46,8 +42,16 @@ function App() {
 			</ExampleSection>
 
 			<ExampleSection
+				title="Custom Styling"
+				description="Canvas accepts standard div props like className and style"
+				code={customStylingCode}
+			>
+				<CustomStyling />
+			</ExampleSection>
+
+			<ExampleSection
 				title="Interactive with React State"
-				description="Adjust the controls to see the layout update in real-time"
+				description="Adjust the controls to see the layout update in real-time - including the margin the Canvas reserves around the content"
 				code={interactiveStateCode}
 			>
 				<InteractiveState />
@@ -62,22 +66,6 @@ function App() {
 			</ExampleSection>
 
 			<ExampleSection
-				title="Canvas Margin"
-				description="The margin prop adds padding around the SVG content"
-				code={canvasMarginCode}
-			>
-				<CanvasMargin />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Custom Styling"
-				description="Canvas accepts standard div props like className and style"
-				code={customStylingCode}
-			>
-				<CustomStyling />
-			</ExampleSection>
-
-			<ExampleSection
 				title="Planet Example"
 				description="A complete adaptation of examples/planet.json using Background, StackH, Text, Align, Distribute, Arrow, and Ref"
 				code={planetExampleCode}
@@ -86,19 +74,11 @@ function App() {
 			</ExampleSection>
 
 			<ExampleSection
-				title="Interactive Planet Example"
-				description="Adjust the scale and spacing to explore the layout"
-				code={interactivePlanetExampleCode}
+				title="Interactive Bar Chart"
+				description="Bars bottom-aligned in a stackH, with align, distribute, and an arrow pointing out the tallest bar - adjust scale and spacing"
+				code={barChartCode}
 			>
-				<InteractivePlanetExample />
-			</ExampleSection>
-
-			<ExampleSection
-				title="Complex Planet System"
-				description="Multiple labels, alignments, and arrows"
-				code={complexPlanetSystemCode}
-			>
-				<ComplexPlanetSystem />
+				<BarChart />
 			</ExampleSection>
 
 			<ExampleSection
