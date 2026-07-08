@@ -12,6 +12,23 @@ declare module "react" {
 			stackV: { spacing?: number; children?: React.ReactNode };
 			arrow: { key?: React.Key; children?: React.ReactNode };
 			ref: { key?: React.Key; target: string };
+			background: {
+				key?: React.Key;
+				padding?: number;
+				children?: React.ReactNode;
+			};
+			align: {
+				key?: React.Key;
+				axis?: "x" | "y";
+				alignment?: string;
+				children?: React.ReactNode;
+			};
+			distribute: {
+				key?: React.Key;
+				axis?: "x" | "y";
+				spacing?: number;
+				children?: React.ReactNode;
+			};
 		}
 	}
 }
@@ -327,6 +344,56 @@ describe("Canvas component", () => {
 				expect(line).toBeTruthy();
 				const polygon = container.querySelector("polygon");
 				expect(polygon).toBeTruthy();
+			});
+		});
+	});
+
+	describe("Full planet feature set (text, background, align, distribute, ref, arrow)", () => {
+		it("renders every relation from the original JSON example via JSX", async () => {
+			const { container } = render(
+				<Canvas>
+					<background key="bg" padding={20}>
+						<stackH spacing={50}>
+							<circle key="mercury" r={15} />
+							<circle key="venus" r={36} />
+						</stackH>
+					</background>
+					<text key="label">Mercury</text>
+					<align key="al" axis="x" alignment="center">
+						<ref target="label" />
+						<ref target="mercury" />
+					</align>
+					<distribute key="di" axis="y" spacing={60}>
+						<ref target="label" />
+						<ref target="mercury" />
+					</distribute>
+					<arrow key="arr">
+						<ref target="label" />
+						<ref target="mercury" />
+					</arrow>
+				</Canvas>,
+			);
+
+			await waitFor(() => {
+				// text label
+				const label = container.querySelector("text");
+				expect(label?.textContent).toBe("Mercury");
+				// background frame rect
+				expect(container.querySelector('rect[id="bg"]')).toBeTruthy();
+				// arrow line + head
+				expect(container.querySelector("line")).toBeTruthy();
+				expect(container.querySelector("polygon")).toBeTruthy();
+
+				// align: label centered over mercury ("Mercury" = 7 chars * 8px)
+				const mercury = container.querySelector('circle[id="mercury"]');
+				const labelCenterX = Number(label?.getAttribute("x")) + (7 * 8) / 2;
+				const cx = Number(mercury?.getAttribute("cx"));
+				expect(labelCenterX).toBeCloseTo(cx, 2);
+
+				// distribute: 60px between label bottom (16px tall) and mercury top
+				const labelBottom = Number(label?.getAttribute("y")) + 16;
+				const mercuryTop = Number(mercury?.getAttribute("cy")) - 15;
+				expect(mercuryTop - labelBottom).toBeCloseTo(60, 2);
 			});
 		});
 	});
