@@ -16,6 +16,9 @@
 		"enabled": true,
 		"rules": {
 			"preset": "recommended",
+			"a11y": {
+				"noStaticElementInteractions": "off"
+			},
 			"security": {
 				"noDangerouslySetInnerHtml": "off"
 			},

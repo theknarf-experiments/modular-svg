@@ -19,7 +19,7 @@ export function CodeBlock({ code }: { code: string }) {
 			transformers: [
 				{
 					pre(node) {
-						node.properties.style = `${node.properties.style ?? ""};margin:0;padding:1rem;font-size:13px;line-height:1.5;`;
+						node.properties.style = `${node.properties.style ?? ""};margin:0;padding:1rem;font-size:13px;line-height:1.5;tab-size:2;`;
 					},
 				},
 			],
@@ -41,6 +41,7 @@ export function CodeBlock({ code }: { code: string }) {
 						padding: "1rem",
 						fontSize: "13px",
 						lineHeight: 1.5,
+						tabSize: 2,
 					}}
 				>
 					<code>{code}</code>

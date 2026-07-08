@@ -46,7 +46,6 @@ export function EventHandlers() {
 			>
 				<stackH spacing={20}>
 					{circles.map((c) => (
-						// biome-ignore lint/a11y/noStaticElementInteractions: Custom JSX elements processed by reconciler
 						<circle
 							key={c.key}
 							r={25}
