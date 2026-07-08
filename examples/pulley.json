@@ -1,0 +1,867 @@
+{
+	"type": "Group",
+	"id": "root",
+	"children": [
+		{
+			"type": "Rect",
+			"id": "rect",
+			"props": {
+				"height": 20,
+				"width": 225,
+				"fill": "#C9C9C9",
+				"stroke-width": 2
+			}
+		},
+		{
+			"type": "Align",
+			"id": "A",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Circle",
+					"props": {
+						"r": 25,
+						"stroke": "#828282",
+						"stroke-width": 3,
+						"fill": "#C1C1C1"
+					}
+				},
+				{
+					"type": "Circle",
+					"props": {
+						"r": 5,
+						"fill": "#555555"
+					}
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"id": "B",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Circle",
+					"props": {
+						"r": 25,
+						"stroke": "#828282",
+						"stroke-width": 3,
+						"fill": "#C1C1C1"
+					}
+				},
+				{
+					"type": "Circle",
+					"props": {
+						"r": 5,
+						"fill": "#555555"
+					}
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"id": "C",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Circle",
+					"props": {
+						"r": 25,
+						"stroke": "#828282",
+						"stroke-width": 3,
+						"fill": "#C1C1C1"
+					}
+				},
+				{
+					"type": "Circle",
+					"props": {
+						"r": 5,
+						"fill": "#555555"
+					}
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "horizontal",
+				"spacing": -25
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "A"
+				},
+				{
+					"type": "Ref",
+					"target": "B"
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "horizontal",
+				"spacing": 0
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "B"
+				},
+				{
+					"type": "Ref",
+					"target": "C"
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "vertical",
+				"spacing": 40
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "rect"
+				},
+				{
+					"type": "Ref",
+					"target": "B"
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "vertical",
+				"spacing": 30
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "B"
+				},
+				{
+					"type": "Ref",
+					"target": "A"
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "vertical",
+				"spacing": 50
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "B"
+				},
+				{
+					"type": "Ref",
+					"target": "C"
+				}
+			]
+		},
+		{
+			"type": "Group",
+			"id": "G",
+			"children": [
+				{
+					"type": "Ref",
+					"target": "A"
+				},
+				{
+					"type": "Ref",
+					"target": "B"
+				},
+				{
+					"type": "Ref",
+					"target": "C"
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "centerX"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "rect"
+				},
+				{
+					"type": "Ref",
+					"target": "G"
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "B"
+				},
+				{
+					"type": "Text",
+					"id": "tB",
+					"props": {
+						"text": "B",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "A"
+				},
+				{
+					"type": "Text",
+					"id": "tA",
+					"props": {
+						"text": "A",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "C"
+				},
+				{
+					"type": "Text",
+					"id": "tC",
+					"props": {
+						"text": "C",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"id": "l1",
+			"props": {
+				"stroke": "#774e32",
+				"source": [0, 0.5],
+				"target": [0.5, 0.5]
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "B"
+				},
+				{
+					"type": "Ref",
+					"target": "A"
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"id": "l2",
+			"props": {
+				"stroke": "#774e32",
+				"source": [1, 0.5],
+				"target": [0, 0.5]
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "B"
+				},
+				{
+					"type": "Ref",
+					"target": "C"
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"id": "l3",
+			"props": {
+				"stroke": "#774e32",
+				"target": [1, 0.5]
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "rect"
+				},
+				{
+					"type": "Ref",
+					"target": "C"
+				}
+			]
+		},
+		{
+			"type": "StackH",
+			"props": {
+				"spacing": 5
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "l1"
+				},
+				{
+					"type": "Text",
+					"id": "t1",
+					"props": {
+						"text": "x",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "horizontal",
+				"spacing": 5
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "l2"
+				},
+				{
+					"type": "Text",
+					"id": "t2",
+					"props": {
+						"text": "y",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "horizontal",
+				"spacing": 5
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "l3"
+				},
+				{
+					"type": "Text",
+					"id": "t3",
+					"props": {
+						"text": "z",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "centerY"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "t1"
+				},
+				{
+					"type": "Ref",
+					"target": "t2"
+				},
+				{
+					"type": "Ref",
+					"target": "t3"
+				}
+			]
+		},
+		{
+			"type": "StackH",
+			"id": "w1",
+			"children": [
+				{
+					"type": "Align",
+					"props": {
+						"alignment": "center"
+					},
+					"children": [
+						{
+							"type": "Path",
+							"props": {
+								"d": "M 10,0 l 10,0 l 10,30 l -30,0 Z",
+								"fill": "#545454",
+								"stroke": "#545454"
+							}
+						},
+						{
+							"type": "Text",
+							"props": {
+								"text": "W1",
+								"font-size": 10,
+								"fill": "white",
+								"width": 14,
+								"height": 10
+							}
+						}
+					]
+				},
+				{
+					"type": "Rect",
+					"props": {
+						"fill": "transparent",
+						"width": 40,
+						"stroke-width": 0
+					}
+				}
+			]
+		},
+		{
+			"type": "StackH",
+			"id": "w2",
+			"children": [
+				{
+					"type": "Rect",
+					"props": {
+						"fill": "transparent",
+						"width": 22.5,
+						"stroke-width": 0
+					}
+				},
+				{
+					"type": "Align",
+					"props": {
+						"alignment": "center"
+					},
+					"children": [
+						{
+							"type": "Path",
+							"props": {
+								"d": "M 10,0 l 65,0 l 10,30 l -85,0 Z",
+								"fill": "#545454",
+								"stroke": "#545454"
+							}
+						},
+						{
+							"type": "Text",
+							"props": {
+								"text": "W2",
+								"font-size": 10,
+								"fill": "white",
+								"width": 14,
+								"height": 10
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "vertical",
+				"spacing": 50
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "C"
+				},
+				{
+					"type": "Ref",
+					"target": "w2"
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "left"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "A"
+				},
+				{
+					"type": "Ref",
+					"target": "w2"
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "centerX"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "A"
+				},
+				{
+					"type": "Ref",
+					"target": "w1"
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "centerY"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "w2"
+				},
+				{
+					"type": "Ref",
+					"target": "w1"
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"id": "l4",
+			"props": {
+				"stroke": "#774e32",
+				"source": [0, 0.5]
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "A"
+				},
+				{
+					"type": "Ref",
+					"target": "w1"
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"id": "l5",
+			"props": {
+				"stroke": "#774e32",
+				"source": [1, 0.5]
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "A"
+				},
+				{
+					"type": "Ref",
+					"target": "w2"
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"id": "l6",
+			"props": {
+				"stroke": "#774e32",
+				"source": [0.5, 0.5]
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "C"
+				},
+				{
+					"type": "Ref",
+					"target": "w2"
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "horizontal",
+				"spacing": 5
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "l4"
+				},
+				{
+					"type": "Text",
+					"id": "t4",
+					"props": {
+						"text": "p",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "Distribute",
+			"props": {
+				"direction": "horizontal",
+				"spacing": 5
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "l5"
+				},
+				{
+					"type": "Text",
+					"id": "t5",
+					"props": {
+						"text": "q",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "StackH",
+			"props": {
+				"spacing": 5
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "l6"
+				},
+				{
+					"type": "Text",
+					"id": "t6",
+					"props": {
+						"text": "s",
+						"font-size": 14
+					}
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "centerY"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "t6"
+				},
+				{
+					"type": "Ref",
+					"target": "t5"
+				},
+				{
+					"type": "Ref",
+					"target": "t4"
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"id": "Acopy",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Circle",
+					"props": {
+						"r": 25,
+						"stroke": "#828282",
+						"stroke-width": 3,
+						"fill": "#C1C1C1"
+					}
+				},
+				{
+					"type": "Circle",
+					"props": {
+						"r": 5,
+						"fill": "#555555"
+					}
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"id": "Ccopy",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Circle",
+					"props": {
+						"r": 25,
+						"stroke": "#828282",
+						"stroke-width": 3,
+						"fill": "#C1C1C1"
+					}
+				},
+				{
+					"type": "Circle",
+					"props": {
+						"r": 5,
+						"fill": "#555555"
+					}
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "A"
+				},
+				{
+					"type": "Ref",
+					"target": "Acopy"
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "C"
+				},
+				{
+					"type": "Ref",
+					"target": "Ccopy"
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"id": "l1copy",
+			"props": {
+				"stroke": "#774e32",
+				"source": [0, 0.5],
+				"target": [0.5, 0.5]
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "B"
+				},
+				{
+					"type": "Ref",
+					"target": "A"
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"id": "Bcopy",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Circle",
+					"props": {
+						"r": 25,
+						"stroke": "#828282",
+						"stroke-width": 3,
+						"fill": "#C1C1C1"
+					}
+				},
+				{
+					"type": "Circle",
+					"props": {
+						"r": 5,
+						"fill": "#555555"
+					}
+				}
+			]
+		},
+		{
+			"type": "Align",
+			"props": {
+				"alignment": "center"
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "B"
+				},
+				{
+					"type": "Ref",
+					"target": "Bcopy"
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"id": "l0",
+			"props": {
+				"stroke": "#774e32",
+				"target": [0.5, 0.5]
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "rect"
+				},
+				{
+					"type": "Ref",
+					"target": "B"
+				}
+			]
+		},
+		{
+			"type": "Line",
+			"id": "l6copy",
+			"props": {
+				"stroke": "#774e32",
+				"source": [0.5, 0.5]
+			},
+			"children": [
+				{
+					"type": "Ref",
+					"target": "C"
+				},
+				{
+					"type": "Ref",
+					"target": "w2"
+				}
+			]
+		}
+	]
+}

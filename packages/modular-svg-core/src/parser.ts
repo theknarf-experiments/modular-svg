@@ -91,6 +91,7 @@ function parseAlignments(
 > {
 	const raw =
 		(props.alignment as string) ?? (props.type as string) ?? undefined;
+	const hasAxis = props.axis !== undefined || props.direction !== undefined;
 	const axisProp =
 		(props.axis as "x" | "y") ?? (props.direction as "x" | "y") ?? "x";
 	const twoD: Record<string, [AlignmentY, AlignmentX]> = {
@@ -103,6 +104,14 @@ function parseAlignments(
 		bottomCenter: ["bottom", "centerX"],
 		bottomRight: ["bottom", "right"],
 	};
+	// Bluefish's 2D "center" aligns both axes; with an explicit axis prop it
+	// stays 1D for backwards compatibility
+	if (raw === "center" && !hasAxis) {
+		return [
+			{ axis: "y", alignment: "centerY" },
+			{ axis: "x", alignment: "centerX" },
+		];
+	}
 	if (raw && raw in twoD) {
 		const [ay, ax] = twoD[raw];
 		return [
