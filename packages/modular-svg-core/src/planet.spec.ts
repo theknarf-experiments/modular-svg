@@ -117,23 +117,25 @@ describe("planet example", () => {
 		);
 	});
 
-	it("arrow points above mercury with margin", () => {
+	it("arrow curves from the label to above mercury", () => {
 		const label = layout.label;
 		const mercury = layout.mercury;
-		// compute arrow endpoints using svg output
+		// compute arrow endpoints from the quadratic path in the svg output
 		const svg = layoutToSvg(layout, scene.nodes);
-		const lineMatch = new RegExp(`<line id="${arrowId}"[^>]+>`).exec(svg);
-		expect(lineMatch).not.toBeNull();
-		if (lineMatch) {
-			const attrs = lineMatch[0];
-			const y1 = Number(/y1="([^"]+)"/.exec(attrs)?.[1] ?? 0);
-			const y2 = Number(/y2="([^"]+)"/.exec(attrs)?.[1] ?? 0);
-			const dy = Math.max(
-				0,
-				-Math.min(...Object.values(layout).map((b) => b.y)),
-			);
-			expect(y1).toBeGreaterThan(label.y + dy + label.height);
-			expect(y2).toBeLessThan(mercury.y + dy);
+		const pathMatch = new RegExp(`<path id="${arrowId}"[^>]+>`).exec(svg);
+		expect(pathMatch).not.toBeNull();
+		if (pathMatch) {
+			const attrs = pathMatch[0];
+			const d = /d="M([^,]+),([^ ]+) Q[^ ]+ ([^,]+),([^"]+)"/.exec(attrs);
+			expect(d).not.toBeNull();
+			if (d) {
+				const [, , sy, , ey] = d.map(Number);
+				const min = Math.min(...Object.values(layout).map((b) => b.y));
+				const dy = -min;
+				// starts at or below the label, ends above mercury's top edge
+				expect(sy).toBeGreaterThan(label.y + dy);
+				expect(ey).toBeLessThan(mercury.y + dy);
+			}
 			expect(attrs).toContain('stroke-width="3"');
 		}
 		expect(svg).toContain("<polygon");

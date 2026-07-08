@@ -188,6 +188,54 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		return id;
 	}
 
+	// Props consumed by layout; everything else passes through as SVG attrs
+	const LAYOUT_PROPS = new Set([
+		"x",
+		"y",
+		"width",
+		"height",
+		"r",
+		"cx",
+		"cy",
+		"text",
+		"spacing",
+		"alignment",
+		"axis",
+		"direction",
+		"padding",
+		"total",
+		"zOrder",
+		"source",
+		"target",
+		"href",
+		"fill",
+		"stroke",
+		"stroke-width",
+		"bow",
+		"stretch",
+		"stretchMin",
+		"stretchMax",
+		"padStart",
+		"padEnd",
+		"flip",
+		"straights",
+		"start",
+	]);
+
+	function extraAttrs(
+		props: Record<string, unknown>,
+	): Record<string, string | number> | undefined {
+		let attrs: Record<string, string | number> | undefined;
+		for (const [k, v] of Object.entries(props)) {
+			if (LAYOUT_PROPS.has(k)) continue;
+			if (typeof v !== "string" && typeof v !== "number") continue;
+			if (!/^[a-zA-Z_][\w:.-]*$/.test(k)) continue;
+			if (attrs === undefined) attrs = {};
+			attrs[k] = v;
+		}
+		return attrs;
+	}
+
 	function ensureNode(n: AnyNode, path: string): NodeRecord {
 		if (n.type === "Ref") {
 			const target = nodeMap.get(n.target as string);
@@ -200,47 +248,51 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		if (existing) return existing;
 		let rec: NodeRecord;
 		const props = (n.props ?? {}) as Record<string, unknown>;
+		const common = {
+			id: nodeId,
+			fill: props.fill as string | undefined,
+			stroke: props.stroke as string | undefined,
+			zOrder: props.zOrder as number | undefined,
+			attrs: extraAttrs(props),
+		};
 		if (n.type === "Rect") {
 			rec = {
-				id: nodeId,
+				...common,
 				type: "rect",
 				x: (props.x as number | undefined) ?? 0,
 				y: (props.y as number | undefined) ?? 0,
 				width: (props.width as number | undefined) ?? 0,
 				height: (props.height as number | undefined) ?? 0,
-				fill: props.fill as string | undefined,
-				stroke: props.stroke as string | undefined,
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else if (n.type === "Background") {
 			rec = {
-				id: nodeId,
+				...common,
 				type: "rect",
 				x: 0,
 				y: 0,
 				width: 0,
 				height: 0,
-				fill: props.fill as string | undefined,
-				stroke: props.stroke as string | undefined,
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else if (n.type === "Circle") {
 			const r = (props.r as number | undefined) ?? 0;
+			// Bluefish circles are center-anchored (cx/cy); top-left x/y also works
+			const cx = props.cx as number | undefined;
+			const cy = props.cy as number | undefined;
 			rec = {
-				id: nodeId,
+				...common,
 				type: "circle",
 				r,
-				x: (props.x as number | undefined) ?? 0,
-				y: (props.y as number | undefined) ?? 0,
+				x: cx !== undefined ? cx - r : ((props.x as number | undefined) ?? 0),
+				y: cy !== undefined ? cy - r : ((props.y as number | undefined) ?? 0),
 				width: r * 2,
 				height: r * 2,
-				fill: props.fill as string | undefined,
-				stroke: props.stroke as string | undefined,
-				strokeWidth: (props["stroke-width"] as number | undefined) ?? 1,
+				strokeWidth: props["stroke-width"] as number | undefined,
 			};
 		} else if (n.type === "Text") {
 			rec = {
-				id: nodeId,
+				...common,
 				type: "text",
 				text: (props.text as string | undefined) ?? "",
 				x: (props.x as number | undefined) ?? 0,
@@ -250,27 +302,83 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					((props.text as string | undefined)?.length ?? 0) * 8,
 				height: (props.height as number | undefined) ?? 16,
 				fill: (props.fill as string | undefined) ?? "black",
-				stroke: props.stroke as string | undefined,
 				strokeWidth: props["stroke-width"] as number | undefined,
+			};
+		} else if (n.type === "Image") {
+			rec = {
+				...common,
+				type: "image",
+				href: props.href as string | undefined,
+				x: (props.x as number | undefined) ?? 0,
+				y: (props.y as number | undefined) ?? 0,
+				width: (props.width as number | undefined) ?? 0,
+				height: (props.height as number | undefined) ?? 0,
 			};
 		} else if (n.type === "Arrow") {
 			rec = {
-				id: nodeId,
+				...common,
 				type: "arrow",
 				x: 0,
 				y: 0,
 				width: 0,
 				height: 0,
-				fill: props.fill as string | undefined,
-				stroke: props.stroke as string | undefined,
+				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
+				// perfect-arrows options, defaults matching Bluefish
+				arrow: {
+					bow: (props.bow as number | undefined) ?? 0.2,
+					stretch: (props.stretch as number | undefined) ?? 0.5,
+					stretchMin: (props.stretchMin as number | undefined) ?? 40,
+					stretchMax: (props.stretchMax as number | undefined) ?? 420,
+					padStart: (props.padStart as number | undefined) ?? 5,
+					padEnd: (props.padEnd as number | undefined) ?? 20,
+					flip: (props.flip as boolean | undefined) ?? false,
+					straights: (props.straights as boolean | undefined) ?? true,
+					start: (props.start as boolean | undefined) ?? false,
+				},
+			};
+		} else if (n.type === "Line") {
+			rec = {
+				...common,
+				type: "line",
+				x: 0,
+				y: 0,
+				width: 0,
+				height: 0,
+				source: props.source as number[] | undefined,
+				target: props.target as number[] | undefined,
+				stroke: (props.stroke as string | undefined) ?? "black",
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
 		} else {
-			rec = { id: nodeId, x: 0, y: 0, width: 0, height: 0 };
+			rec = {
+				id: nodeId,
+				x: 0,
+				y: 0,
+				width: 0,
+				height: 0,
+				zOrder: props.zOrder as number | undefined,
+			};
 		}
-		if (n.type === "Rect" || n.type === "Circle" || n.type === "Text") {
-			if (props.x !== undefined) userOwned.add(`${nodeId}:x`);
-			if (props.y !== undefined) userOwned.add(`${nodeId}:y`);
+		if (
+			n.type === "Rect" ||
+			n.type === "Circle" ||
+			n.type === "Text" ||
+			n.type === "Image"
+		) {
+			if (props.x !== undefined || props.cx !== undefined)
+				userOwned.add(`${nodeId}:x`);
+			if (props.y !== undefined || props.cy !== undefined)
+				userOwned.add(`${nodeId}:y`);
+			// Extent ownership: explicit sizes, a circle's radius, and text's
+			// measured size all count as owned (matching Bluefish)
+			if (props.width !== undefined || n.type === "Circle" || n.type === "Text")
+				userOwned.add(`${nodeId}:w`);
+			if (
+				props.height !== undefined ||
+				n.type === "Circle" ||
+				n.type === "Text"
+			)
+				userOwned.add(`${nodeId}:h`);
 		}
 		nodeMap.set(rec.id, rec);
 		nodes.push(rec);
@@ -305,12 +413,14 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				});
 				descs.push({ kind: "union", container: rec, children });
 			} else if (node.type === "Distribute") {
+				// Bluefish uses direction horizontal/vertical; axis x/y also works
+				const raw =
+					(node.props?.axis as string) ??
+					(node.props?.direction as string) ??
+					"x";
 				descs.push({
 					kind: "distribute",
-					axis:
-						(node.props?.axis as "x" | "y") ??
-						(node.props?.direction as "x" | "y") ??
-						"x",
+					axis: raw === "y" || raw === "vertical" ? "y" : "x",
 					children,
 					props: node.props ?? {},
 				});
@@ -323,7 +433,10 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					// Default padding matches Bluefish
 					padding: (node.props?.padding as number) ?? 10,
 				});
-			} else if (node.type === "Arrow" && children.length >= 2) {
+			} else if (
+				(node.type === "Arrow" || node.type === "Line") &&
+				children.length >= 2
+			) {
 				(rec as NodeRecord).from = children[0].id;
 				(rec as NodeRecord).to = children[1].id;
 				descs.push({ kind: "union", container: rec, children });
@@ -397,40 +510,88 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		}
 	}
 
+	function extentOwnedOf(children: NodeRecord[], axis: "w" | "h"): boolean[] {
+		return children.map((c) => {
+			const key = `${c.id}:${axis}`;
+			return hardOwned.has(key) || userOwned.has(key);
+		});
+	}
+
+	// Handle the Bluefish sizing modes' ownership effects: in total+spacing
+	// mode unowned extents get assigned (and become owned); the other exact
+	// modes require every extent to be owned already.
+	function claimExtents(
+		relation: string,
+		children: NodeRecord[],
+		axis: "w" | "h",
+		spacing: number | undefined,
+		total: number | undefined,
+		extentOwned: boolean[],
+	): void {
+		if (spacing !== undefined && total !== undefined) {
+			children.forEach((c, i) => {
+				if (!extentOwned[i]) hardOwned.add(`${c.id}:${axis}`);
+			});
+		} else if (spacing !== undefined || total !== undefined) {
+			children.forEach((c, i) => {
+				if (!extentOwned[i]) {
+					warnings.push(
+						`${relation}: ${axis === "w" ? "width" : "height"} of ${c.id} is not owned`,
+					);
+				}
+			});
+		}
+	}
+
 	const ops: LayoutOperator[] = [];
 	for (const d of descs) {
 		if (d.kind === "stackV" || d.kind === "stackH") {
 			const mainAxis = d.kind === "stackV" ? "y" : "x";
 			const crossAxis = d.kind === "stackV" ? "x" : "y";
+			const extentAxis = d.kind === "stackV" ? "h" : "w";
 			const mainAnchor = anchorIndex(d.children, mainAxis);
 			const crossAnchor = anchorIndex(d.children, crossAxis);
 			claim(d.children, mainAxis, mainAnchor, d.container.id);
 			claim(d.children, crossAxis, crossAnchor, d.container.id);
+			// Defaults match Bluefish: spacing 10 only when total is also unset
+			const spacingProp = d.props.spacing as number | undefined;
+			const total = d.props.total as number | undefined;
+			const spacing =
+				spacingProp === undefined && total === undefined ? 10 : spacingProp;
+			const extentOwned = extentOwnedOf(d.children, extentAxis);
+			claimExtents(
+				d.container.id,
+				d.children,
+				extentAxis,
+				spacing,
+				total,
+				extentOwned,
+			);
+			hardOwned.add(`${d.container.id}:w`);
+			hardOwned.add(`${d.container.id}:h`);
 			const children = toSubtreeChildren(d.children);
 			const containerIdx = baseOf(d.container);
-			// Defaults match Bluefish: spacing 10, centered cross-axis alignment
-			const spacing = (d.props.spacing as number) ?? 10;
 			if (d.kind === "stackV") {
 				ops.push(
-					stackV(
-						children,
-						containerIdx,
+					stackV(children, containerIdx, {
 						spacing,
-						(d.props.alignment as AlignmentX) ?? "centerX",
+						total,
+						alignment: (d.props.alignment as AlignmentX) ?? "centerX",
 						mainAnchor,
 						crossAnchor,
-					),
+						extentOwned,
+					}),
 				);
 			} else {
 				ops.push(
-					stackH(
-						children,
-						containerIdx,
+					stackH(children, containerIdx, {
 						spacing,
-						(d.props.alignment as AlignmentY) ?? "centerY",
+						total,
+						alignment: (d.props.alignment as AlignmentY) ?? "centerY",
 						mainAnchor,
 						crossAnchor,
-					),
+						extentOwned,
+					}),
 				);
 			}
 		} else if (d.kind === "align") {
@@ -445,14 +606,29 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				}
 			}
 		} else if (d.kind === "distribute") {
-			const spacing = (d.props.spacing as number | undefined) ?? 0;
+			const spacing = d.props.spacing as number | undefined;
+			const total = d.props.total as number | undefined;
+			const exactMode = spacing !== undefined || total !== undefined;
+			const extentAxis = d.axis === "x" ? "w" : "h";
 			const anchor = anchorIndex(d.children, d.axis) ?? 0;
-			claim(d.children, d.axis, spacing > 0 ? anchor : null, "distribute");
+			claim(d.children, d.axis, exactMode ? anchor : null, "distribute");
+			const extentOwned = extentOwnedOf(d.children, extentAxis);
+			claimExtents(
+				"distribute",
+				d.children,
+				extentAxis,
+				spacing,
+				total,
+				extentOwned,
+			);
 			const children = toSubtreeChildren(d.children);
-			if (d.axis === "x") ops.push(distributeX(children, spacing, anchor));
-			else ops.push(distributeY(children, spacing, anchor));
+			const opts = { spacing, total, anchor, extentOwned };
+			if (d.axis === "x") ops.push(distributeX(children, opts));
+			else ops.push(distributeY(children, opts));
 		} else if (d.kind === "background") {
 			ops.push(backgroundOp(baseOf(d.child), baseOf(d.box), d.padding));
+			hardOwned.add(`${d.box.id}:w`);
+			hardOwned.add(`${d.box.id}:h`);
 		} else if (d.kind === "union") {
 			ops.push(
 				unionOp(
@@ -460,6 +636,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					baseOf(d.container),
 				),
 			);
+			hardOwned.add(`${d.container.id}:w`);
+			hardOwned.add(`${d.container.id}:h`);
 		}
 	}
 

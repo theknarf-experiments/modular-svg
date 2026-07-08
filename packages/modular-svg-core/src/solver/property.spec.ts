@@ -120,7 +120,7 @@ describe("property based primitives", () => {
 				(boxes, spacing, anchorSeed) => {
 					const anchor = anchorSeed % boxes.length;
 					const { nodes, children } = leafNodes(boxes);
-					const op = distributeX(children, spacing, anchor);
+					const op = distributeX(children, { spacing, anchor });
 					const result = solveLayout(
 						{ nodes, operators: [op as LayoutOperator] },
 						{ damping: 1 },
@@ -141,7 +141,7 @@ describe("property based primitives", () => {
 		fc.assert(
 			fc.property(boxesArb, (boxes) => {
 				const { nodes, children } = leafNodes(boxes);
-				const op = distributeY(children, 0, 0);
+				const op = distributeY(children);
 				const result = solveLayout(
 					{ nodes, operators: [op as LayoutOperator] },
 					{ damping: 1 },
@@ -173,7 +173,10 @@ describe("property based primitives", () => {
 					const { nodes, children } = leafNodes(boxes);
 					const allNodes = [...nodes, container];
 					const containerIdx = nodes.length * 4;
-					const op = stackV(children, containerIdx, spacing, "left");
+					const op = stackV(children, containerIdx, {
+						spacing,
+						alignment: "left",
+					});
 					const result = solveLayout(
 						{ nodes: allNodes, operators: [op as LayoutOperator] },
 						{ damping: 1 },
@@ -219,14 +222,12 @@ describe("property based primitives", () => {
 					const { nodes, children } = leafNodes(boxes);
 					const allNodes = [...nodes, container];
 					const containerIdx = nodes.length * 4;
-					const op = stackH(
-						children,
-						containerIdx,
+					const op = stackH(children, containerIdx, {
 						spacing,
-						"top",
-						anchor,
-						anchor,
-					);
+						alignment: "top",
+						mainAnchor: anchor,
+						crossAnchor: anchor,
+					});
 					const result = solveLayout(
 						{ nodes: allNodes, operators: [op as LayoutOperator] },
 						{ damping: 1 },
@@ -270,7 +271,7 @@ describe("property based primitives", () => {
 						{ base: 8, subtree: [8] }, // sib
 						{ base: 4, subtree: [4, 0] }, // inner + leaf
 					];
-					const op = stackV(children, 12, spacing, "left");
+					const op = stackV(children, 12, { spacing, alignment: "left" });
 					const result = solveLayout(
 						{ nodes, operators: [op as LayoutOperator] },
 						{ damping: 1 },

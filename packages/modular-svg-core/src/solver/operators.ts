@@ -1,21 +1,45 @@
 export type LayoutOperator = (cur: Float64Array, next: Float64Array) => void;
 
+export type ArrowGeometry = {
+	bow: number;
+	stretch: number;
+	stretchMin: number;
+	stretchMax: number;
+	padStart: number;
+	padEnd: number;
+	flip: boolean;
+	straights: boolean;
+	/** paint a dot at the arrow start */
+	start: boolean;
+};
+
 export type NodeRecord = {
 	id: string;
 	x: number;
 	y: number;
 	width: number;
 	height: number;
-	type?: "rect" | "circle" | "text" | "arrow";
+	type?: "rect" | "circle" | "text" | "arrow" | "image" | "line";
 	r?: number;
 	text?: string;
-	/** id of source node for arrows */
+	href?: string;
+	/** id of source node for arrows and lines */
 	from?: string;
-	/** id of target node for arrows */
+	/** id of target node for arrows and lines */
 	to?: string;
+	/** fractional [0..1, 0..1] bbox anchor for the line start */
+	source?: number[];
+	/** fractional [0..1, 0..1] bbox anchor for the line end */
+	target?: number[];
+	/** perfect-arrows options for arrows */
+	arrow?: ArrowGeometry;
 	fill?: string;
 	stroke?: string;
 	strokeWidth?: number;
+	/** paint order; higher paints later (on top). Default 0. */
+	zOrder?: number;
+	/** extra SVG attributes passed through to the emitted element */
+	attrs?: Record<string, string | number>;
 };
 
 // A relation child: the node's own slot base plus the bases of every node in
@@ -112,6 +136,54 @@ function writeUnion(
 	next[containerIndex + 3] = maxY - minY;
 }
 
+export type StackOptions = {
+	spacing?: number;
+	total?: number;
+	alignment: AlignmentX | AlignmentY;
+	mainAnchor?: number | null;
+	crossAnchor?: number | null;
+	/** whether each child's main-axis extent is owned (user prop or relation) */
+	extentOwned?: readonly boolean[];
+};
+
+// Resolve the three Bluefish sizing modes into effective extents + gap.
+// spacing+total: children with unowned extents share (total - sum of owned
+// extents) - note Bluefish does NOT subtract the spacing gaps here, a quirk
+// we preserve. total only: gap = leftover / (n-1). spacing only: extents as
+// they are. Assigned extents are written to the child's extent slot.
+function resolveExtents(
+	cur: Float64Array,
+	next: Float64Array,
+	children: readonly SubtreeChild[],
+	extentSlot: number,
+	spacing: number | undefined,
+	total: number | undefined,
+	extentOwned: readonly boolean[] | undefined,
+): { extents: number[]; gap: number } {
+	const current = children.map((c) => cur[c.base + extentSlot]);
+	if (spacing !== undefined && total !== undefined) {
+		let unassigned = total;
+		let numUnowned = 0;
+		for (let i = 0; i < children.length; i++) {
+			if (extentOwned?.[i]) unassigned -= current[i];
+			else numUnowned++;
+		}
+		const share = numUnowned > 0 ? unassigned / numUnowned : 0;
+		const extents = current.map((e, i) => (extentOwned?.[i] ? e : share));
+		for (let i = 0; i < children.length; i++) {
+			if (!extentOwned?.[i]) next[children[i].base + extentSlot] = share;
+		}
+		return { extents, gap: spacing };
+	}
+	if (total !== undefined) {
+		const occupied = current.reduce((s, e) => s + e, 0);
+		const gap =
+			children.length > 1 ? (total - occupied) / (children.length - 1) : 0;
+		return { extents: current, gap };
+	}
+	return { extents: current, gap: spacing ?? 10 };
+}
+
 // Bluefish-style stack: children are packed along the main axis with fixed
 // spacing and aligned across it. If a child's position is owned by another
 // relation (anchor), the run is placed so that child stays fixed; otherwise
@@ -121,22 +193,32 @@ function stack(
 	horizontal: boolean,
 	children: readonly SubtreeChild[],
 	containerIndex: number,
-	spacing: number,
-	alignment: AlignmentX | AlignmentY,
-	mainAnchor: number | null,
-	crossAnchor: number | null,
+	opts: StackOptions,
 ): LayoutOperator {
+	const { alignment } = opts;
+	const mainAnchor = opts.mainAnchor ?? null;
+	const crossAnchor = opts.crossAnchor ?? null;
 	const mainSlot = horizontal ? 0 : 1;
 	const extentSlot = horizontal ? 2 : 3;
 	return (cur, next) => {
 		if (children.length === 0) return;
 
+		const { extents, gap } = resolveExtents(
+			cur,
+			next,
+			children,
+			extentSlot,
+			opts.spacing,
+			opts.total,
+			opts.extentOwned,
+		);
+
 		// Cumulative offsets along the main axis
 		const offsets: number[] = [];
 		let acc = 0;
-		for (const c of children) {
+		for (const e of extents) {
 			offsets.push(acc);
-			acc += cur[c.base + extentSlot] + spacing;
+			acc += e + gap;
 		}
 
 		const start =
@@ -200,8 +282,9 @@ function stack(
 					? cur[c.base + 1]
 					: targetY,
 			);
-			ws.push(cur[c.base + 2]);
-			hs.push(cur[c.base + 3]);
+			// main-axis extent may have been assigned by a total mode
+			ws.push(horizontal ? extents[i] : cur[c.base + 2]);
+			hs.push(horizontal ? cur[c.base + 3] : extents[i]);
 		}
 
 		writeUnion(next, containerIndex, xs, ys, ws, hs);
@@ -211,39 +294,17 @@ function stack(
 export function stackV(
 	children: readonly SubtreeChild[],
 	containerIndex: number,
-	spacing: number,
-	alignment: AlignmentX,
-	mainAnchor: number | null = null,
-	crossAnchor: number | null = null,
+	opts: StackOptions,
 ): LayoutOperator {
-	return stack(
-		false,
-		children,
-		containerIndex,
-		spacing,
-		alignment,
-		mainAnchor,
-		crossAnchor,
-	);
+	return stack(false, children, containerIndex, opts);
 }
 
 export function stackH(
 	children: readonly SubtreeChild[],
 	containerIndex: number,
-	spacing: number,
-	alignment: AlignmentY,
-	mainAnchor: number | null = null,
-	crossAnchor: number | null = null,
+	opts: StackOptions,
 ): LayoutOperator {
-	return stack(
-		true,
-		children,
-		containerIndex,
-		spacing,
-		alignment,
-		mainAnchor,
-		crossAnchor,
-	);
+	return stack(true, children, containerIndex, opts);
 }
 
 // Bluefish-style align: the anchor child (first child whose position is
@@ -285,27 +346,43 @@ export function alignY(
 	};
 }
 
-// Distribute along an axis. With spacing > 0 the children are packed with
-// exactly that edge-to-edge gap, anchored on the anchor child (first owned,
-// falling back to the first child). With spacing <= 0 the children spread
-// evenly between the current outermost positions (an extension; Bluefish
-// requires spacing or total).
+export type DistributeOptions = {
+	spacing?: number;
+	total?: number;
+	anchor?: number;
+	/** whether each child's main-axis extent is owned (user prop or relation) */
+	extentOwned?: readonly boolean[];
+};
+
+// Distribute along an axis, matching Bluefish's three sizing modes (spacing /
+// total / both), anchored on the anchor child (first owned, falling back to
+// the first child). With neither spacing nor total the children spread evenly
+// between the current outermost positions (an extension; Bluefish throws).
 function distribute(
 	horizontal: boolean,
 	children: readonly SubtreeChild[],
-	spacing: number,
-	anchor: number,
+	opts: DistributeOptions,
 ): LayoutOperator {
+	const anchor = opts.anchor ?? 0;
 	const slot = (horizontal ? 0 : 1) as 0 | 1;
 	const extentSlot = horizontal ? 2 : 3;
 	return (cur, next) => {
 		if (children.length < 2) return;
-		if (spacing > 0) {
+		if (opts.spacing !== undefined || opts.total !== undefined) {
+			const { extents, gap } = resolveExtents(
+				cur,
+				next,
+				children,
+				extentSlot,
+				opts.spacing,
+				opts.total,
+				opts.extentOwned,
+			);
 			const offsets: number[] = [];
 			let acc = 0;
-			for (const c of children) {
+			for (const e of extents) {
 				offsets.push(acc);
-				acc += cur[c.base + extentSlot] + spacing;
+				acc += e + gap;
 			}
 			const start = cur[children[anchor].base + slot] - offsets[anchor];
 			for (let i = 0; i < children.length; i++) {
@@ -345,18 +422,16 @@ function distribute(
 
 export function distributeX(
 	children: readonly SubtreeChild[],
-	spacing = 0,
-	anchor = 0,
+	opts: DistributeOptions = {},
 ): LayoutOperator {
-	return distribute(true, children, spacing, anchor);
+	return distribute(true, children, opts);
 }
 
 export function distributeY(
 	children: readonly SubtreeChild[],
-	spacing = 0,
-	anchor = 0,
+	opts: DistributeOptions = {},
 ): LayoutOperator {
-	return distribute(false, children, spacing, anchor);
+	return distribute(false, children, opts);
 }
 
 export function backgroundOp(

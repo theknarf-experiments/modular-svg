@@ -51,6 +51,9 @@ importers:
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
+      perfect-arrows:
+        specifier: ^0.3.7
+        version: 0.3.7
     devDependencies:
       '@types/node':
         specifier: ^26.1.1

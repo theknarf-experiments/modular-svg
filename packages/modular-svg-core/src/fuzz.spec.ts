@@ -45,7 +45,11 @@ const textNodeArb = fc
 	.record({ text: textArb })
 	.map((props) => ({ type: "Text", props }));
 
-const leafArb = fc.oneof(rectArb, circleArb, textNodeArb);
+const imageArb = fc
+	.record({ width: sizeArb, height: sizeArb })
+	.map((props) => ({ type: "Image", props: { ...props, href: "img.png" } }));
+
+const leafArb = fc.oneof(rectArb, circleArb, textNodeArb, imageArb);
 
 type JsonNode = Record<string, unknown>;
 
@@ -176,7 +180,7 @@ function leafSize(leaf: { type: string; props: Record<string, unknown> }): {
 	width: number;
 	height: number;
 } {
-	if (leaf.type === "Rect") {
+	if (leaf.type === "Rect" || leaf.type === "Image") {
 		return {
 			width: leaf.props.width as number,
 			height: leaf.props.height as number,

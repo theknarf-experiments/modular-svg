@@ -20,7 +20,7 @@ describe("Stack operator", () => {
 			base: (i + 1) * 4,
 			subtree: [(i + 1) * 4],
 		}));
-		const op = stackV(children, 0, 5, "centerX");
+		const op = stackV(children, 0, { spacing: 5, alignment: "centerX" });
 		const scene = { nodes, operators: [op as LayoutOperator] };
 		const result = solveLayout(scene, { damping: 1 });
 		expect(result.A.y).toBe(0);
