@@ -6,12 +6,14 @@ declare module "react" {
 			stackH: {
 				key?: React.Key;
 				spacing?: number;
+				total?: number;
 				alignment?: "top" | "center" | "bottom" | "centerY";
 				children?: React.ReactNode;
 			};
 			stackV: {
 				key?: React.Key;
 				spacing?: number;
+				total?: number;
 				alignment?: "left" | "center" | "right" | "centerX";
 				children?: React.ReactNode;
 			};

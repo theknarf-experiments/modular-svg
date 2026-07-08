@@ -18,9 +18,27 @@ export interface CanvasProps extends React.HTMLAttributes<HTMLDivElement> {
 	title?: string;
 }
 
+// React DOM wants camelCase SVG attribute names (fontSize, strokeDasharray);
+// scene attrs use the SVG spellings. data-* and aria-* stay as-is.
+function reactifyAttrs(
+	attrs: Record<string, string | number> | undefined,
+): Record<string, string | number> | undefined {
+	if (!attrs) return undefined;
+	const out: Record<string, string | number> = {};
+	for (const [k, v] of Object.entries(attrs)) {
+		if (k.startsWith("data-") || k.startsWith("aria-") || !k.includes("-")) {
+			out[k] = v;
+		} else {
+			out[k.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())] = v;
+		}
+	}
+	return out;
+}
+
 // Component to render a single SVG element with event handlers
 function SvgElementRenderer({ element }: { element: SvgElement }) {
 	const handlers = element.id ? getEventHandlers(element.id) : undefined;
+	const attrs = reactifyAttrs(element.attrs);
 
 	if (element.type === "circle") {
 		return (
@@ -32,7 +50,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
-				{...element.attrs}
+				{...attrs}
 				{...handlers}
 			/>
 		);
@@ -49,7 +67,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
-				{...element.attrs}
+				{...attrs}
 				{...handlers}
 			/>
 		);
@@ -66,7 +84,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
-				{...element.attrs}
+				{...attrs}
 				{...handlers}
 			>
 				{element.text}
@@ -84,7 +102,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				y2={element.y2}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
-				{...element.attrs}
+				{...attrs}
 				{...handlers}
 			/>
 		);
@@ -99,7 +117,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
-				{...element.attrs}
+				{...attrs}
 				{...handlers}
 			/>
 		);
@@ -114,7 +132,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				fill={element.fill}
 				stroke={element.stroke}
 				strokeWidth={element.strokeWidth}
-				{...element.attrs}
+				{...attrs}
 				{...handlers}
 			/>
 		);
@@ -129,7 +147,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				width={element.width}
 				height={element.height}
 				href={element.href}
-				{...element.attrs}
+				{...attrs}
 				{...handlers}
 			/>
 		);
