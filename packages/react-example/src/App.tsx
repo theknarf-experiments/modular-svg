@@ -1,4 +1,6 @@
 import { ExampleSection } from "./ExampleSection";
+import { BakingRecipe } from "./examples/BakingRecipe";
+import bakingRecipeCode from "./examples/BakingRecipe.tsx?raw";
 import { BarChart } from "./examples/BarChart";
 import barChartCode from "./examples/BarChart.tsx?raw";
 import { ContextForwarding } from "./examples/ContextForwarding";
@@ -11,6 +13,10 @@ import { InteractiveState } from "./examples/InteractiveState";
 import interactiveStateCode from "./examples/InteractiveState.tsx?raw";
 import { PlanetExample } from "./examples/PlanetExample";
 import planetExampleCode from "./examples/PlanetExample.tsx?raw";
+import { PulleyDiagram } from "./examples/PulleyDiagram";
+import pulleyDiagramCode from "./examples/PulleyDiagram.tsx?raw";
+import { QuantumCircuit } from "./examples/QuantumCircuit";
+import quantumCircuitCode from "./examples/QuantumCircuit.tsx?raw";
 import { ReactComponents } from "./examples/ReactComponents";
 import reactComponentsCode from "./examples/ReactComponents.tsx?raw";
 import { ShapesAndStacks } from "./examples/ShapesAndStacks";
@@ -79,6 +85,30 @@ function App() {
 				code={barChartCode}
 			>
 				<BarChart />
+			</ExampleSection>
+
+			<ExampleSection
+				title="Baking Recipe"
+				description="The Bluefish gallery brownie example: a recipe table built from padded cells, groups of refs as row/column guides, and span relations drawing the cell borders"
+				code={bakingRecipeCode}
+			>
+				<BakingRecipe />
+			</ExampleSection>
+
+			<ExampleSection
+				title="Quantum Circuit"
+				description="The Bluefish gallery circuit-equivalence example: wires, boxed gates in fixed-size frames, control dots connected by lines, and highlight backgrounds over refs"
+				code={quantumCircuitCode}
+			>
+				<QuantumCircuit />
+			</ExampleSection>
+
+			<ExampleSection
+				title="Pulley System"
+				description="The Bluefish gallery pulley example: distributed pulleys, path-based weights, and fractional line anchors for the ropes"
+				code={pulleyDiagramCode}
+			>
+				<PulleyDiagram />
 			</ExampleSection>
 
 			<ExampleSection
