@@ -91,7 +91,7 @@ test("every example shows its source code on every page", async ({ page }) => {
 		const codeBlocks = page.locator("section pre code");
 		expect(await codeBlocks.count()).toBe(sections);
 		const code = await codeBlocks.first().textContent();
-		expect(code).toContain("import { Canvas }");
+		expect(code).toContain("import ");
 	}
 });
 
@@ -143,14 +143,17 @@ test("the sequence diagram renders lifelines, arrows and activations", async ({
 	);
 	// message arrows: 4 + 6 + 3 (the http self-message has none)
 	expect(await page.locator('svg line[id*="-arrow"]').count()).toBe(13);
-	// two activation bars sit exactly on their lifelines
-	const serverBox = await page
-		.locator('svg rect[id="actor-Server"]')
+	// activation bars sit exactly on their lifelines (checked within the
+	// http-flow diagram: the svg that has an activation bar for Server)
+	const httpSvg = page.locator("svg", {
+		has: page.locator('rect[id="act-Server"]'),
+	});
+	const serverBox = await httpSvg
+		.locator('rect[id="actor-Server"]')
 		.first()
 		.boundingBox();
-	const serverBar = await page
-		.locator('svg rect[id="act-Server"]')
-		.first()
+	const serverBar = await httpSvg
+		.locator('rect[id="act-Server"]')
 		.boundingBox();
 	expect(serverBar).toBeTruthy();
 	if (serverBar && serverBox) {

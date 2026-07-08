@@ -21,10 +21,7 @@ import quantumCircuitCode from "./examples/QuantumCircuit.tsx?raw";
 import { ReactComponents } from "./examples/ReactComponents";
 import reactComponentsCode from "./examples/ReactComponents.tsx?raw";
 import sequenceDiagramCode from "./examples/SequenceDiagram.tsx?raw";
-import {
-	HttpFlowDiagram,
-	SequenceDiagramExample,
-} from "./examples/SequenceDiagramExample";
+import { SequenceDiagramExample } from "./examples/SequenceDiagramExample";
 import sequenceDiagramExampleCode from "./examples/SequenceDiagramExample.tsx?raw";
 import { ShapesAndStacks } from "./examples/ShapesAndStacks";
 import shapesAndStacksCode from "./examples/ShapesAndStacks.tsx?raw";
@@ -34,7 +31,7 @@ type Section = {
 	title: string;
 	description: string;
 	code: string;
-	element: React.ReactNode;
+	element?: React.ReactNode;
 };
 
 type Page = { path: string; title: string; sections: Section[] };
@@ -117,18 +114,17 @@ const pages: Page[] = [
 		title: "Sequence Diagram",
 		sections: [
 			{
-				title: "A reusable SequenceDiagram component",
+				title: "Sequence diagrams from data",
 				description:
-					"A mermaid-style diagram class: actors in a stackH, dashed lifelines, messages as arrows between anchors positioned by align and distribute, and activation bars spanned to their message range - all driven by three data arrays",
-				code: sequenceDiagramCode,
-				element: <HttpFlowDiagram />,
-			},
-			{
-				title: "Instantiating it with different data",
-				description:
-					"The same component renders any conversation - only the actors, messages, and activations arrays change",
+					"A reusable SequenceDiagram component renders any conversation - only the actors, messages, and activations arrays change",
 				code: sequenceDiagramExampleCode,
 				element: <SequenceDiagramExample />,
+			},
+			{
+				title: "How the SequenceDiagram component works",
+				description:
+					"The diagram class itself: actors in a stackH, dashed lifelines, messages as arrows between anchors positioned by align and distribute, and activation bars spanned to their message range",
+				code: sequenceDiagramCode,
 			},
 		],
 	},
