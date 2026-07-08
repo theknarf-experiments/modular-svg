@@ -87,6 +87,28 @@ describe("layoutToSvg", () => {
 		expect(svg).toContain('data-label="a&lt;b"');
 	});
 
+	it("translates path marks to their layout position", () => {
+		const nodes: NodeRecord[] = [
+			{ id: "O", type: "rect", x: 0, y: 0, width: 5, height: 5 },
+			{
+				id: "P",
+				type: "path",
+				d: "M 0,0 L 9,4.5 L 0,9 Z",
+				dOrigin: { x: 0, y: 0 },
+				x: 0,
+				y: 0,
+				width: 9,
+				height: 9,
+			},
+		];
+		const layout: LayoutResult = {
+			O: { x: 0, y: 0, width: 5, height: 5 },
+			P: { x: 91, y: 45.5, width: 9, height: 9 },
+		};
+		const svg = layoutToSvg(layout, nodes);
+		expect(svg).toContain('transform="translate(91,45.5)"');
+	});
+
 	it("renders arrows", () => {
 		const nodes: NodeRecord[] = [
 			{ id: "A", x: 0, y: 0, width: 10, height: 10 },

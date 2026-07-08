@@ -141,8 +141,19 @@ test("the sequence diagram renders lifelines, arrows and activations", async ({
 	expect(await page.locator('svg line[stroke-dasharray="4 4"]').count()).toBe(
 		8,
 	);
-	// message arrows: 4 + 6 + 3 (the http self-message has none)
-	expect(await page.locator('svg line[id*="-arrow"]').count()).toBe(13);
+	// message shafts: 4 (http, one self-message) + 6 (oauth) + 5 (tcp)
+	expect(await page.locator('svg line[id*="-shaft"]').count()).toBe(15);
+	// heads: 4 arrow (http) + 6 (oauth incl. open) + 6 (tcp incl. both+cross)
+	expect(await page.locator('svg path[id*="-head"]').count()).toBe(16);
+	// notes: the spanning http note and the oauth rightOf note
+	expect(await page.locator('svg rect[id*="-note"]').count()).toBe(2);
+	// frames: the oauth loop frame and the tcp highlight rect
+	expect(await page.locator('svg rect[id="frame0"]').count()).toBe(2);
+	await expect(page.locator("svg text", { hasText: "loop" })).toBeVisible();
+	// autonumber prefixes http labels
+	await expect(
+		page.locator("svg text", { hasText: "1. GET /planets" }),
+	).toBeVisible();
 	// activation bars sit exactly on their lifelines (checked within the
 	// http-flow diagram: the svg that has an activation bar for Server)
 	const httpSvg = page.locator("svg", {
