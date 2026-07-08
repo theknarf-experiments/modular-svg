@@ -3,6 +3,9 @@ import { defineConfig } from "vite";
 
 export default defineConfig(() => ({
 	root: "src",
+	// Defaults to "/"; the GitHub Pages workflow sets DOCS_BASE to the repo
+	// subpath so relative asset URLs resolve when deployed under /<repo>/.
+	base: process.env.DOCS_BASE || "/",
 	build: {
 		outDir: "../dist",
 		emptyOutDir: true,
