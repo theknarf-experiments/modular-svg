@@ -306,11 +306,15 @@ const hostConfig: Reconciler.HostConfig<
 	},
 
 	commitTextUpdate(
-		_textInstance: TextInstance,
+		textInstance: TextInstance,
 		_oldText: string,
-		_newText: string,
+		newText: string,
 	): void {
-		// Not supported
+		// Text nodes are pseudo-instances holding their content in props
+		const instance = textInstance as unknown as Instance | null;
+		if (instance) {
+			instance.props = { ...instance.props, textContent: newText };
+		}
 	},
 
 	// Finalization
