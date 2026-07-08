@@ -583,9 +583,9 @@ export function createRoot(): ReconcilerRoot {
 
 // Export act helper for testing
 export async function act(callback: () => void | Promise<void>): Promise<void> {
-	// Use React's act from react reconciler
-	const reactAct = (await import("react")).act;
-	await reactAct(async () => {
+	// React is already imported statically; a dynamic import here is
+	// ineffective (react can't move to its own chunk) and pointless.
+	await React.act(async () => {
 		await callback();
 	});
 }

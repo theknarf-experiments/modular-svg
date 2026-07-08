@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
-		"build": "tsc --noEmit && ./ssg.tsx",
+		"build": "tsc --noEmit && NODE_ENV=production ./ssg.tsx",
 		"typecheck": "tsc --noEmit",
 		"preview": "vite preview --outDir dist",
 		"build:spa": "vite build"

@@ -6,6 +6,21 @@ export default defineConfig(() => ({
 	build: {
 		outDir: "../dist",
 		emptyOutDir: true,
+		rollupOptions: {
+			output: {
+				manualChunks(id: string) {
+					if (!id.includes("node_modules")) return;
+					if (id.includes("shiki") || id.includes("@shikijs")) return "shiki";
+					if (
+						/[\\/](react|react-dom|react-router|react-reconciler|scheduler|its-fine)[\\/]/.test(
+							id,
+						)
+					) {
+						return "react-vendor";
+					}
+				},
+			},
+		},
 	},
 	plugins: [react()],
 	define: {
