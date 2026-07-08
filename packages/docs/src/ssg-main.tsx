@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import { hydrateRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import routes from "./routes";
 
@@ -10,7 +10,8 @@ if (!rootElement) {
 
 const router = createBrowserRouter(routes);
 
-createRoot(rootElement).render(
+hydrateRoot(
+	rootElement,
 	<StrictMode>
 		<RouterProvider router={router} />
 	</StrictMode>,

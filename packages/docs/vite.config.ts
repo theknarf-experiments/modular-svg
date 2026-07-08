@@ -1,7 +1,12 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-export default defineConfig({
+export default defineConfig(() => ({
+	root: "src",
+	build: {
+		outDir: "../dist",
+		emptyOutDir: true,
+	},
 	plugins: [react()],
 	define: {
 		// Skip schema validation in browser (parser.ts module-level code)
@@ -11,4 +16,4 @@ export default defineConfig({
 		// Exclude Node.js built-ins from optimization
 		exclude: ["node:fs", "node:path", "node:url"],
 	},
-});
+}));
