@@ -12,7 +12,8 @@
 	"dependencies": {
 		"@modular-svg/react": "workspace:*",
 		"react": "^19.2.7",
-		"react-dom": "^19.2.7"
+		"react-dom": "^19.2.7",
+		"shiki": "^4.3.1"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.61.1",
