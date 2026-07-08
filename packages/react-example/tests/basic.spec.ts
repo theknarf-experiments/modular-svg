@@ -78,12 +78,10 @@ test("every example shows its source code", async ({ page }) => {
 	await page.waitForTimeout(2000);
 
 	const sections = await page.locator("section").count();
-	const codeBlocks = page.locator("details summary", { hasText: "Show code" });
+	const codeBlocks = page.locator("section pre code");
 	expect(await codeBlocks.count()).toBe(sections);
 
-	// expanding a block reveals real source
-	await codeBlocks.first().click();
-	const code = await page.locator("details pre code").first().textContent();
+	const code = await codeBlocks.first().textContent();
 	expect(code).toContain("import { Canvas }");
 	expect(code).toContain("<Canvas");
 });

@@ -18,15 +18,18 @@ export function ExampleSection({
 			{description && (
 				<p style={{ color: "#666", fontSize: "14px" }}>{description}</p>
 			)}
-			{children}
-			<details style={{ marginTop: "1rem" }}>
-				<summary style={{ cursor: "pointer", color: "#666", fontSize: "14px" }}>
-					Show code
-				</summary>
-				<div style={{ marginTop: "0.5rem" }}>
-					<CodeBlock code={code} />
-				</div>
-			</details>
+			<div
+				style={{
+					display: "grid",
+					gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+					gap: "1.5rem",
+					alignItems: "start",
+					marginTop: "1rem",
+				}}
+			>
+				<CodeBlock code={code} />
+				<div>{children}</div>
+			</div>
 		</section>
 	);
 }
