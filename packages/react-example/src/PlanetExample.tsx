@@ -51,16 +51,6 @@ export function PlanetExample() {
 					<li>Earth: r=38 (12,742 km)</li>
 					<li>Mars: r=21 (6,779 km)</li>
 				</ul>
-
-				<p style={{ marginTop: "1rem" }}>
-					<strong>Features used:</strong>
-				</p>
-				<ul style={{ paddingLeft: "1.5rem" }}>
-					<li>✅ Circle elements with custom colors and strokes</li>
-					<li>✅ Horizontal stack (stackH) with 50px spacing</li>
-					<li>✅ Automatic vertical centering (built into stackH)</li>
-					<li>✅ Canvas margin for outer padding</li>
-				</ul>
 			</div>
 		</div>
 	);

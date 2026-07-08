@@ -87,50 +87,6 @@ export function FullPlanetExample() {
 					</arrow>
 				</group>
 			</Canvas>
-
-			<div style={{ marginTop: "1.5rem", fontSize: "14px", color: "#666" }}>
-				<p>
-					<strong>Features demonstrated:</strong>
-				</p>
-				<ul style={{ paddingLeft: "1.5rem" }}>
-					<li>
-						✅ <code>&lt;background&gt;</code> - Container with padding
-					</li>
-					<li>
-						✅ <code>&lt;stackH&gt;</code> - Horizontal layout with centerY
-						alignment
-					</li>
-					<li>
-						✅ <code>&lt;text&gt;</code> - Text label with string children
-					</li>
-					<li>
-						✅ <code>&lt;align&gt;</code> - Center text above planet
-					</li>
-					<li>
-						✅ <code>&lt;distribute&gt;</code> - Vertical spacing between
-						elements
-					</li>
-					<li>
-						✅ <code>&lt;arrow&gt;</code> - Connector between elements
-					</li>
-					<li>
-						✅ <code>&lt;ref&gt;</code> - References to named elements
-					</li>
-					<li>
-						✅ <code>&lt;group&gt;</code> - Explicit grouping of operations
-					</li>
-					<li>✅ Element keys for stable IDs</li>
-				</ul>
-
-				<p style={{ marginTop: "1rem" }}>
-					<strong>Comparison to original JSON:</strong>
-				</p>
-				<p style={{ marginLeft: "1.5rem", fontStyle: "italic" }}>
-					This JSX version is a 1:1 mapping of the declarative structure in{" "}
-					<code>examples/planet.json</code>. Every feature from the JSON format
-					is now available in React!
-				</p>
-			</div>
 		</div>
 	);
 }
