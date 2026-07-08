@@ -1,16 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 import {
 	expectPaintOrderToMatch,
 	expectShapesToMatch,
 	renderBluefish,
-	renderBluefishSvg,
 	renderModular,
 	renderModularSvg,
 } from "./harness.ts";
 
 // Fixtures for the gaps closed after the initial parity suite: zOrder,
-// Image, stack/distribute total modes, Line, perfect-arrows Arrow geometry,
-// and Circle cx/cy. See PARITY.md.
+// Image, stack/distribute total modes, Line, and Circle cx/cy. See PARITY.md.
+// Arrow geometry deliberately diverges (straight arrows, no perfect-arrows).
 
 describe("zOrder", () => {
 	it("controls paint order like Bluefish", async () => {
@@ -201,97 +200,6 @@ describe("Line", () => {
 			lineScene(undefined, undefined),
 		);
 		expectShapesToMatch(actual, reference);
-	});
-});
-
-describe("Arrow (perfect-arrows geometry)", () => {
-	function quadNumbers(svg: string): number[] {
-		const m =
-			/d="M(-?[\d.e+]+),(-?[\d.e+]+) Q(-?[\d.e+]+),(-?[\d.e+]+) (-?[\d.e+]+),(-?[\d.e+]+)"/.exec(
-				svg,
-			);
-		if (!m) throw new Error(`no quadratic path in svg: ${svg.slice(0, 300)}`);
-		return m.slice(1).map(Number);
-	}
-
-	function polygonParts(svg: string): { points: string; transform: number[] } {
-		const m =
-			/<polygon points="([^"]+)" transform="translate\((-?[\d.e+]+),\s*(-?[\d.e+]+)\) rotate\((-?[\d.e+]+)\)"/.exec(
-				svg,
-			);
-		if (!m) throw new Error(`no polygon in svg: ${svg.slice(0, 300)}`);
-		return { points: m[1], transform: m.slice(2).map(Number) };
-	}
-
-	// The frame origin is the top-left rect corner (rect "a" sits at 0,0 with
-	// no stroke), letting us compare path coordinates across both systems.
-	function frameOrigin(shapes: { kind: string; x: number; y: number }[]): {
-		ox: number;
-		oy: number;
-	} {
-		const rects = shapes.filter((s) => s.kind === "rect");
-		return {
-			ox: Math.min(...rects.map((r) => r.x)),
-			oy: Math.min(...rects.map((r) => r.y)),
-		};
-	}
-
-	it("matches Bluefish's curved arrow exactly", async () => {
-		const { svg: refSvg, shapes: refShapes } = await renderBluefishSvg(
-			// biome-ignore lint/suspicious/noExplicitAny: bluefish module type
-			(bf: any) => [
-				bf.Rect({ name: "a", x: 0, y: 0, width: 40, height: 30 }),
-				bf.Rect({ name: "b", x: 120, y: 90, width: 40, height: 30 }),
-				bf.Arrow({}, [bf.Ref({ select: "a" }), bf.Ref({ select: "b" })]),
-			],
-		);
-		const { svg: actSvg, shapes: actShapes } = renderModularSvg({
-			type: "Group",
-			id: "root",
-			children: [
-				{
-					type: "Rect",
-					id: "a",
-					props: { x: 0, y: 0, width: 40, height: 30, "stroke-width": 0 },
-				},
-				{
-					type: "Rect",
-					id: "b",
-					props: { x: 120, y: 90, width: 40, height: 30, "stroke-width": 0 },
-				},
-				{
-					type: "Arrow",
-					id: "arrow",
-					children: [
-						{ type: "Ref", target: "a" },
-						{ type: "Ref", target: "b" },
-					],
-				},
-			],
-		});
-
-		const refO = frameOrigin(refShapes);
-		const actO = frameOrigin(actShapes);
-		const refQuad = quadNumbers(refSvg);
-		const actQuad = quadNumbers(actSvg);
-		for (let i = 0; i < 6; i++) {
-			const refV = refQuad[i] - (i % 2 === 0 ? refO.ox : refO.oy);
-			const actV = actQuad[i] - (i % 2 === 0 ? actO.ox : actO.oy);
-			expect(actV).toBeCloseTo(refV, 3);
-		}
-
-		const refPoly = polygonParts(refSvg);
-		const actPoly = polygonParts(actSvg);
-		expect(actPoly.points).toBe(refPoly.points);
-		expect(actPoly.transform[0] - actO.ox).toBeCloseTo(
-			refPoly.transform[0] - refO.ox,
-			3,
-		);
-		expect(actPoly.transform[1] - actO.oy).toBeCloseTo(
-			refPoly.transform[1] - refO.oy,
-			3,
-		);
-		expect(actPoly.transform[2]).toBeCloseTo(refPoly.transform[2], 3);
 	});
 });
 

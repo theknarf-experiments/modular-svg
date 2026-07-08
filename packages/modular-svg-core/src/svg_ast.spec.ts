@@ -57,7 +57,7 @@ describe("SVG AST", () => {
 		expect(rects.length).toBeGreaterThanOrEqual(1);
 	});
 
-	it("generates arrow as path + polygon elements", () => {
+	it("generates arrow as line + polygon elements", () => {
 		const json = {
 			type: "Group",
 			children: [
@@ -78,10 +78,10 @@ describe("SVG AST", () => {
 		const layout = solveLayout(scene);
 		const ast = layoutToAst(layout, scene.nodes, 10);
 
-		const paths = ast.children.filter((el) => el.type === "path");
+		const lines = ast.children.filter((el) => el.type === "line");
 		const polygons = ast.children.filter((el) => el.type === "polygon");
 
-		expect(paths.length).toBe(1);
+		expect(lines.length).toBe(1);
 		expect(polygons.length).toBe(1);
 	});
 

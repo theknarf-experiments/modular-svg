@@ -38,7 +38,7 @@ Status legend:
 | **Background** | padding 10; stroke black / fill none / sw 3; extra rect attrs pass through (`rx` in tutorial!); custom `background` render prop; `width`/`height`; centers unowned content; errors if frame pos owned | padding 10 + fill/stroke/sw + attr passthrough incl. `rx` (fixtures); no custom frame, no content centering | ✅ core / 🟡 details |
 | **Group** | defaults unowned left/top to 0 (claims them); union skipping undefined; `rels` prop; extra attrs on `<g>` | union bbox; relations are just sibling children in JSON (≈ `rels`) | ✅ core / 🟡 details |
 | **Line** | connects 2 children (Refs); `source`/`target` fractional [0..1,0..1] bbox anchors, clamped-to-box endpoint defaults; stroke black sw 3, dasharray | same, ported endpoint algorithm incl. center-bias quirk (fixtures: both anchors / source only / none); dasharray via attr passthrough | ✅ |
-| **Arrow** | perfect-arrows curved quad path: bow .2, stretch .5, stretchMin 40, stretchMax 420, padStart 5, padEnd 20, flip, straights, `start` dot; bbox = union of endpoints' boxes | same: perfect-arrows dependency, identical defaults, path + rotated polygon head + optional start dot (fixture compares path coords exactly) | ✅ |
+| **Arrow** | perfect-arrows curved quad path: bow .2, stretch .5, stretchMin 40, stretchMax 420, padStart 5, padEnd 20, flip, straights, `start` dot; bbox = union of endpoints' boxes | **deliberately straight**: line between facing box edges + polygon head, `padStart`/`padEnd` (default 5); no perfect-arrows dependency by choice | ➖ by preference |
 | **GraphLayered / Node / Edge** | dagre layered graph layout; **not exported** | — | 🚫 |
 | **Gradient** | linearGradient defs helper; **not exported** | — | 🚫 |
 
@@ -68,7 +68,8 @@ Status legend:
 
 ## Remaining gaps (deliberate or low priority)
 
-- Text props/metrics; Path mark; Blob; parent-resizable circles; Background
+- Arrow curves (straight arrows preferred; no perfect-arrows dependency);
+  Text props/metrics; Path mark; Blob; parent-resizable circles; Background
   custom frame + content centering; Bluefish-root width/height overrides;
   per-parent zOrder scoping; partial-axis container bboxes.
 
