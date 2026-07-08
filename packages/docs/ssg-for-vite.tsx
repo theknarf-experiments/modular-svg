@@ -57,6 +57,9 @@ const renderHtml = async (path, routes, mainScript) => {
 			<head>
 				<meta charSet="UTF-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+				{/* Resolve relative asset/script URLs against Vite's base, so the
+				    prerendered pages work when published under a subpath. */}
+				<base href={import.meta.env.BASE_URL} />
 			</head>
 			<body>
 				<div id="root">
