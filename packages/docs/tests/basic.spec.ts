@@ -63,7 +63,7 @@ test("Canvas renders SVG elements with console diagnostics", async ({
 });
 
 test("arrows render as straight lines with polygon heads", async ({ page }) => {
-	await page.goto("http://localhost:5173/diagrams");
+	await page.goto("http://localhost:5173/diagrams/");
 	await page.waitForTimeout(2000);
 
 	// The Full Planet Example draws arrows between labels and planets
@@ -76,15 +76,15 @@ test("arrows render as straight lines with polygon heads", async ({ page }) => {
 test("every example shows its source code on every page", async ({ page }) => {
 	const routes = [
 		"/",
-		"/interactive",
-		"/diagrams",
-		"/sequence",
-		"/packet",
-		"/gitgraph",
-		"/charts",
-		"/baking-recipe",
-		"/quantum-circuit",
-		"/pulley",
+		"/interactive/",
+		"/diagrams/",
+		"/sequence/",
+		"/packet/",
+		"/gitgraph/",
+		"/charts/",
+		"/baking-recipe/",
+		"/quantum-circuit/",
+		"/pulley/",
 	];
 	for (const route of routes) {
 		await page.goto(`http://localhost:5173${route}`);
@@ -99,7 +99,7 @@ test("every example shows its source code on every page", async ({ page }) => {
 });
 
 test("planet label dropdown retargets the refs", async ({ page }) => {
-	await page.goto("http://localhost:5173/diagrams");
+	await page.goto("http://localhost:5173/diagrams/");
 	await page.waitForTimeout(2000);
 
 	const label = page.locator('svg text[id="label"]');
@@ -116,19 +116,19 @@ test("the Bluefish gallery examples render on their pages", async ({
 	page,
 }) => {
 	// Baking recipe: the table cell borders exist and the title cell spans them
-	await page.goto("http://localhost:5173/baking-recipe");
+	await page.goto("http://localhost:5173/baking-recipe/");
 	await page.waitForTimeout(1500);
 	expect(await page.locator('svg rect[id="cb12"]').count()).toBe(1);
 	expect(await page.locator('svg rect[id="recipeTable"]').count()).toBe(1);
 
 	// Quantum circuit: control-dot circles and connecting lines
-	await page.goto("http://localhost:5173/quantum-circuit");
+	await page.goto("http://localhost:5173/quantum-circuit/");
 	await page.waitForTimeout(1500);
 	expect(await page.locator('svg circle[id="c1"]').count()).toBe(1);
 	expect(await page.locator('svg circle[id="c2"]').count()).toBe(1);
 
 	// Pulley: trapezoid weights are paths, ropes are lines
-	await page.goto("http://localhost:5173/pulley");
+	await page.goto("http://localhost:5173/pulley/");
 	await page.waitForTimeout(1500);
 	expect(await page.locator('svg path[d*="M 10,0"]').count()).toBe(2);
 	expect(await page.locator('svg line[id="l6copy"]').count()).toBe(1);
@@ -137,7 +137,7 @@ test("the Bluefish gallery examples render on their pages", async ({
 test("the sequence diagram renders lifelines, arrows and activations", async ({
 	page,
 }) => {
-	await page.goto("http://localhost:5173/sequence");
+	await page.goto("http://localhost:5173/sequence/");
 	await page.waitForTimeout(1500);
 
 	// lifelines across the three diagrams: 3 (http) + 3 (oauth) + 2 (tcp)
@@ -180,7 +180,7 @@ test("the sequence diagram renders lifelines, arrows and activations", async ({
 test("the packet diagram sizes fields by bits and fills rests", async ({
 	page,
 }) => {
-	await page.goto("http://localhost:5173/packet");
+	await page.goto("http://localhost:5173/packet/");
 	await page.waitForTimeout(1500);
 
 	const tcp = page.locator("svg").first();
@@ -202,7 +202,7 @@ test("the packet diagram sizes fields by bits and fills rests", async ({
 });
 
 test("the git graph renders lanes, edges, and the merge", async ({ page }) => {
-	await page.goto("http://localhost:5173/gitgraph");
+	await page.goto("http://localhost:5173/gitgraph/");
 	await page.waitForTimeout(1500);
 
 	// 7 commit circles in each of the two directions
@@ -262,7 +262,7 @@ test("the color-constraint examples work", async ({ page }) => {
 test("pie chart: slices are arcs auto-colored, legend matches via SameColor", async ({
 	page,
 }) => {
-	await page.goto("http://localhost:5173/charts");
+	await page.goto("http://localhost:5173/charts/");
 	await page.waitForTimeout(1500);
 	const pie = page.locator("section", { hasText: "Pie charts from data" });
 	const svg = pie.locator("svg").first();
@@ -287,7 +287,7 @@ test("pie chart: slices are arcs auto-colored, legend matches via SameColor", as
 test("venn: overlapping translucent circles with distinct fills", async ({
 	page,
 }) => {
-	await page.goto("http://localhost:5173/charts");
+	await page.goto("http://localhost:5173/charts/");
 	await page.waitForTimeout(1500);
 	const three = page
 		.locator("section", { hasText: "Venn diagrams from data" })
@@ -307,7 +307,7 @@ test("venn: overlapping translucent circles with distinct fills", async ({
 test("pie chart hover darkens the slice and lightens the rest", async ({
 	page,
 }) => {
-	await page.goto("http://localhost:5173/charts");
+	await page.goto("http://localhost:5173/charts/");
 	await page.waitForTimeout(1500);
 	const pie = page
 		.locator("section", { hasText: "Pie charts from data" })
