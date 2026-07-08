@@ -20,8 +20,12 @@ import { QuantumCircuit } from "./examples/QuantumCircuit";
 import quantumCircuitCode from "./examples/QuantumCircuit.tsx?raw";
 import { ReactComponents } from "./examples/ReactComponents";
 import reactComponentsCode from "./examples/ReactComponents.tsx?raw";
-import { SequenceDiagram } from "./examples/SequenceDiagram";
 import sequenceDiagramCode from "./examples/SequenceDiagram.tsx?raw";
+import {
+	HttpFlowDiagram,
+	SequenceDiagramExample,
+} from "./examples/SequenceDiagramExample";
+import sequenceDiagramExampleCode from "./examples/SequenceDiagramExample.tsx?raw";
 import { ShapesAndStacks } from "./examples/ShapesAndStacks";
 import shapesAndStacksCode from "./examples/ShapesAndStacks.tsx?raw";
 import "./modular-svg.d.ts";
@@ -113,11 +117,18 @@ const pages: Page[] = [
 		title: "Sequence Diagram",
 		sections: [
 			{
-				title: "Sequence Diagram",
+				title: "A reusable SequenceDiagram component",
 				description:
-					"A mermaid-style sequence diagram: actors in a stackH, dashed lifelines, messages as arrows between anchors positioned by align and distribute, and activation bars spanned to their message range",
+					"A mermaid-style diagram class: actors in a stackH, dashed lifelines, messages as arrows between anchors positioned by align and distribute, and activation bars spanned to their message range - all driven by three data arrays",
 				code: sequenceDiagramCode,
-				element: <SequenceDiagram />,
+				element: <HttpFlowDiagram />,
+			},
+			{
+				title: "Instantiating it with different data",
+				description:
+					"The same component renders any conversation - only the actors, messages, and activations arrays change",
+				code: sequenceDiagramExampleCode,
+				element: <SequenceDiagramExample />,
 			},
 		],
 	},
