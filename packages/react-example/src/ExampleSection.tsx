@@ -1,4 +1,5 @@
 import type * as React from "react";
+import { CodeBlock } from "./CodeBlock";
 
 export function ExampleSection({
 	title,
@@ -22,20 +23,9 @@ export function ExampleSection({
 				<summary style={{ cursor: "pointer", color: "#666", fontSize: "14px" }}>
 					Show code
 				</summary>
-				<pre
-					style={{
-						background: "#f6f8fa",
-						border: "1px solid #ddd",
-						borderRadius: "8px",
-						padding: "1rem",
-						overflowX: "auto",
-						fontSize: "13px",
-						lineHeight: 1.5,
-						maxWidth: "800px",
-					}}
-				>
-					<code>{code}</code>
-				</pre>
+				<div style={{ marginTop: "0.5rem" }}>
+					<CodeBlock code={code} />
+				</div>
 			</details>
 		</section>
 	);
