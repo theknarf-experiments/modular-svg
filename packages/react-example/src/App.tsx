@@ -1,7 +1,7 @@
 import { Canvas } from "@modular-svg/react";
 import { createContext, useContext, useState } from "react";
-import { ComplexPlanetSystem, FullPlanetExample } from "./FullPlanetExample";
-import { InteractivePlanetExample, PlanetExample } from "./PlanetExample";
+import { InteractivePlanetExample } from "./InteractivePlanetExample";
+import { ComplexPlanetSystem, PlanetExample } from "./PlanetExample";
 import "./modular-svg.d.ts";
 
 // Create contexts for demonstration
@@ -270,12 +270,7 @@ function App() {
 				<InteractivePlanetExample />
 			</section>
 
-			{/* Example 11: Full Planet Example with ALL Features */}
-			<section style={{ marginBottom: "3rem" }}>
-				<FullPlanetExample />
-			</section>
-
-			{/* Example 12: Complex Planet System */}
+			{/* Example 11: Complex Planet System */}
 			<section style={{ marginBottom: "3rem" }}>
 				<ComplexPlanetSystem />
 			</section>
