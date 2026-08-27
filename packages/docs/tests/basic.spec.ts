@@ -81,6 +81,7 @@ test("every example shows its source code on every page", async ({ page }) => {
 		"/sequence/",
 		"/packet/",
 		"/gitgraph/",
+		"/bpmn/",
 		"/charts/",
 		"/baking-recipe/",
 		"/quantum-circuit/",
@@ -229,6 +230,58 @@ test("the git graph renders lanes, edges, and the merge", async ({ page }) => {
 		.locator('circle[id="commit-a1f9-dot"]')
 		.getAttribute("fill");
 	expect(dotFill).toBe(main);
+});
+
+test("the bpmn diagram lays out lanes, columns and flow routes", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/bpmn/");
+	await page.waitForTimeout(1500);
+	const pool = page.locator("svg").first();
+
+	// a title rail plus one per lane, and an arrowhead on every flow
+	await expect(pool.locator('rect[id^="rail-"]')).toHaveCount(3);
+	await expect(pool.locator('path[id$="-head"]')).toHaveCount(8);
+
+	// a node lands inside the lane it names
+	const band = await pool.locator('rect[id="band-finance"]').boundingBox();
+	const review = await pool.locator('rect[id="slot-review"]').boundingBox();
+	expect(band && review).toBeTruthy();
+	if (band && review) {
+		expect(review.y).toBeGreaterThan(band.y);
+		expect(review.y + review.height).toBeLessThan(band.y + band.height);
+	}
+
+	// nodes in the same column share a center, whatever their shape
+	const gateway = await pool.locator('rect[id="slot-approved"]').boundingBox();
+	const logged = await pool.locator('rect[id="slot-logged"]').boundingBox();
+	expect(gateway && logged).toBeTruthy();
+	if (gateway && logged) {
+		expect(gateway.x).toBeGreaterThan(logged.x);
+	}
+
+	// the rework loop (revise -> submit, an earlier column) dips below the pool
+	const poolBox = await pool.locator('rect[id="pool"]').boundingBox();
+	const loop = await pool.locator('path[id="flow6-down"]').boundingBox();
+	expect(poolBox && loop).toBeTruthy();
+	if (poolBox && loop) {
+		expect(loop.y + loop.height).toBeGreaterThan(poolBox.y + poolBox.height);
+	}
+
+	// the gateway's default branch carries its tick mark
+	await expect(pool.locator('path[id="flow5-tick"]')).toHaveCount(1);
+
+	// the second diagram drops the pool chrome but keeps the two rows
+	const bare = page.locator("svg").nth(1);
+	await expect(bare.locator('rect[id="pool"]')).toHaveCount(0);
+	const unit = await bare.locator('rect[id="slot-unit"]').boundingBox();
+	const lint = await bare.locator('rect[id="slot-lint"]').boundingBox();
+	expect(unit && lint).toBeTruthy();
+	if (unit && lint) {
+		// the parallel branches share a column but sit on different rows
+		expect(Math.abs(unit.x - lint.x)).toBeLessThan(1);
+		expect(lint.y).toBeGreaterThan(unit.y + unit.height);
+	}
 });
 
 test("the color-constraint examples work", async ({ page }) => {

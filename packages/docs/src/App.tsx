@@ -4,6 +4,9 @@ import { BakingRecipe } from "./examples/BakingRecipe";
 import bakingRecipeCode from "./examples/BakingRecipe.tsx?raw";
 import { BarChart } from "./examples/BarChart";
 import barChartCode from "./examples/BarChart.tsx?raw";
+import bpmnDiagramCode from "./examples/BpmnDiagram.tsx?raw";
+import { BpmnDiagramExample } from "./examples/BpmnDiagramExample";
+import bpmnDiagramExampleCode from "./examples/BpmnDiagramExample.tsx?raw";
 import { ContextForwarding } from "./examples/ContextForwarding";
 import contextForwardingCode from "./examples/ContextForwarding.tsx?raw";
 import { ContrastExample } from "./examples/ContrastExample";
@@ -202,6 +205,25 @@ export const pages: Page[] = [
 				description:
 					"Branch pills define lane rows; invisible commit anchors chain horizontally with distribute and align to their lane; edges reference the anchors (painted under), then circles, ids, and tags go on top",
 				code: gitGraphCode,
+			},
+		],
+	},
+	{
+		path: "/bpmn/",
+		title: "BPMN",
+		sections: [
+			{
+				title: "BPMN processes from data",
+				description:
+					"Nodes carry only a column and a lane; the layout follows. Flows pick their own route from that placement - straight across a lane, curving between lanes, or looping back under the pool to an earlier column",
+				code: bpmnDiagramExampleCode,
+				element: <BpmnDiagramExample />,
+			},
+			{
+				title: "How the BpmnDiagram component works",
+				description:
+					"Fixed-height lane rails give every node its y and invisible column boxes give it its x, so the grid is two stacks. The pool border and lane bands are drawn first and then span-copied off the rails, and arrowheads align onto invisible edge points so they sit just outside the shape they point at",
+				code: bpmnDiagramCode,
 			},
 		],
 	},
