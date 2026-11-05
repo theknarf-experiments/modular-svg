@@ -79,7 +79,11 @@ export type Channel =
 export type Values = Partial<Record<Channel, number | string>>;
 
 /** A color taken from another node's solved color (after color relations). */
-export type ColorRef = { ref: string };
+export type ColorRef = {
+	ref: string;
+	/** which of its colors; by default the one the node is drawn with */
+	paint?: "fill" | "stroke";
+};
 
 /** Values as authored: colors may name another node's solved color. */
 export type AuthoredValues = Partial<
@@ -219,7 +223,7 @@ function checkValues(values: AuthoredValues, what: string): Values {
 /** Replace color refs in a motion with the colors they name. */
 export function resolveColorRefs(
 	spec: MotionSpec,
-	colorOf: (id: string) => string | undefined,
+	colorOf: (id: string, paint?: "fill" | "stroke") => string | undefined,
 ): MotionSpec {
 	if (spec.kind !== "motion") return spec;
 	const resolve = (
@@ -229,7 +233,7 @@ export function resolveColorRefs(
 		Object.fromEntries(
 			Object.entries(values).map(([k, v]) => {
 				if (!isColorRef(v)) return [k, v];
-				const color = colorOf(v.ref);
+				const color = colorOf(v.ref, v.paint);
 				if (color === undefined)
 					throw new Error(`${k}: ${v.ref} has no color to take`);
 				return [k, color];

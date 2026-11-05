@@ -552,12 +552,12 @@ export function layoutToAst(
 	for (const [id, box] of Object.entries(layout)) {
 		const raw = byId.get(id);
 		if (!raw?.type || isTimeOnly(raw)) continue;
-		// Solved constraint colors: strokes for connector marks, fills otherwise
-		const n = box.fill
-			? raw.type === "line" || raw.type === "curve" || raw.type === "arrow"
-				? { ...raw, stroke: box.fill }
-				: { ...raw, fill: box.fill }
-			: raw;
+		// Solved constraint colors replace what the node set
+		const n = {
+			...raw,
+			...(box.fill !== undefined ? { fill: box.fill } : {}),
+			...(box.stroke !== undefined ? { stroke: box.stroke } : {}),
+		};
 
 		let elements: SvgElement[] | undefined;
 		if (n.type === "circle") {

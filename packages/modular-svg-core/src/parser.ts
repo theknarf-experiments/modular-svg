@@ -42,12 +42,12 @@ export type JsonScene = {
 	operatorNames: string[];
 	/** the relation each color operator came from */
 	colorOperatorNames: string[];
-	/** operators over the color array (3 slots per node: h, s, l) */
+	/** operators over the color array (fill then stroke per node, COLOR_SLOTS each) */
 	colorOperators: LayoutOperator[];
-	/** initial h,s,l per node */
+	/** initial OKLCH + alpha per node and paint */
 	colorSeed: number[];
-	/** ids whose solved color should be emitted */
-	coloredIds: string[];
+	/** solved paints to emit, as "id:fill" or "id:stroke" */
+	coloredPaints: string[];
 	/** operators over the time array (2 slots per node: start, duration) */
 	timeOperators: LayoutOperator[];
 	timeOperatorNames: string[];
@@ -65,7 +65,18 @@ type AnyNode = {
 	props?: Record<string, unknown>;
 	children?: AnyNode[];
 	target?: string;
+	/** on a Ref: which of the node's colors a color relation means */
+	paint?: Paint;
 };
+
+/** A node's two colors; color relations name one through a Ref's paint. */
+export type Paint = "fill" | "stroke";
+
+/** What a mark is drawn with: connectors are strokes, everything else fills. */
+export const defaultPaint = (rec: NodeRecord): Paint =>
+	rec.type === "line" || rec.type === "curve" || rec.type === "arrow"
+		? "stroke"
+		: "fill";
 
 // Map Bluefish alignment keywords to per-axis 1D alignments. 1D keywords
 // imply their axis; 2D keywords expand to both axes; the legacy "center"
@@ -208,7 +219,7 @@ export const emptyScene = (): JsonScene => ({
 	colorOperators: [],
 	colorOperatorNames: [],
 	colorSeed: [],
-	coloredIds: [],
+	coloredPaints: [],
 	timeOperators: [],
 	timeOperatorNames: [],
 	timeSeed: [],
@@ -254,17 +265,20 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		| { kind: "span"; axis: "x" | "y"; children: NodeRecord[] }
 		| {
 				kind: "distinctColors";
+				paints: Paint[];
 				children: NodeRecord[];
 				props: Record<string, unknown>;
 		  }
-		| { kind: "sameColor"; children: NodeRecord[] }
+		| { kind: "sameColor"; children: NodeRecord[]; paints: Paint[] }
 		| {
 				kind: "shade";
+				paints: Paint[];
 				children: NodeRecord[];
 				delta: number;
 		  }
 		| {
 				kind: "contrast";
+				paints: Paint[];
 				children: NodeRecord[];
 				props: Record<string, unknown>;
 		  }
@@ -569,6 +583,14 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		const spatial = (r: NodeRecord) =>
 			r.type !== "motion" && r.type !== "timing";
 		const children = allChildren.filter(spatial);
+		// The paint each child stands for in a color relation
+		const paints = allChildren
+			.map((r, i) => ({
+				r,
+				paint: node.children?.[i]?.paint ?? defaultPaint(r),
+			}))
+			.filter(({ r }) => spatial(r))
+			.map(({ paint }) => paint);
 		const structural = allStructural.filter(spatial);
 		if (Array.isArray(node.children)) {
 			structuralChildren.set(rec.id, structural);
@@ -630,11 +652,12 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				descs.push({
 					kind: "distinctColors",
 					children,
+					paints,
 					props: node.props ?? {},
 				});
 				descs.push({ kind: "union", container: rec, children });
 			} else if (node.type === "SameColor" && children.length >= 2) {
-				descs.push({ kind: "sameColor", children });
+				descs.push({ kind: "sameColor", children, paints });
 				descs.push({ kind: "union", container: rec, children });
 			} else if (
 				(node.type === "Lighten" || node.type === "Darken") &&
@@ -644,11 +667,17 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				descs.push({
 					kind: "shade",
 					children,
+					paints,
 					delta: node.type === "Lighten" ? amount : -amount,
 				});
 				descs.push({ kind: "union", container: rec, children });
 			} else if (node.type === "Contrast" && children.length >= 2) {
-				descs.push({ kind: "contrast", children, props: node.props ?? {} });
+				descs.push({
+					kind: "contrast",
+					children,
+					paints,
+					props: node.props ?? {},
+				});
 				descs.push({ kind: "union", container: rec, children });
 			} else if (children.length > 0) {
 				// Group and any other plain container: bbox = union of children
@@ -799,27 +828,35 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 
 	const ops: LayoutOperator[] = [];
 	const colorOps: LayoutOperator[] = [];
-	const coloredIds = new Set<string>();
-	// Color slots: COLOR_SLOTS per node (OKLCH lightness, chroma, hue,
-	// alpha), seeded from parseable fills. An explicit fill is a pinned color.
+	// Solved paints to emit, as "id:fill" / "id:stroke"
+	const coloredPaints = new Set<string>();
+	// Color slots: two paints per node (fill, then stroke), COLOR_SLOTS each
+	// (OKLCH lightness, chroma, hue, alpha), seeded from what the node sets.
+	// An explicit color is a pinned one.
 	const nodeIndex = new Map(nodes.map((n, i) => [n.id, i]));
 	const colorSeed: number[] = [];
-	const colorOwned: boolean[] = [];
+	const colorOwned = new Map<string, boolean>();
 	// A pinned hue that DistinctColors steers around (grays have none)
-	const pinnedHue: (number | undefined)[] = [];
+	const pinnedHue = new Map<string, number | undefined>();
 	for (const n of nodes) {
-		const parsed = n.fill !== undefined ? parseRgba(n.fill) : undefined;
-		const [l, c, h] = parsed
-			? rgbToOklch(parsed.r, parsed.g, parsed.b)
-			: [0.5, 0, 0];
-		colorSeed.push(l, c, h, parsed?.a ?? 1);
-		colorOwned.push(n.fill !== undefined);
-		pinnedHue.push(parsed && c > 0.02 ? h : undefined);
+		for (const paint of ["fill", "stroke"] as const) {
+			const value = n[paint];
+			const parsed = value !== undefined ? parseRgba(value) : undefined;
+			const [l, c, h] = parsed
+				? rgbToOklch(parsed.r, parsed.g, parsed.b)
+				: [0.5, 0, 0];
+			colorSeed.push(l, c, h, parsed?.a ?? 1);
+			colorOwned.set(`${n.id}:${paint}`, value !== undefined);
+			pinnedHue.set(`${n.id}:${paint}`, parsed && c > 0.02 ? h : undefined);
+		}
 	}
-	const colorBase = (rec: NodeRecord): number => {
+	const colorBase = (
+		rec: NodeRecord,
+		paint: Paint = defaultPaint(rec),
+	): number => {
 		const i = nodeIndex.get(rec.id);
 		if (i === undefined) throw new Error(`Unknown id ${rec.id}`);
-		return i * COLOR_SLOTS;
+		return i * COLOR_SLOTS * 2 + (paint === "stroke" ? COLOR_SLOTS : 0);
 	};
 
 	// Which relation each operator came from, for the post-solve check
@@ -992,62 +1029,51 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			hardOwned.add(`${d.line.id}:h`);
 			markGuide(d.line.id);
 		} else if (d.kind === "distinctColors") {
-			const at = (c: NodeRecord) => nodeIndex.get(c.id) ?? 0;
-			const owned = d.children.map((c) => colorOwned[at(c)]);
+			const keys = d.children.map((c, i) => `${c.id}:${d.paints[i]}`);
+			const owned = keys.map((k) => colorOwned.get(k) ?? false);
 			// `saturation` predates OKLCH; it scales to a comparable chroma
 			const saturation = d.props.saturation as number | undefined;
 			colorOps.push(
 				distinctColorsOp(
-					d.children.map((c) => colorBase(c)),
+					d.children.map((c, i) => colorBase(c, d.paints[i])),
 					{
 						lightness: (d.props.lightness as number) ?? 0.7,
 						chroma:
 							(d.props.chroma as number | undefined) ??
 							(saturation !== undefined ? saturation * 0.25 : 0.14),
 						startHue: (d.props.startHue as number) ?? 30,
-						pinned: d.children.map((c, i) =>
-							owned[i] ? pinnedHue[at(c)] : undefined,
+						pinned: keys.map((k, i) =>
+							owned[i] ? pinnedHue.get(k) : undefined,
 						),
 						owned,
 					},
 				),
 			);
-			d.children.forEach((c, i) => {
-				if (!owned[i]) coloredIds.add(c.id);
+			keys.forEach((k, i) => {
+				if (!owned[i]) coloredPaints.add(k);
 			});
-		} else if (d.kind === "sameColor") {
+		} else if (d.kind === "sameColor" || d.kind === "shade") {
 			const [source, ...targets] = d.children;
+			const [sourcePaint, ...targetPaints] = d.paints;
+			const targetBases = targets.map((t, i) => colorBase(t, targetPaints[i]));
 			colorOps.push(
-				sameColorOp(
-					colorBase(source),
-					targets.map((t) => colorBase(t)),
-				),
+				d.kind === "sameColor"
+					? sameColorOp(colorBase(source, sourcePaint), targetBases)
+					: shadeColorOp(colorBase(source, sourcePaint), targetBases, d.delta),
 			);
-			for (const t of targets) {
-				coloredIds.add(t.id);
-			}
-		} else if (d.kind === "shade") {
-			const [source, ...targets] = d.children;
-			colorOps.push(
-				shadeColorOp(
-					colorBase(source),
-					targets.map((t) => colorBase(t)),
-					d.delta,
-				),
-			);
-			for (const t of targets) {
-				coloredIds.add(t.id);
-			}
+			targets.forEach((t, i) => {
+				coloredPaints.add(`${t.id}:${targetPaints[i]}`);
+			});
 		} else if (d.kind === "contrast") {
 			const [fg, bg] = d.children;
 			colorOps.push(
 				contrastOp(
-					colorBase(fg),
-					colorBase(bg),
+					colorBase(fg, d.paints[0]),
+					colorBase(bg, d.paints[1]),
 					(d.props.ratio as number) ?? 4.5,
 				),
 			);
-			coloredIds.add(fg.id);
+			coloredPaints.add(`${fg.id}:${d.paints[0]}`);
 		} else if (d.kind === "union") {
 			ops.push(
 				unionOp(
@@ -1070,7 +1096,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		colorOperators: colorOps,
 		colorOperatorNames: colorOpNames,
 		colorSeed,
-		coloredIds: [...coloredIds],
+		coloredPaints: [...coloredPaints],
 		timeOperators: time.timeOperators,
 		timeOperatorNames: time.timeOperatorNames,
 		timeSeed: time.timeSeed,

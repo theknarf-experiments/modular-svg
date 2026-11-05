@@ -13,6 +13,7 @@ import {
 	type Values,
 	valueAt,
 } from "./motion.ts";
+import { defaultPaint } from "./parser.ts";
 import type { LayoutResult, NodeRecord } from "./solver/index.ts";
 
 export type AnimationOptions = {
@@ -172,20 +173,11 @@ function restValue(
 ): number | string {
 	const identity = CHANNELS[channel].identity;
 	if (identity !== undefined) return identity;
-	// A connector's solved color is drawn as its stroke (see layoutToAst)
-	const connector =
-		mark.type === "line" || mark.type === "curve" || mark.type === "arrow";
 	if (channel === "fill")
-		return (
-			(connector ? undefined : box.fill) ??
-			mark.fill ??
-			(mark.type === "text" ? "black" : "none")
-		);
+		return box.fill ?? mark.fill ?? (mark.type === "text" ? "black" : "none");
 	if (channel === "stroke")
 		return (
-			(connector ? box.fill : undefined) ??
-			mark.stroke ??
-			(mark.type === "text" ? "none" : "black")
+			box.stroke ?? mark.stroke ?? (mark.type === "text" ? "none" : "black")
 		);
 	if (channel === "width") return box.width;
 	if (channel === "height") return box.height;
@@ -260,9 +252,11 @@ export function compileAnimation(
 	for (const m of motions) {
 		const { start, duration } = span(m.id);
 		const expanded = expandMotion(
-			resolveColorRefs(resolveTravel(m, layout), (id) => {
+			resolveColorRefs(resolveTravel(m, layout), (id, paint) => {
 				const node = byId.get(id);
-				return layout[id]?.fill ?? node?.fill ?? node?.stroke;
+				if (!node) return undefined;
+				const which = paint ?? defaultPaint(node);
+				return layout[id]?.[which] ?? node[which];
 			}),
 			start,
 			duration,

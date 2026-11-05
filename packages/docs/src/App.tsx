@@ -57,6 +57,8 @@ import interactiveStateCode from "./examples/InteractiveState.tsx?raw";
 import packetDiagramCode from "./examples/PacketDiagram.tsx?raw";
 import { PacketDiagramExample } from "./examples/PacketDiagramExample";
 import packetDiagramExampleCode from "./examples/PacketDiagramExample.tsx?raw";
+import { PaintExample } from "./examples/PaintExample";
+import paintExampleCode from "./examples/PaintExample.tsx?raw";
 import pieChartCode from "./examples/PieChart.tsx?raw";
 import { PieChartExample } from "./examples/PieChartExample";
 import pieChartExampleCode from "./examples/PieChartExample.tsx?raw";
@@ -128,6 +130,13 @@ export const pages: Page[] = [
 					"SameColor copies one source color onto every follower - the color analogue of a span. Change the source and they all follow",
 				code: sameColorExampleCode,
 				element: <SameColorExample />,
+			},
+			{
+				title: "Fill and Stroke",
+				description:
+					"Every node has a fill and a stroke color; a ref picks one with paint. Here DistinctColors picks the fills, each border is its fill darkened onto the stroke, and each label is a deeper shade of the same hue",
+				code: paintExampleCode,
+				element: <PaintExample />,
 			},
 			{
 				title: "Readable Contrast",

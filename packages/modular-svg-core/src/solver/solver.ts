@@ -16,8 +16,8 @@ export type Scene = {
 	colorOperators?: LayoutOperator[];
 	/** initial h,s,l per node (length nodes * 3) */
 	colorSeed?: number[];
-	/** ids whose solved color should be emitted into the result */
-	coloredIds?: string[];
+	/** solved paints to emit into the result, as "id:fill" or "id:stroke" */
+	coloredPaints?: string[];
 	/** operators over the time array (2 slots per node: start, duration) */
 	timeOperators?: LayoutOperator[];
 	/** initial start, duration per node (length nodes * 2) */
@@ -33,7 +33,10 @@ export type LayoutResult = Record<
 		y: number;
 		width: number;
 		height: number;
+		/** solved fill, when a color relation set it */
 		fill?: string;
+		/** solved stroke, when a color relation set it */
+		stroke?: string;
 		/** solved start time in seconds, for timed nodes */
 		start?: number;
 		/** solved duration in seconds, for timed nodes */
@@ -162,7 +165,7 @@ export function solveLayout(
 	const colors = solveColors(scene, relaxOpts);
 	const times = solveTime(scene, { damping: relaxOpts.damping });
 	const timed = new Set(scene.timedIds ?? []);
-	const colored = new Set(scene.coloredIds ?? []);
+	const colored = new Set(scene.coloredPaints ?? []);
 
 	const result: LayoutResult = {};
 	scene.nodes.forEach((n, i) => {
@@ -172,10 +175,11 @@ export function solveLayout(
 			y: cur[base + 1],
 			width: cur[base + 2],
 			height: cur[base + 3],
-			...(colored.has(n.id)
-				? {
-						fill: colorHex(colors, i * COLOR_SLOTS),
-					}
+			...(colored.has(`${n.id}:fill`)
+				? { fill: colorHex(colors, i * COLOR_SLOTS * 2) }
+				: {}),
+			...(colored.has(`${n.id}:stroke`)
+				? { stroke: colorHex(colors, i * COLOR_SLOTS * 2 + COLOR_SLOTS) }
 				: {}),
 			...(timed.has(n.id)
 				? {

@@ -105,7 +105,8 @@
 			"additionalProperties": true
 		},
 		"children": { "type": "array", "items": { "$ref": "#" } },
-		"target": { "type": "string" }
+		"target": { "type": "string" },
+		"paint": { "type": "string", "enum": ["fill", "stroke"] }
 	},
 	"required": ["type"],
 	"additionalProperties": false

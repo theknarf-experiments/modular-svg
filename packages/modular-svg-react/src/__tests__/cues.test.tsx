@@ -109,3 +109,23 @@ describe("warnings", () => {
 		warn.mockRestore();
 	});
 });
+
+describe("paint on refs", () => {
+	it("lets a color relation target a stroke from React", async () => {
+		const { container } = render(
+			<Graphic>
+				<rect key="box" width={20} height={20} fill="#4c72b0" />
+				<darken amount={0.2}>
+					<ref target="box" />
+					<ref target="box" paint="stroke" />
+				</darken>
+			</Graphic>,
+		);
+		await waitFor(() =>
+			expect(container.querySelector("rect#box")).toBeTruthy(),
+		);
+		const stroke = container.querySelector("rect#box")?.getAttribute("stroke");
+		expect(stroke).toMatch(/^#[0-9a-f]{6}$/);
+		expect(stroke).not.toBe("#4c72b0");
+	});
+});

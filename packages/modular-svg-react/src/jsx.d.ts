@@ -148,6 +148,8 @@ declare module "react" {
 			ref: {
 				key?: React.Key;
 				target: string;
+				/** in a color relation: which of the node's colors (default: what it is drawn with) */
+				paint?: "fill" | "stroke";
 			};
 			line: {
 				key?: React.Key;

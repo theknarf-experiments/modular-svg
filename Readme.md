@@ -16,6 +16,27 @@ produces an SVG string.
 The CLI reads a JSON scene either from a file or from `stdin` and writes the
 resulting SVG to `stdout` or to the file specified as the second argument.
 
+## Color
+
+Colors are solved like positions: color relations ref nodes and the solver
+settles them. Every node has a fill and a stroke color; a ref chooses one with
+`paint` (`<Ref target="box" paint="stroke"/>`), defaulting to what the mark
+is drawn with (strokes for lines, curves and arrows, fills otherwise).
+
+| Relation | Meaning |
+| --- | --- |
+| `DistinctColors lightness chroma startHue` | evenly spaced hues at one perceived lightness; pinned colors keep theirs and the rest keep a full step away |
+| `SameColor` | the rest take the first's color (alpha included) |
+| `Lighten amount`, `Darken amount` | the rest take the first's color, lighter or darker |
+| `Contrast ratio` | the first's lightness moves until it meets the WCAG ratio against the second |
+
+Colors are solved in OKLCH, a perceptual space, so equal lightness looks
+equally light across hues and lightening is even; results are gamut-mapped to
+sRGB (chroma gives way, lightness and hue stay). An explicit color pins it:
+any CSS color the parser reads (`#rgb(a)`, `#rrggbb(aa)`, `rgb()`, `hsl()`,
+`oklch()`, named colors, `transparent`); anything else (gradients, `url()`)
+is left alone. Conflicting color relations are reported like layout ones.
+
 ## Time
 
 Animation is expressed the same way as layout and color: as relations over

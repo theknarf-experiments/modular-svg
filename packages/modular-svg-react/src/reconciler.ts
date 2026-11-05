@@ -78,6 +78,7 @@ function instanceToJson(instance: Instance): Record<string, unknown> {
 		return {
 			type: capitalizedType,
 			target: props.target,
+			...(props.paint ? { paint: props.paint } : {}),
 		};
 	}
 

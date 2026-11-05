@@ -372,3 +372,74 @@ describe("distinctHues (properties)", async () => {
 		);
 	});
 });
+
+describe("fill and stroke", () => {
+	const ref = (target: string, paint?: string) => ({
+		type: "Ref",
+		target,
+		...(paint ? { paint } : {}),
+	});
+	const rect = (id: string, props: Record<string, unknown> = {}) => ({
+		type: "Rect",
+		id,
+		props: { width: 10, height: 10, ...props },
+	});
+	const solve = (children: unknown[]) => {
+		const scene = buildSceneFromJson({ type: "Group", id: "root", children });
+		return { scene, layout: solveLayout(scene) };
+	};
+
+	it("relates a shape's stroke to its own fill", () => {
+		const { scene, layout } = solve([
+			rect("box", { fill: "#4c72b0" }),
+			{
+				type: "Darken",
+				props: { amount: 0.2 },
+				children: [ref("box"), ref("box", "stroke")],
+			},
+		]);
+		expect(layout.box.fill).toBeUndefined();
+		expect(layout.box.stroke).toBeTruthy();
+		expect(layout.box.stroke).not.toBe("#4c72b0");
+		expect(layoutToSvg(layout, scene.nodes)).toContain(
+			`stroke="${layout.box.stroke}"`,
+		);
+	});
+
+	it("gives fills and strokes their own distinct colors", () => {
+		const { layout } = solve([
+			rect("a"),
+			rect("b"),
+			{
+				type: "DistinctColors",
+				children: [ref("a", "stroke"), ref("b", "stroke")],
+			},
+		]);
+		expect(layout.a.stroke).toBeTruthy();
+		expect(layout.a.stroke).not.toBe(layout.b.stroke);
+		expect(layout.a.fill).toBeUndefined();
+	});
+
+	it("keeps connectors on their stroke by default", () => {
+		const { layout } = solve([
+			{ type: "StackH", children: [rect("a", { fill: "#e03131" }), rect("b")] },
+			{ type: "Line", id: "l", children: [ref("a"), ref("b")] },
+			{ type: "SameColor", children: [ref("a"), ref("l")] },
+		]);
+		expect(layout.l.stroke).toBe("#e03131");
+		expect(layout.l.fill).toBeUndefined();
+	});
+
+	it("treats an explicit stroke as pinned", () => {
+		const { layout } = solve([
+			rect("pinned", { stroke: "#123456" }),
+			rect("free"),
+			{
+				type: "DistinctColors",
+				children: [ref("pinned", "stroke"), ref("free", "stroke")],
+			},
+		]);
+		expect(layout.pinned.stroke).toBeUndefined();
+		expect(layout.free.stroke).toBeTruthy();
+	});
+});
