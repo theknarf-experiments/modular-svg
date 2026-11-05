@@ -14,6 +14,8 @@ import { JoinExample } from "./examples/animation/JoinExample";
 import joinExampleCode from "./examples/animation/JoinExample.tsx?raw";
 import { OrbitExample } from "./examples/animation/OrbitExample";
 import orbitExampleCode from "./examples/animation/OrbitExample.tsx?raw";
+import { PhrasingExample } from "./examples/animation/PhrasingExample";
+import phrasingExampleCode from "./examples/animation/PhrasingExample.tsx?raw";
 import { ScrubberExample } from "./examples/animation/ScrubberExample";
 import scrubberExampleCode from "./examples/animation/ScrubberExample.tsx?raw";
 import { TempoExample } from "./examples/animation/TempoExample";
@@ -196,6 +198,13 @@ export const pages: Page[] = [
 					"Before keeps the notes in order, OnBeat snaps each onto a 120 bpm grid; longer notes push the rest later. Stretch fits the metronome pulse to one beat",
 				code: beatExampleCode,
 				element: <BeatExample />,
+			},
+			{
+				title: "Phrasing",
+				description:
+					"More from music: an eased Stagger lets the cascade settle, arrows are pickups that land their tips on the beat (OnBeat align end), captions are legato (each holds until the next starts), and the last lasts four beats (Stretch beats)",
+				code: phrasingExampleCode,
+				element: <PhrasingExample />,
 			},
 			{
 				title: "Join",

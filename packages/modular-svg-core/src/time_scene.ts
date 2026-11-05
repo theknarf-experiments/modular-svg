@@ -1,16 +1,20 @@
 import {
 	type Ease,
+	easeAt,
 	intrinsicDuration,
 	type MotionSpec,
+	resolveEase,
 	type SampleFn,
 	type Values,
 } from "./motion.ts";
 import type { LayoutOperator, NodeRecord } from "./solver/operators.ts";
 import {
 	afterOp,
+	articulateOp,
 	atOp,
 	beforeOp,
 	duringOp,
+	lengthOp,
 	onBeatOp,
 	sameTimeOp,
 	sequenceOp,
@@ -37,6 +41,8 @@ export const MOTION_TYPES = new Set([
 const TIME_GROUPS = new Set(["Sequence", "SameTime", "Stagger", "Before"]);
 // Pure constraints: no span, nothing to Ref
 const TIME_CONSTRAINTS = new Set([
+	"Legato",
+	"Staccato",
 	"After",
 	"During",
 	"Stretch",
@@ -258,6 +264,26 @@ export function buildTime(
 		});
 	};
 
+	// Durations set by a relation: an explicit `over` or a second relation conflicts
+	const durationClaimed = new Set<string>();
+	const claimDurations = (relation: string, members: NodeRecord[]): void => {
+		for (const m of members) {
+			if (timeChildren(m).length > 0)
+				warnings.push(
+					`${relation}: ${m.id} is a group; only motions and beats take a length`,
+				);
+			else if (byId.get(m.id)?.props.over !== undefined)
+				warnings.push(
+					`${relation}: ${m.id} sets over, which ${relation} overrides`,
+				);
+			else if (durationClaimed.has(m.id))
+				warnings.push(
+					`${relation} conflicts with another relation over ${m.id}:duration`,
+				);
+			durationClaimed.add(m.id);
+		}
+	};
+
 	const ops: LayoutOperator[] = [];
 	const spanCheck = (
 		relation: string,
@@ -301,11 +327,14 @@ export function buildTime(
 		} else if (t.type === "Stagger" && members.length > 1) {
 			const anchor = anchorOf(members);
 			claim(name, members, anchor);
-			const spacing =
+			const total =
 				props.total !== undefined
-					? num(props.total, 0) / (members.length - 1)
-					: num(props.spacing, 0.1);
-			ops.push(staggerOp(members.map(child), { spacing, anchor }));
+					? num(props.total, 0)
+					: num(props.spacing, 0.1) * (members.length - 1);
+			const ease =
+				props.ease !== undefined ? resolveEase(props.ease as Ease) : undefined;
+			const shape = ease && ((x: number) => easeAt(ease, x));
+			ops.push(staggerOp(members.map(child), { total, anchor, shape }));
 		} else if (t.type === "At") {
 			ops.push(atOp(members.map(child), num(props.time, 0)));
 		} else if (t.type === "Before" && members.length > 1) {
@@ -368,27 +397,57 @@ export function buildTime(
 			}
 		} else if (t.type === "Stretch" && members.length > 1) {
 			const [source, ...targets] = members;
-			for (const m of targets) {
-				if (timeChildren(m).length > 0)
-					warnings.push(
-						`${name}: ${m.id} is a group; only motions and beats stretch`,
-					);
-				if (byId.get(m.id)?.props.over !== undefined)
-					warnings.push(`${name}: ${m.id} sets over, which Stretch overrides`);
+			claimDurations(name, targets);
+			if (props.beats !== undefined) {
+				// Note values: only lengths, in multiples of the source's
+				ops.push(
+					lengthOp(
+						base(source.id),
+						targets.map((m) => base(m.id)),
+						num(props.beats, 1),
+					),
+				);
+			} else {
+				claim(name, targets, null);
+				ops.push(stretchOp(base(source.id), targets.map(child)));
 			}
-			claim(name, targets, null);
-			ops.push(stretchOp(base(source.id), targets.map(child)));
+		} else if (
+			(t.type === "Legato" || t.type === "Staccato") &&
+			members.length > 1
+		) {
+			// The last member has no next start, so it keeps its own length
+			claimDurations(name, members.slice(0, -1));
+			const fill = num(props.fraction, t.type === "Legato" ? 1 : 0.5);
+			ops.push(
+				articulateOp(
+					members.map((m) => base(m.id)),
+					fill,
+				),
+			);
+			for (let i = 0; i + 1 < members.length; i++) {
+				const [a, b] = [members[i].id, members[i + 1].id];
+				spanCheck(
+					name,
+					(span) => span(b)[0] >= span(a)[0] - TIME_EPSILON,
+					`${b} starts before ${a}`,
+				);
+			}
 		} else if (t.type === "OnBeat" && members.length > 1) {
 			const [beat, ...rest] = members;
 			if (byId.get(beat.id)?.type !== "Beat")
 				warnings.push(
 					`${name}: the first member must be a Beat, got ${beat.id}`,
 				);
-			const every = num(props.every, 1);
+			const grid = {
+				every: num(props.every, 1),
+				division: Math.max(1, num(props.division, 1)),
+				offset: num(props.offset, 0),
+				align: props.align === "end" ? ("end" as const) : ("start" as const),
+			};
 			const snap = props.snap === "nearest" ? "nearest" : "next";
 			ops.push(
 				onBeatOp(base(beat.id), rest.map(child), {
-					every,
+					...grid,
 					snap,
 					movable: rest.map((m) => !pinned(m)),
 				}),
@@ -397,11 +456,12 @@ export function buildTime(
 				spanCheck(
 					name,
 					(span) => {
-						const [origin, period] = span(beat.id);
-						const k = (span(m.id)[0] - origin) / (period * every);
-						return (
-							Math.abs(k - Math.round(k)) * period * every < TIME_EPSILON * 10
-						);
+						const [origin, beatLength] = span(beat.id);
+						const period = (beatLength * grid.every) / grid.division;
+						const [s, d] = span(m.id);
+						const at = grid.align === "end" ? s + d : s;
+						const k = (at - origin) / period - grid.offset;
+						return Math.abs(k - Math.round(k)) * period < TIME_EPSILON * 10;
 					},
 					`${m.id} is off the beat`,
 				);

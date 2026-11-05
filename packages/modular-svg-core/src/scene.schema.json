@@ -45,7 +45,9 @@
 				"Stretch",
 				"At",
 				"Beat",
-				"OnBeat"
+				"OnBeat",
+				"Legato",
+				"Staccato"
 			]
 		},
 		"id": { "type": "string" },

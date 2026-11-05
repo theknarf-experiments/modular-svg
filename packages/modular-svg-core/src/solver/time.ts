@@ -77,17 +77,23 @@ export function sameTimeOp(
 	};
 }
 
-/** Starts exactly `spacing` apart; members may overlap. */
+/**
+ * Starts spread over `total` seconds; members may overlap. `shape` maps
+ * position (0..1) to progress (0..1): linear spaces evenly, an ease makes
+ * the cascade speed up or settle.
+ */
 export function staggerOp(
 	children: readonly TimeChild[],
-	opts: { spacing: number; anchor: number },
+	opts: { total: number; anchor: number; shape?: (x: number) => number },
 ): LayoutOperator {
+	const n = children.length - 1;
+	const shape = opts.shape ?? ((x: number) => x);
+	const at = (i: number) => (n > 0 ? opts.total * shape(i / n) : 0);
 	return (cur, next) => {
-		const origin = cur[children[opts.anchor].base];
+		const origin = cur[children[opts.anchor].base] - at(opts.anchor);
 		children.forEach((c, i) => {
 			if (i === opts.anchor) return;
-			const target = origin + (i - opts.anchor) * opts.spacing;
-			shift(cur, next, c, target - cur[c.base]);
+			shift(cur, next, c, origin + at(i) - cur[c.base]);
 		});
 	};
 }
@@ -169,30 +175,63 @@ export function stretchOp(
 }
 
 /**
- * Snap starts onto a beat grid (the beat node's start is the downbeat, its
- * duration the period). `next` snapping only pushes later, so it composes with
- * Before/After; `nearest` may pull earlier.
+ * Snap onto a beat grid (the beat node's start is the downbeat, its duration
+ * the period). The grid is every `every` beats, split into `division` steps
+ * and shifted by `offset` steps (0.5 = offbeat). `align: "end"` lands the end
+ * on the grid instead of the start, like a pickup into the beat. `next` only
+ * pushes later, so it composes with Before/After; `nearest` may pull earlier.
  */
 export function onBeatOp(
 	beat: number,
 	children: readonly TimeChild[],
 	opts: {
 		every: number;
+		division: number;
+		offset: number;
+		align: "start" | "end";
 		snap: "next" | "nearest";
 		movable: readonly boolean[];
 	},
 ): LayoutOperator {
 	return (cur, next) => {
-		const period = cur[beat + 1] * opts.every;
+		const period = (cur[beat + 1] * opts.every) / opts.division;
 		if (!(period > 0)) return;
-		const origin = cur[beat];
+		const origin = cur[beat] + opts.offset * period;
 		children.forEach((c, i) => {
 			if (!opts.movable[i]) return;
-			const k = (cur[c.base] - origin) / period;
-			// Tolerate float noise so a start sitting on a beat stays on it
+			const at = coord(cur, c.base, opts.align);
+			const k = (at - origin) / period;
+			// Tolerate float noise so a point sitting on the grid stays on it
 			const n = opts.snap === "next" ? Math.ceil(k - 1e-6) : Math.round(k);
-			shift(cur, next, c, origin + n * period - cur[c.base]);
+			shift(cur, next, c, origin + n * period - at);
 		});
+	};
+}
+
+/**
+ * Articulation: each member lasts `fill` of the time until the next member
+ * starts (1 = legato, less = staccato). The last member keeps its length.
+ */
+export function articulateOp(
+	children: readonly number[],
+	fill: number,
+): LayoutOperator {
+	return (cur, next) => {
+		for (let i = 0; i + 1 < children.length; i++) {
+			const slot = cur[children[i + 1]] - cur[children[i]];
+			next[children[i] + 1] = Math.max(0, slot * fill);
+		}
+	};
+}
+
+/** Members last `factor` times the source's duration (note values: beats). */
+export function lengthOp(
+	source: number,
+	children: readonly number[],
+	factor: number,
+): LayoutOperator {
+	return (cur, next) => {
+		for (const c of children) next[c + 1] = cur[source + 1] * factor;
 	};
 }
 

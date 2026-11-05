@@ -188,4 +188,95 @@ describe("time relations over refs", () => {
 		]);
 		expect(pinned.warnings.join()).toMatch(/bIn starts before aIn ends/);
 	});
+
+	it("lands pickups on the beat and fits offbeats between", () => {
+		const { span, warnings } = solve([
+			dot("a"),
+			dot("b"),
+			{ type: "Beat", id: "beat", props: { bpm: 60 } },
+			motion("Draw", "arrow", "a", { over: 0.3 }),
+			motion("Enter", "hat", "b", { over: 0.2 }),
+			{
+				type: "OnBeat",
+				props: { align: "end" },
+				children: [ref("beat"), ref("arrow")],
+			},
+			{
+				type: "OnBeat",
+				props: { offset: 0.5 },
+				children: [ref("beat"), ref("hat")],
+			},
+		]);
+		// the draw ends on beat 1, the hat sits on the "and" of beat 0
+		expect(span("arrow")).toEqual([0.7, 0.3]);
+		expect(span("hat")[0]).toBe(0.5);
+		expect(warnings).toEqual([]);
+	});
+
+	it("holds captions legato and lengths in beats", () => {
+		const { span, warnings } = solve([
+			dot("c1"),
+			dot("c2"),
+			dot("c3"),
+			{ type: "Beat", id: "beat", props: { bpm: 120 } },
+			motion("Enter", "one", "c1"),
+			motion("Enter", "two", "c2"),
+			motion("Enter", "three", "c3"),
+			{
+				type: "Stagger",
+				props: { spacing: 1.5 },
+				children: [ref("one"), ref("two"), ref("three")],
+			},
+			{ type: "Legato", children: [ref("one"), ref("two"), ref("three")] },
+			{
+				type: "Stretch",
+				props: { beats: 3 },
+				children: [ref("beat"), ref("three")],
+			},
+		]);
+		expect(span("one")).toEqual([0, 1.5]);
+		expect(span("two")).toEqual([1.5, 1.5]);
+		expect(span("three")).toEqual([3, 1.5]);
+		expect(warnings).toEqual([]);
+	});
+
+	it("staccato leaves gaps, and two relations on one length conflict", () => {
+		const { span, warnings } = solve([
+			dot("a"),
+			dot("b"),
+			motion("Enter", "x", "a"),
+			motion("Enter", "y", "b", { at: 2 }),
+			{
+				type: "Staccato",
+				props: { fraction: 0.25 },
+				children: [ref("x"), ref("y")],
+			},
+			{ type: "Legato", children: [ref("x"), ref("y")] },
+		]);
+		expect(warnings.join()).toMatch(
+			/conflicts with another relation over x:duration/,
+		);
+		// the two pull the length to a compromise; the warning is what matters
+		expect(span("x")[1]).toBeGreaterThan(0.5);
+	});
+
+	it("eases a stagger so the cascade settles", () => {
+		const { span } = solve([
+			dot("a"),
+			dot("b"),
+			dot("c"),
+			motion("Enter", "x", "a"),
+			motion("Enter", "y", "b"),
+			motion("Enter", "z", "c"),
+			{
+				type: "Stagger",
+				props: { total: 1, ease: "out" },
+				children: [ref("x"), ref("y"), ref("z")],
+			},
+		]);
+		const at = (id: string) => span(id)[0] ?? 0;
+		const gaps = [at("y") - at("x"), at("z") - at("y")];
+		expect(gaps[0]).toBeGreaterThan(gaps[1]);
+		expect(span("z")[0]).toBeCloseTo(1, 6);
+	});
 });

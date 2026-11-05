@@ -3,9 +3,11 @@ import type { LayoutOperator } from "./operators.ts";
 import { solveTime } from "./solver.ts";
 import {
 	afterOp,
+	articulateOp,
 	atOp,
 	beforeOp,
 	duringOp,
+	lengthOp,
 	onBeatOp,
 	sameTimeOp,
 	sequenceOp,
@@ -79,7 +81,7 @@ describe("time operators", () => {
 				[0, 2],
 				[0, 2],
 			],
-			[staggerOp([leaf(0), leaf(1), leaf(2)], { spacing: 0.5, anchor: 0 })],
+			[staggerOp([leaf(0), leaf(1), leaf(2)], { total: 1, anchor: 0 })],
 		);
 		expect(r.map(([s]) => s)).toEqual([1, 1.5, 2]);
 	});
@@ -182,6 +184,9 @@ describe("time operators", () => {
 			[
 				onBeatOp(0, [leaf(1), leaf(2)], {
 					every: 1,
+					division: 1,
+					offset: 0,
+					align: "start",
 					snap: "next",
 					movable: [true, true],
 				}),
@@ -194,7 +199,16 @@ describe("time operators", () => {
 				[0, 0.5],
 				[0.1, 1],
 			],
-			[onBeatOp(0, [leaf(1)], { every: 4, snap: "next", movable: [true] })],
+			[
+				onBeatOp(0, [leaf(1)], {
+					every: 4,
+					division: 1,
+					offset: 0,
+					align: "start",
+					snap: "next",
+					movable: [true],
+				}),
+			],
 		);
 		expect(bars[1][0]).toBe(2);
 		const nearest = solve(
@@ -202,7 +216,16 @@ describe("time operators", () => {
 				[0, 0.5],
 				[0.6, 1],
 			],
-			[onBeatOp(0, [leaf(1)], { every: 1, snap: "nearest", movable: [true] })],
+			[
+				onBeatOp(0, [leaf(1)], {
+					every: 1,
+					division: 1,
+					offset: 0,
+					align: "start",
+					snap: "nearest",
+					movable: [true],
+				}),
+			],
 		);
 		expect(nearest[1][0]).toBe(0.5);
 	});
@@ -216,9 +239,100 @@ describe("time operators", () => {
 			],
 			[
 				beforeOp([leaf(1), leaf(2)], { gap: 0, movable: [true, true] }),
-				onBeatOp(0, [leaf(2)], { every: 1, snap: "next", movable: [true] }),
+				onBeatOp(0, [leaf(2)], {
+					every: 1,
+					division: 1,
+					offset: 0,
+					align: "start",
+					snap: "next",
+					movable: [true],
+				}),
 			],
 		);
 		expect(r[2][0]).toBe(1);
+	});
+});
+
+describe("musical time operators", () => {
+	const grid = {
+		every: 1,
+		division: 1,
+		offset: 0,
+		align: "start" as const,
+		snap: "next" as const,
+		movable: [true],
+	};
+
+	it("lands a pickup's end on the beat", () => {
+		// beat period 1; a 0.3s pickup starting at 0.5 ends at 0.8, so it moves to end on 1
+		const r = solve(
+			[
+				[0, 1],
+				[0.5, 0.3],
+			],
+			[onBeatOp(0, [leaf(1)], { ...grid, align: "end" })],
+		);
+		expect(r[1][0]).toBe(0.7);
+	});
+
+	it("snaps to subdivisions and offbeats", () => {
+		const triplets = solve(
+			[
+				[0, 1],
+				[0.4, 1],
+			],
+			[onBeatOp(0, [leaf(1)], { ...grid, division: 3 })],
+		);
+		expect(triplets[1][0]).toBeCloseTo(2 / 3, 6);
+		const offbeat = solve(
+			[
+				[0, 1],
+				[0.6, 1],
+			],
+			[onBeatOp(0, [leaf(1)], { ...grid, offset: 0.5 })],
+		);
+		expect(offbeat[1][0]).toBe(1.5);
+	});
+
+	it("articulates: legato fills to the next start, staccato a fraction of it", () => {
+		const spans: [number, number][] = [
+			[0, 0.1],
+			[1, 0.1],
+			[3, 0.1],
+		];
+		const legato = solve(spans, [articulateOp([0, 2, 4], 1)]);
+		expect(legato.map(([, d]) => d)).toEqual([1, 2, 0.1]);
+		const staccato = solve(spans, [articulateOp([0, 2, 4], 0.5)]);
+		expect(staccato.map(([, d]) => d)).toEqual([0.5, 1, 0.1]);
+	});
+
+	it("measures lengths in beats", () => {
+		const r = solve(
+			[
+				[0, 0.5],
+				[2, 1],
+			],
+			[lengthOp(0, [2], 3)],
+		);
+		expect(r[1]).toEqual([2, 1.5]);
+	});
+
+	it("shapes a stagger with an ease", () => {
+		const easeOut = (x: number) => 1 - (1 - x) ** 2;
+		const r = solve(
+			[
+				[0, 1],
+				[0, 1],
+				[0, 1],
+			],
+			[
+				staggerOp([leaf(0), leaf(1), leaf(2)], {
+					total: 1,
+					anchor: 0,
+					shape: easeOut,
+				}),
+			],
+		);
+		expect(r.map(([s]) => s)).toEqual([0, 0.75, 1]);
 	});
 });

@@ -42,6 +42,26 @@ export function resolveEase(ease: Ease | undefined): ResolvedEase {
 	throw new Error(`Unknown ease ${JSON.stringify(ease)}`);
 }
 
+/** Progress (0..1, may overshoot) of an ease at x in [0, 1]. */
+export function easeAt(ease: ResolvedEase, x: number): number {
+	if (x <= 0) return 0;
+	if (x >= 1) return 1;
+	if (ease.kind === "linear") return x;
+	if (ease.kind === "steps") return Math.floor(x * ease.count) / ease.count;
+	const [x1, y1, x2, y2] = ease.points;
+	const bez = (a: number, b: number, t: number) =>
+		3 * a * t * (1 - t) ** 2 + 3 * b * t ** 2 * (1 - t) + t ** 3;
+	// x(t) is monotonic for valid easing curves, so bisect for t
+	let lo = 0;
+	let hi = 1;
+	for (let i = 0; i < 40; i++) {
+		const mid = (lo + hi) / 2;
+		if (bez(x1, x2, mid) < x) lo = mid;
+		else hi = mid;
+	}
+	return bez(y1, y2, (lo + hi) / 2);
+}
+
 export type Channel =
 	| "opacity"
 	| "x"

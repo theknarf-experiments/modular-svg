@@ -45,13 +45,14 @@ relations (a relation spans its members), and moving one carries its contents:
 | --- | --- |
 | `Sequence gap` | back to back, exact gap (negative overlaps) |
 | `SameTime align` | starts (or `end`, `center`) line up |
-| `Stagger spacing\|total` | starts evenly spaced |
+| `Stagger spacing\|total ease` | starts spread out; an `ease` makes the cascade speed up or settle |
 | `Before gap` | each starts no earlier than the previous ends (inequality) |
 | `After gap` | the first starts after every other ends (a join) |
 | `During` | the rest stay inside the first's span |
-| `Stretch` | the rest take the first's span |
+| `Stretch` | the rest take the first's span; with `beats`, only its length times `beats` (note values) |
 | `At time` | pin starts |
-| `Beat bpm\|period offset` + `OnBeat every snap` | a beat grid, and starts snapped onto it |
+| `Legato`, `Staccato fraction` | each lasts until the next starts (or that fraction of it) |
+| `Beat bpm\|period offset` + `OnBeat every division offset align snap` | a beat grid and starts snapped onto it; `division` subdivides (3 = triplets), `offset={0.5}` is the offbeat, `align="end"` lands the end on the beat (a pickup) |
 
 As with layout, a relation anchors on its first member whose start is already
 fixed (pinned by `at`/`At`/`Beat`, or placed by an earlier relation) and moves

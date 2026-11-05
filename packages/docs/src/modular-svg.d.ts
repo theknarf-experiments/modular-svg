@@ -212,16 +212,34 @@ declare module "react" {
 			// Time relations: constrain the spans of what they ref
 			sequence: Timed & { gap?: number };
 			sameTime: Timed & { align?: "start" | "end" | "center" };
-			stagger: Timed & { spacing?: number; total?: number };
+			stagger: Timed & { spacing?: number; total?: number; ease?: Ease };
 			before: Timed & { gap?: number };
 			after: { key?: React.Key; gap?: number; children?: React.ReactNode };
 			during: { key?: React.Key; children?: React.ReactNode };
-			stretch: { key?: React.Key; children?: React.ReactNode };
+			/** with beats: only lengths, in multiples of the first child's */
+			stretch: { key?: React.Key; beats?: number; children?: React.ReactNode };
+			/** each member lasts until the next starts (times fraction) */
+			legato: {
+				key?: React.Key;
+				fraction?: number;
+				children?: React.ReactNode;
+			};
+			staccato: {
+				key?: React.Key;
+				fraction?: number;
+				children?: React.ReactNode;
+			};
 			at: { key?: React.Key; time: number; children?: React.ReactNode };
 			beat: { key?: React.Key; bpm?: number; period?: number; offset?: number };
 			onBeat: {
 				key?: React.Key;
 				every?: number;
+				/** grid steps per beat (2 = eighths, 3 = triplets) */
+				division?: number;
+				/** shift the grid by steps (0.5 = offbeat) */
+				offset?: number;
+				/** end lands on the grid: a pickup */
+				align?: "start" | "end";
 				snap?: "next" | "nearest";
 				children?: React.ReactNode;
 			};
