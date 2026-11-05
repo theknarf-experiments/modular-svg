@@ -244,3 +244,26 @@ describe("cues (properties)", () => {
 		);
 	});
 });
+
+describe("diverged inputs", () => {
+	it("snapping and cues terminate on huge or infinite times", () => {
+		const grid = { every: 1, division: 1, offset: 0, swing: 0.5 };
+		for (const t of [1e17, 1e300, Number.POSITIVE_INFINITY, Number.NaN]) {
+			expect(() => snapToGrid(t, 0, 0.5, grid, "next")).not.toThrow();
+		}
+		const solution = {
+			spans: { a: { start: 0, duration: 1 } },
+			duration: 5,
+			loop: true,
+		};
+		expect(
+			cuesBetween(solution, ["a"], 1e17, 1e17 + 10).length,
+		).toBeLessThanOrEqual(3);
+	});
+
+	it("refuses to unroll a loop into thousands of passes", () => {
+		expect(() =>
+			expandMotion({ kind: "draw", loop: true }, 0, 1e-4, 10),
+		).toThrow(/would repeat \d+ times/);
+	});
+});

@@ -196,6 +196,9 @@ export type Expanded = { initial: Values; steps: Step[] };
 const LINEAR = NAMED.linear;
 const HOLD = NAMED.hold;
 
+/** Most passes a looping motion may unroll into (each pass adds keyframes). */
+const MAX_PASSES = 2000;
+
 /** Default length of a motion that no relation or `over` sizes. */
 export const DEFAULT_OVER = 0.5;
 
@@ -489,6 +492,10 @@ export function expandMotion(
 		spec.loop === true
 			? Math.ceil((sceneEnd - start) / duration - 1e-9)
 			: Math.max(1, Math.floor(spec.loop));
+	if (!(passes <= MAX_PASSES))
+		throw new Error(
+			`A looping motion would repeat ${passes} times (${duration}s in a ${sceneEnd}s scene); the cap is ${MAX_PASSES}`,
+		);
 	const steps: Step[] = [];
 	for (let p = 0; p < passes; p++) {
 		const offset = p * duration;

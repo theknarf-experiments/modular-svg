@@ -248,12 +248,16 @@ export function snapToGrid(
 	};
 	const u = warp.beats(t);
 	const k0 = Math.floor(u / step - grid.offset);
+	// A diverged time has no grid to snap to (and k0 + 1 === k0 past 2^53)
+	if (!Number.isFinite(t) || Math.abs(k0) > 2 ** 50) return t;
 	let best: number | undefined;
-	for (let k = k0 - 2; k <= k0 + 3; k++) {
-		const p = point(k);
+	for (let j = -2; j <= 3; j++) {
+		const p = point(k0 + j);
 		if (snap === "next") {
-			// Tolerate float noise so a point sitting on the grid stays on it
-			if (p >= u - 1e-6 && (best === undefined || p < best)) best = p;
+			// Tolerate float noise (in seconds, like the rest of the solver) so a
+			// point sitting on the grid stays on it
+			if (warp.time(p) >= t - 1e-6 && (best === undefined || p < best))
+				best = p;
 		} else if (best === undefined || Math.abs(p - u) < Math.abs(best - u))
 			best = p;
 	}

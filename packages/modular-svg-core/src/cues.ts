@@ -29,12 +29,16 @@ export function cuesBetween(
 		const at = edge === "end" ? span.start + span.duration : span.start;
 		const period = solution.duration;
 		if (solution.loop && period > 0) {
-			// Pass k plays this cue at at + k * period
+			// Pass k plays this cue at at + k * period; count passes, not k, so a
+			// huge clock cannot stall the loop
 			const first = Math.max(0, Math.floor((from - at) / period));
-			for (let k = first; at + k * period <= to + 1e-6; k++)
-				if (fires(at + k * period))
-					found.push({ id, edge, at: at + k * period });
+			const passes = Math.min(1e4, Math.floor((to - at) / period) - first + 2);
+			for (let j = 0; j < passes; j++) {
+				const t = at + (first + j) * period;
+				if (fires(t)) found.push({ id, edge, at: t });
+			}
 		} else if (fires(at)) found.push({ id, edge, at });
 	}
-	return found.sort((a, b) => a.at - b.at);
+	// Cues at the same instant keep key order, whatever float noise says
+	return found.sort((a, b) => q(a.at) - q(b.at));
 }

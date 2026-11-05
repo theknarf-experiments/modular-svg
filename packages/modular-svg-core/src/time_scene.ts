@@ -655,7 +655,9 @@ export function unsettled(
 		next.set(values);
 		op(values, next);
 		for (let k = 0; k < values.length; k++) {
-			if (Math.abs(slotDiff(values[k], next[k], k, angles)) > tolerance) {
+			// A non-finite value means the solve diverged: that never holds
+			const moved = Math.abs(slotDiff(values[k], next[k], k, angles));
+			if (!(moved <= tolerance)) {
 				failing.add(names[i] ?? `relation #${i}`);
 				break;
 			}
@@ -689,6 +691,15 @@ export function checkTime(
 	const warnings = (scene.timeChecks ?? [])
 		.map((check) => check(span))
 		.filter((w): w is string => w !== undefined);
+	const diverged = Object.entries(layout).find(
+		([, b]) =>
+			(b.start !== undefined && !Number.isFinite(b.start)) ||
+			(b.duration !== undefined && !Number.isFinite(b.duration)),
+	);
+	if (diverged)
+		warnings.unshift(
+			`the schedule diverged (${diverged[0]} has no finite time); its relations contradict each other`,
+		);
 	if (scene.nodes && scene.timeOperators?.length && scene.timeSeed) {
 		const times = new Float64Array(scene.timeSeed);
 		scene.nodes.forEach((n, i) => {
