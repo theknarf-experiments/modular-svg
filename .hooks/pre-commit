@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 set -e
 
+pnpm typecheck
 pnpm test
 pnpm lint --staged --no-errors-on-unmatched
