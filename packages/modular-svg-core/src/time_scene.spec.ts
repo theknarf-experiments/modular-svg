@@ -419,4 +419,27 @@ describe("time relations over refs", () => {
 		// four beats ramping 0.5s -> 0.25s take 0.5*4 - 0.25*4/2 = 1.5s
 		expect(span("x")).toEqual([2, 1.5]);
 	});
+
+	it("names relations that cannot all hold instead of drifting silently", () => {
+		const { warnings } = solve([
+			dot("a"),
+			dot("b"),
+			motion("Enter", "x", "a", { over: 0.2 }),
+			motion("Enter", "y", "b", { over: 0.2 }),
+			{ type: "Sequence", id: "tight", children: [ref("x"), ref("y")] },
+			{
+				type: "Sequence",
+				id: "loose",
+				props: { gap: 0.25 },
+				children: [ref("x"), ref("y")],
+			},
+		]);
+		expect(warnings[0]).toBe(
+			"Sequence(tight), Sequence(loose) cannot all hold; the schedule did not settle",
+		);
+		// the drift is reported once, not per node
+		expect(warnings.filter((w) => w.includes("before the scene"))).toHaveLength(
+			1,
+		);
+	});
 });

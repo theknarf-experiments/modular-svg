@@ -24,16 +24,21 @@ import {
 } from "./solver/operators.ts";
 import {
 	buildTime,
+	checkTime,
 	MOTION_TYPES,
 	motionSpecOf,
 	TIME_TYPES,
 	type TimeCheck,
 	type TimeNode,
+	unsettled,
+	unsettledMessage,
 } from "./time_scene.ts";
 
 export type JsonScene = {
 	nodes: NodeRecord[];
 	operators: LayoutOperator[];
+	/** the relation each layout operator came from */
+	operatorNames: string[];
 	/** operators over the color array (3 slots per node: h, s, l) */
 	colorOperators: LayoutOperator[];
 	/** initial h,s,l per node */
@@ -42,6 +47,7 @@ export type JsonScene = {
 	coloredIds: string[];
 	/** operators over the time array (2 slots per node: start, duration) */
 	timeOperators: LayoutOperator[];
+	timeOperatorNames: string[];
 	timeSeed: number[];
 	timedIds: string[];
 	/** run against a solved layout with checkTime */
@@ -790,7 +796,28 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		return i * 3;
 	};
 
+	// Which relation each operator came from, for the post-solve check
+	const opNames: string[] = [];
+	const descName = (d: Desc): string => {
+		const owner =
+			"container" in d
+				? d.container
+				: "box" in d
+					? d.box
+					: "line" in d
+						? d.line
+						: undefined;
+		return owner
+			? `${d.kind}(${owner.id})`
+			: `${d.kind}(${d.children.map((c) => c.id).join(", ")})`;
+	};
+
 	for (const d of descs) {
+		descLoop(d);
+		while (opNames.length < ops.length) opNames.push(descName(d));
+	}
+
+	function descLoop(d: Desc): void {
 		if (d.kind === "stackV" || d.kind === "stackH") {
 			const mainAxis = d.kind === "stackV" ? "y" : "x";
 			const crossAxis = d.kind === "stackV" ? "x" : "y";
@@ -1002,13 +1029,50 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	return {
 		nodes,
 		operators: ops,
+		operatorNames: opNames,
 		colorOperators: colorOps,
 		colorSeed,
 		coloredIds: [...coloredIds],
 		timeOperators: time.timeOperators,
+		timeOperatorNames: time.timeOperatorNames,
 		timeSeed: time.timeSeed,
 		timedIds: time.timedIds,
 		timeChecks: time.timeChecks,
 		warnings: [...warnings, ...targetWarnings, ...time.warnings],
 	};
+}
+
+/** Layout relations that the solved layout does not satisfy (fixed-point check). */
+export function checkLayout(
+	scene: {
+		nodes: readonly NodeRecord[];
+		operators: readonly LayoutOperator[];
+		operatorNames?: readonly string[];
+	},
+	layout: Record<
+		string,
+		{ x: number; y: number; width: number; height: number }
+	>,
+): string[] {
+	if (scene.operators.length === 0) return [];
+	const values = new Float64Array(scene.nodes.length * 4);
+	scene.nodes.forEach((n, i) => {
+		const b = layout[n.id] ?? n;
+		values.set([b.x, b.y, b.width, b.height], i * 4);
+	});
+	const names = unsettled(
+		values,
+		scene.operators,
+		scene.operatorNames ?? [],
+		1e-2,
+	);
+	return names.length > 0 ? [unsettledMessage("layout", names)] : [];
+}
+
+/** Everything wrong with a solution: unsatisfied layout and time relations, schedule checks. */
+export function checkSolution(
+	scene: JsonScene,
+	layout: Parameters<typeof checkLayout>[1] & Parameters<typeof checkTime>[1],
+): string[] {
+	return [...checkLayout(scene, layout), ...checkTime(scene, layout)];
 }

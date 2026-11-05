@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { Command } from "commander";
 import {
 	buildSceneFromJson,
-	checkTime,
+	checkSolution,
 	layoutToSvg,
 	solveLayout,
 	validate,
@@ -42,7 +42,7 @@ program
 			}
 			const scene = buildSceneFromJson(data);
 			const layout = solveLayout(scene);
-			for (const w of [...scene.warnings, ...checkTime(scene, layout)])
+			for (const w of [...scene.warnings, ...checkSolution(scene, layout)])
 				console.error(`warning: ${w}`);
 			const svg = layoutToSvg(layout, scene.nodes, Number(opts.margin), {
 				animation: {

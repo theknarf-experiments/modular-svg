@@ -562,10 +562,12 @@ export function createRoot(): ReconcilerRoot {
 				return {
 					nodes: [],
 					operators: [],
+					operatorNames: [],
 					colorOperators: [],
 					colorSeed: [],
 					coloredIds: [],
 					timeOperators: [],
+					timeOperatorNames: [],
 					timeSeed: [],
 					timedIds: [],
 					timeChecks: [],

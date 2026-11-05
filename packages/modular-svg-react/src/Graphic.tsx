@@ -1,6 +1,6 @@
 import {
 	type AnimationOptions,
-	checkTime,
+	checkSolution,
 	layoutToAst,
 	type SvgDocument,
 	type SvgElement,
@@ -32,6 +32,10 @@ export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
 	 */
 	onSolve?: (solution: Solution) => void;
 };
+
+// Bundlers replace process.env.NODE_ENV; without one, assume development
+const isProduction = (): boolean =>
+	typeof process !== "undefined" && process.env?.NODE_ENV === "production";
 
 // Layout effect in the browser; plain effect under SSR, which warns otherwise
 const useIsomorphicLayoutEffect =
@@ -270,13 +274,15 @@ function GraphicImpl({
 					boxes: layout,
 					duration: svgAst.duration ?? 0,
 					loop: animation !== false && !!animation?.loop,
-					warnings: [...scene.warnings, ...checkTime(scene, layout)],
+					warnings: [...scene.warnings, ...checkSolution(scene, layout)],
 				};
 				// An onSolve that sets parent state re-renders us with new children;
 				// stopping on an unchanged result keeps that from looping forever
 				const key = JSON.stringify([svgAst, solved]);
 				if (key === lastKeyRef.current) return;
 				lastKeyRef.current = key;
+				if (solved.warnings.length > 0 && !isProduction())
+					console.warn(`modular-svg: ${solved.warnings.join("\n")}`);
 				solvedRef.current = solved;
 				setAst(svgAst);
 			} else {

@@ -78,3 +78,33 @@ describe("onSolve feeding parent state", () => {
 		expect(calls).toBe(1);
 	});
 });
+
+describe("warnings", () => {
+	it("logs what the solution does not satisfy", async () => {
+		const { vi } = await import("vitest");
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		render(
+			<Graphic>
+				<circle key="a" r={5} />
+				<circle key="b" r={5} />
+				<enter key="x" over={0.2}>
+					<ref target="a" />
+				</enter>
+				<enter key="y" over={0.2}>
+					<ref target="b" />
+				</enter>
+				<sequence key="tight">
+					<ref target="x" />
+					<ref target="y" />
+				</sequence>
+				<sequence key="loose" gap={0.25}>
+					<ref target="x" />
+					<ref target="y" />
+				</sequence>
+			</Graphic>,
+		);
+		await waitFor(() => expect(warn).toHaveBeenCalled());
+		expect(String(warn.mock.calls[0][0])).toMatch(/cannot all hold/);
+		warn.mockRestore();
+	});
+});

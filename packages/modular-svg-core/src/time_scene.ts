@@ -143,6 +143,7 @@ export type TimeCheck = (
 
 export type TimeScene = {
 	timeOperators: LayoutOperator[];
+	timeOperatorNames: string[];
 	timeSeed: number[];
 	timedIds: string[];
 	timeChecks: TimeCheck[];
@@ -350,6 +351,12 @@ export function buildTime(
 		timeChecks.push((span) =>
 			test(span) ? undefined : `${relation}: ${message}`,
 		);
+	};
+
+	// Which relation each operator came from, for the post-solve check
+	const opNames: string[] = [];
+	const nameNewOps = (name: string) => {
+		while (opNames.length < ops.length) opNames.push(name);
 	};
 
 	for (const t of order) {
@@ -564,6 +571,8 @@ export function buildTime(
 			ops.push(polyrhythmOp(base(a.id), base(b.id), of));
 		}
 
+		nameNewOps(name);
+
 		// Spans last, so a group re-derives itself after its relation moved members
 		const spanned = timeChildren(rec).filter((c) => timed.has(c.id));
 		if (spanned.length > 0)
@@ -579,6 +588,7 @@ export function buildTime(
 							base(rec.id),
 						),
 			);
+		nameNewOps(`span(${rec.id})`);
 	}
 
 	// Nodes that existed before any relation still need their unions
@@ -592,6 +602,7 @@ export function buildTime(
 					base(n.id),
 				),
 			);
+		nameNewOps(`span(${n.id})`);
 	}
 
 	// A Sequence sets b's start from a's length while Legato sets a's length
@@ -604,16 +615,20 @@ export function buildTime(
 			);
 	}
 
-	for (const id of timed) {
-		timeChecks.push((span) =>
-			span(id)[0] < -TIME_EPSILON
-				? `${id} starts at ${Math.round(span(id)[0] * 1000) / 1000}s, before the scene`
-				: undefined,
-		);
-	}
+	// One warning for the earliest start, not one per node under it
+	const timedList = [...timed];
+	timeChecks.push((span) => {
+		let first: string | undefined;
+		for (const id of timedList)
+			if (first === undefined || span(id)[0] < span(first)[0]) first = id;
+		if (first === undefined || span(first)[0] >= -TIME_EPSILON)
+			return undefined;
+		return `the schedule starts at ${Math.round(span(first)[0] * 1000) / 1000}s (${first}), before the scene`;
+	});
 
 	return {
 		timeOperators: ops,
+		timeOperatorNames: opNames,
 		timeSeed,
 		timedIds: nodes.filter((n) => timed.has(n.id)).map((n) => n.id),
 		timeChecks,
@@ -621,16 +636,71 @@ export function buildTime(
 	};
 }
 
-/** Problems with a solved schedule: violated inequalities, off-beat starts, negative starts. */
+/**
+ * Relations that a solved state does not satisfy: apply each operator once
+ * more and report those that would still move something. Catches every
+ * kind of relation, including over-constraints the parse-time checks miss.
+ */
+export function unsettled(
+	values: Float64Array,
+	operators: readonly LayoutOperator[],
+	names: readonly string[],
+	tolerance: number,
+): string[] {
+	const next = new Float64Array(values.length);
+	const failing = new Set<string>();
+	operators.forEach((op, i) => {
+		next.set(values);
+		op(values, next);
+		for (let k = 0; k < values.length; k++) {
+			if (Math.abs(next[k] - values[k]) > tolerance) {
+				failing.add(names[i] ?? `relation #${i}`);
+				break;
+			}
+		}
+	});
+	// Spans only follow their members; name them only if nothing else fails
+	const relations = [...failing].filter((n) => !n.startsWith("span("));
+	return relations.length > 0 ? relations : [...failing];
+}
+
+export const unsettledMessage = (domain: string, names: readonly string[]) =>
+	names.length === 1
+		? `${names[0]} does not hold in the solved ${domain}`
+		: `${names.join(", ")} cannot all hold; the ${domain} did not settle`;
+
+/** Problems with a solved schedule: unsatisfied relations, violated inequalities, off-beat and negative starts. */
 export function checkTime(
-	scene: { timeChecks?: readonly TimeCheck[] },
+	scene: {
+		nodes?: readonly NodeRecord[];
+		timeChecks?: readonly TimeCheck[];
+		timeOperators?: readonly LayoutOperator[];
+		timeOperatorNames?: readonly string[];
+		timeSeed?: readonly number[];
+	},
 	layout: Record<string, { start?: number; duration?: number }>,
 ): string[] {
 	const span = (id: string): [number, number] => [
 		layout[id]?.start ?? 0,
 		layout[id]?.duration ?? 0,
 	];
-	return (scene.timeChecks ?? [])
+	const warnings = (scene.timeChecks ?? [])
 		.map((check) => check(span))
 		.filter((w): w is string => w !== undefined);
+	if (scene.nodes && scene.timeOperators?.length && scene.timeSeed) {
+		const times = new Float64Array(scene.timeSeed);
+		scene.nodes.forEach((n, i) => {
+			const box = layout[n.id];
+			if (box?.start !== undefined) times[i * 2] = box.start;
+			if (box?.duration !== undefined) times[i * 2 + 1] = box.duration;
+		});
+		const names = unsettled(
+			times,
+			scene.timeOperators,
+			scene.timeOperatorNames ?? [],
+			1e-3,
+		);
+		if (names.length > 0) warnings.unshift(unsettledMessage("schedule", names));
+	}
+	return warnings;
 }
