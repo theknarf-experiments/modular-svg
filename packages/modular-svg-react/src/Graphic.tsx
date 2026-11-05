@@ -48,6 +48,11 @@ export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
 const isProduction = (): boolean =>
 	typeof process !== "undefined" && process.env?.NODE_ENV === "production";
 
+// Viewers who ask for reduced motion get state changes without tweens
+const prefersReducedMotion = (): boolean =>
+	typeof matchMedia === "function" &&
+	matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 // Layout effect in the browser; plain effect under SSR, which warns otherwise
 const useIsomorphicLayoutEffect =
 	typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;
@@ -351,7 +356,7 @@ function GraphicImpl({
 					console.warn(`modular-svg: ${solved.warnings.join("\n")}`);
 				solvedRef.current = solved;
 				const tween = transitionRef.current;
-				if (tween && committedRef.current) {
+				if (tween && committedRef.current && !prefersReducedMotion()) {
 					const options = tween === true ? {} : tween;
 					const svg = svgRef.current;
 					const prev = committedRef.current;

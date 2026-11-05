@@ -281,3 +281,39 @@ describe("animating colors", () => {
 		).toThrow(/g has no color to take/);
 	});
 });
+
+describe("reduced motion", () => {
+	const morph = (animation?: AnimationOptions) =>
+		render(
+			[
+				{ type: "Path", id: "p", props: { d: "M0 0 L10 0 L10 10" } },
+				on("Motion", "m", "p", {
+					steps: [{ to: { d: "M0 0 L10 10 L0 10" }, over: 1 }],
+				}),
+			],
+			animation,
+		);
+
+	it("pairs a morphing path with a still copy that reduced motion shows instead", () => {
+		const { svg, ast } = morph();
+		const paths = [
+			...svg.matchAll(/<path id="([^"]+)" d="([^"]+)"[^>]*class="([^"]+)"/g),
+		];
+		expect(paths.map((p) => p[1])).toEqual(["p", "p-still"]);
+		// non-looping scenes hold their last frame
+		expect(paths[1][2]).toBe("M0 0 L10 10 L0 10");
+		expect(paths[0][3]).toMatch(/-dm$/);
+		expect(paths[1][3]).toMatch(/-ds$/);
+		expect(svg).not.toMatch(/p-still"[^>]*>.*<animate/);
+		expect(ast.css).toMatch(/\.ms\w+-ds\{display:none\}/);
+		expect(ast.css).toMatch(
+			/prefers-reduced-motion:reduce\)\{.*\.ms\w+-dm\{display:none\}\.ms\w+-ds\{display:inline\}/,
+		);
+	});
+
+	it("uses the chosen still frame, or none at all", () => {
+		const half = morph({ stillAt: 0 });
+		expect(half.svg).toMatch(/id="p-still" d="M0 0 L10 0 L10 10"/);
+		expect(morph({ stillAt: false }).svg).not.toContain("p-still");
+	});
+});

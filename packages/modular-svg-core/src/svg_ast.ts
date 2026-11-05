@@ -603,24 +603,37 @@ export function layoutToAst(
 	};
 }
 
-// The mark's own elements take its class, pins and SMIL; its shells wrap them
+// The mark's own elements take its class, pins and SMIL; its shells wrap them.
+// A morphing path also gets a still copy that reduced motion shows instead.
 function animateElements(
 	elements: SvgElement[],
 	animation: MarkAnimation,
 ): SvgElement[] {
-	const own = elements.map((el): SvgElement => {
-		if (el.type === "g") return el;
-		const cls = [el.attrs?.class, animation.attrs.class]
+	const withClass = (el: SvgElement, extra?: string) => {
+		const cls = [el.attrs?.class, animation.attrs.class, extra]
 			.filter(Boolean)
 			.join(" ");
-		const attrs = {
-			...el.attrs,
-			...animation.attrs,
-			...(cls ? { class: cls } : {}),
+		return { ...el.attrs, ...animation.attrs, ...(cls ? { class: cls } : {}) };
+	};
+	const own = elements.flatMap((el): SvgElement[] => {
+		if (el.type === "g") return [el];
+		if (el.type !== "path" || animation.smil.length === 0)
+			return [{ ...el, attrs: withClass(el) }];
+		const moving: SvgElement = {
+			...el,
+			attrs: withClass(el, animation.still?.movingClass),
+			animate: animation.smil,
 		};
-		return el.type === "path" && animation.smil.length > 0
-			? { ...el, attrs, animate: animation.smil }
-			: { ...el, attrs };
+		if (!animation.still) return [moving];
+		return [
+			moving,
+			{
+				...el,
+				id: el.id ? `${el.id}-still` : undefined,
+				d: animation.still.d,
+				attrs: withClass(el, animation.still.stillClass),
+			},
+		];
 	});
 	return animation.shells.reduceRight<SvgElement[]>(
 		(inner, shell) => [

@@ -11,6 +11,7 @@ import {
 	resolveColorRefs,
 	type Step,
 	type Values,
+	valueAt,
 } from "./motion.ts";
 import type { LayoutResult, NodeRecord } from "./solver/index.ts";
 
@@ -41,6 +42,12 @@ export type MarkAnimation = {
 	smil: SmilAnimate[];
 	/** wrapper groups, outermost first, one per motion with nesting lanes */
 	shells: { class: string }[];
+	/**
+	 * For SMIL path morphs, which CSS cannot pause: the path data at the
+	 * reduced-motion still frame, and the classes that show either the moving
+	 * path or a still copy of it depending on the viewer's preference
+	 */
+	still?: { d: string; movingClass: string; stillClass: string };
 };
 
 export type CompiledAnimation = {
@@ -303,6 +310,12 @@ export function compileAnimation(
 	const classFor = (lanes: readonly Lane[], extra = ""): string =>
 		`${TOKEN}a ${nameClass(`animation-name:${lanes.map((l) => nameKeyframes(keyframes(l, period))).join(",")}${extra}`)}`;
 
+	const still =
+		opts.stillAt === false
+			? undefined
+			: Math.min(opts.stillAt ?? (opts.loop ? period * 0.85 : period), period);
+	let twins = false;
+
 	const marks = new Map<string, MarkAnimation>();
 	for (const [markId, list] of contributions) {
 		const mark = byId.get(markId);
@@ -402,6 +415,7 @@ export function compileAnimation(
 		}
 		const attrs: Record<string, string | number> = {};
 		const smils: SmilAnimate[] = [];
+		let stillD: string | undefined;
 		const cssLanes: Lane[] = [];
 		for (const [name, entry] of own) {
 			const initial = Object.fromEntries(
@@ -423,6 +437,7 @@ export function compileAnimation(
 						`d on ${markId} moves between paths with different commands, so it would jump`,
 					);
 				smils.push(smil(lane, period, !!opts.loop));
+				if (still !== undefined) stillD = String(valueAt(lane.keys, still).d);
 				continue;
 			}
 			if (name === "draw") {
@@ -432,18 +447,29 @@ export function compileAnimation(
 			cssLanes.push(lane);
 		}
 		if (cssLanes.length > 0) attrs.class = classFor(cssLanes);
-		marks.set(markId, { attrs, smil: smils, shells });
+		if (stillD !== undefined) twins = true;
+		marks.set(markId, {
+			attrs,
+			smil: smils,
+			shells,
+			...(stillD !== undefined
+				? {
+						still: {
+							d: stillD,
+							movingClass: `${TOKEN}dm`,
+							stillClass: `${TOKEN}ds`,
+						},
+					}
+				: {}),
+		});
 	}
 
-	const still =
-		opts.stillAt === false
-			? undefined
-			: (opts.stillAt ?? (opts.loop ? period * 0.85 : period));
 	const css = [
 		`.${TOKEN}a{animation-duration:${num(period)}s;animation-iteration-count:${opts.loop ? "infinite" : 1};animation-fill-mode:both;animation-timing-function:linear}`,
 		...rules,
+		twins ? `.${TOKEN}ds{display:none}` : "",
 		still !== undefined
-			? `@media (prefers-reduced-motion:reduce){.${TOKEN}a{animation-delay:-${num(Math.min(still, period))}s!important;animation-play-state:paused!important}}`
+			? `@media (prefers-reduced-motion:reduce){.${TOKEN}a{animation-delay:-${num(still)}s!important;animation-play-state:paused!important}${twins ? `.${TOKEN}dm{display:none}.${TOKEN}ds{display:inline}` : ""}}`
 			: "",
 	]
 		.filter(Boolean)
@@ -455,6 +481,12 @@ export function compileAnimation(
 	for (const m of marks.values()) {
 		if (m.attrs.class) m.attrs.class = named(String(m.attrs.class));
 		for (const s of m.shells) s.class = named(s.class);
+		if (m.still)
+			m.still = {
+				...m.still,
+				movingClass: named(m.still.movingClass),
+				stillClass: named(m.still.stillClass),
+			};
 	}
 	return { duration: period, css: named(css), marks };
 }

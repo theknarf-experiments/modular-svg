@@ -112,3 +112,36 @@ describe("Graphic transition", () => {
 		expect(tween?.getAttribute("dur")).toBe("0.4s");
 	});
 });
+
+describe("reduced motion", () => {
+	it("skips transitions when the viewer prefers reduced motion", async () => {
+		const original = globalThis.matchMedia;
+		globalThis.matchMedia = ((query: string) => ({
+			matches: query.includes("reduce"),
+		})) as typeof matchMedia;
+		try {
+			const scene = (spacing: number) => (
+				<Graphic transition>
+					<stackH spacing={spacing}>
+						<circle key="a" r={5} />
+						<circle key="b" r={5} />
+					</stackH>
+				</Graphic>
+			);
+			const { container, rerender } = render(scene(10));
+			await waitFor(() =>
+				expect(container.querySelector("circle#b")).toBeTruthy(),
+			);
+			const before = container.querySelector("circle#b")?.getAttribute("cx");
+			rerender(scene(40));
+			await waitFor(() =>
+				expect(
+					container.querySelector("circle#b")?.getAttribute("cx"),
+				).not.toBe(before),
+			);
+			expect(container.querySelector("[data-transition]")).toBeNull();
+		} finally {
+			globalThis.matchMedia = original;
+		}
+	});
+});
