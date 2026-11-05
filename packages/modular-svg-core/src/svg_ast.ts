@@ -516,6 +516,8 @@ function buildArrow(
 
 	const poly: PolygonElement = {
 		type: "polygon",
+		// Its own id, so the head can be told apart (and tweened) across renders
+		id: `${id}-head`,
 		points: `${tip.x},${tip.y} ${left.x},${left.y} ${right.x},${right.y}`,
 		...attrs,
 	};

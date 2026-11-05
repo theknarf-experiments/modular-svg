@@ -75,7 +75,13 @@ Animation page of the docs.
 ./bin/modular-svg.ts examples/pipeline.json pipeline.svg --loop --duration 4
 ```
 
-In React, `Graphic` takes `playhead` (hold every motion at a time, for
+After solving, `checkSolution(scene, layout)` applies every relation once
+more to the result and names any that would still move something, so
+over-constrained scenes are reported rather than silently drifting. `Graphic`
+logs these warnings outside production builds, and the CLI prints them.
+
+In React, `Graphic` takes `transition` (tween marks from their previous solved
+geometry and color whenever state changes the solution), `playhead` (hold every motion at a time, for
 scrubbing) and `onSolve`, which hands out the solved spans of every timed ref,
 the layout boxes, warnings and a live animation clock. `useCues(solution,
 { hit3: () => ..., "hit3:end": () => ... })` calls back as the animation

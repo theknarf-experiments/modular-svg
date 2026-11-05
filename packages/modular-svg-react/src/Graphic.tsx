@@ -14,6 +14,12 @@ import {
 	getEventHandlers,
 	type ReconcilerRoot,
 } from "./reconciler";
+import {
+	diffTransitions,
+	type Transition,
+	type TransitionOptions,
+	timingAttributes,
+} from "./transitions";
 
 export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
 	children?: React.ReactNode;
@@ -31,6 +37,11 @@ export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
 	 * animation clock, every time the scene is solved; see useCues.
 	 */
 	onSolve?: (solution: Solution) => void;
+	/**
+	 * Tween marks from their previous solved geometry and color whenever the
+	 * scene is solved again (true for the defaults).
+	 */
+	transition?: boolean | TransitionOptions;
 };
 
 // Bundlers replace process.env.NODE_ENV; without one, assume development
@@ -86,10 +97,39 @@ function reactifyAttrs(
 	return out;
 }
 
+// Transitions for the current render, by element id
+const TweenContext = React.createContext<{
+	byId: Map<string, Transition[]>;
+	timing: Record<string, string>;
+	generation: number;
+} | null>(null);
+
+// SMIL children tweening an element from its previous geometry; keyed by
+// generation so each change mounts fresh animations that start on commit
+function useTweens(id: string | undefined): React.ReactNode {
+	const tweens = React.useContext(TweenContext);
+	const list = id ? tweens?.byId.get(id) : undefined;
+	if (!tweens || !list) return null;
+	return list.map((t) =>
+		React.createElement(
+			t.kind === "translate" ? "animateTransform" : "animate",
+			{
+				key: `${tweens.generation}-${t.attributeName}`,
+				"data-transition": "",
+				attributeName: t.attributeName,
+				...(t.kind === "translate" ? { type: "translate" } : {}),
+				values: `${t.from};${t.to}`,
+				...tweens.timing,
+			},
+		),
+	);
+}
+
 // Component to render a single SVG element with event handlers
 function SvgElementRenderer({ element }: { element: SvgElement }) {
 	const handlers = element.id ? getEventHandlers(element.id) : undefined;
 	const attrs = reactifyAttrs(element.attrs);
+	const tweens = useTweens(element.id);
 
 	if (element.type === "circle") {
 		return (
@@ -103,7 +143,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{tweens}
+			</circle>
 		);
 	}
 
@@ -120,7 +162,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{tweens}
+			</rect>
 		);
 	}
 
@@ -139,6 +183,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				{...handlers}
 			>
 				{element.text}
+				{tweens}
 			</text>
 		);
 	}
@@ -155,7 +200,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{tweens}
+			</line>
 		);
 	}
 
@@ -170,7 +217,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{tweens}
+			</polygon>
 		);
 	}
 
@@ -189,6 +238,7 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				{element.animate?.map((a) => (
 					<animate key={a.attributeName} {...reactifyAttrs(a)} />
 				))}
+				{tweens}
 			</path>
 		);
 	}
@@ -217,7 +267,9 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				href={element.href}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{tweens}
+			</image>
 		);
 	}
 
@@ -232,8 +284,22 @@ function GraphicImpl({
 	animation,
 	playhead,
 	onSolve,
+	transition,
 	...props
 }: GraphicProps) {
+	const [tweens, setTweens] = React.useState<{
+		byId: Map<string, Transition[]>;
+		timing: Record<string, string>;
+		generation: number;
+	} | null>(null);
+	const committedRef = React.useRef<SvgDocument | null>(null);
+	// While marks tween, the canvas keeps room for where they come from
+	const [room, setRoom] = React.useState<{
+		width: number;
+		height: number;
+	} | null>(null);
+	const transitionRef = React.useRef(transition);
+	transitionRef.current = transition;
 	const svgRef = React.useRef<SVGSVGElement>(null);
 	const solvedRef = React.useRef<Omit<Solution, "time"> | null>(null);
 	// What was last committed; re-renders with an identical result are skipped
@@ -284,6 +350,32 @@ function GraphicImpl({
 				if (solved.warnings.length > 0 && !isProduction())
 					console.warn(`modular-svg: ${solved.warnings.join("\n")}`);
 				solvedRef.current = solved;
+				const tween = transitionRef.current;
+				if (tween && committedRef.current) {
+					const options = tween === true ? {} : tween;
+					const svg = svgRef.current;
+					const prev = committedRef.current;
+					setRoom({
+						width: Math.max(prev.width, svgAst.width),
+						height: Math.max(prev.height, svgAst.height),
+					});
+					setTweens((prev) => ({
+						byId: diffTransitions(committedRef.current, svgAst, (id, name) => {
+							// Mid-transition, start from what is on screen, not the old target
+							const el = svg?.querySelector(`[id="${id}"]`) as
+								| (SVGElement &
+										Record<string, { animVal?: { value?: number } }>)
+								| null;
+							const value = el?.[name]?.animVal?.value;
+							return typeof value === "number" ? value : undefined;
+						}),
+						timing: timingAttributes(options),
+						generation: (prev?.generation ?? 0) + 1,
+					}));
+				} else {
+					// Frozen tweens from an earlier change would hold their old targets
+					setTweens(null);
+				}
 				setAst(svgAst);
 			} else {
 				lastKeyRef.current = null;
@@ -302,6 +394,27 @@ function GraphicImpl({
 			}
 		};
 	}, []);
+
+	// Give the room back once the transition is over
+	React.useEffect(() => {
+		if (!room) return;
+		const options = transitionRef.current === true ? {} : transitionRef.current;
+		const timer = setTimeout(
+			() => setRoom(null),
+			((options || undefined)?.duration ?? 0.3) * 1000,
+		);
+		return () => clearTimeout(timer);
+	}, [room]);
+
+	// Start the new transitions once their elements are in the DOM
+	useIsomorphicLayoutEffect(() => {
+		committedRef.current = ast;
+		const svg = svgRef.current;
+		if (!svg || !tweens) return;
+		for (const a of svg.querySelectorAll("[data-transition]")) {
+			(a as SVGAnimationElement).beginElement?.();
+		}
+	}, [ast, tweens]);
 
 	// After commit, so the solution's clock can read the rendered animations
 	React.useEffect(() => {
@@ -326,20 +439,22 @@ function GraphicImpl({
 		<div {...props}>
 			<svg
 				ref={svgRef}
-				width={ast.width}
-				height={ast.height}
+				width={Math.max(ast.width, room?.width ?? 0)}
+				height={Math.max(ast.height, room?.height ?? 0)}
 				xmlns="http://www.w3.org/2000/svg"
 				role="img"
 				aria-label={title || "Modular SVG diagram"}
 			>
 				{title && <title>{title}</title>}
 				{ast.css && <style>{ast.css}</style>}
-				{ast.children.map((element, index) => (
-					<SvgElementRenderer
-						key={element.id ?? `element-${index}`}
-						element={element}
-					/>
-				))}
+				<TweenContext.Provider value={tweens}>
+					{ast.children.map((element, index) => (
+						<SvgElementRenderer
+							key={element.id ?? `element-${index}`}
+							element={element}
+						/>
+					))}
+				</TweenContext.Provider>
 			</svg>
 		</div>
 	);

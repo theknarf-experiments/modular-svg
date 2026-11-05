@@ -75,6 +75,8 @@ import { SequenceDiagramExample } from "./examples/SequenceDiagramExample";
 import sequenceDiagramExampleCode from "./examples/SequenceDiagramExample.tsx?raw";
 import { ShapesAndStacks } from "./examples/ShapesAndStacks";
 import shapesAndStacksCode from "./examples/ShapesAndStacks.tsx?raw";
+import { TransitionExample } from "./examples/TransitionExample";
+import transitionExampleCode from "./examples/TransitionExample.tsx?raw";
 import vennDiagramCode from "./examples/VennDiagram.tsx?raw";
 import { VennDiagramExample } from "./examples/VennDiagramExample";
 import vennDiagramExampleCode from "./examples/VennDiagramExample.tsx?raw";
@@ -147,6 +149,13 @@ export const pages: Page[] = [
 					"Adjust the controls to see the layout update in real-time - including the margin the Graphic reserves around the content",
 				code: interactiveStateCode,
 				element: <InteractiveState />,
+			},
+			{
+				title: "Transitions",
+				description:
+					"With transition, every re-solve tweens marks from their previous solved geometry and color: flip the stack, rotate the order or recolor, and boxes slide, arrows reshape and fills blend instead of jumping",
+				code: transitionExampleCode,
+				element: <TransitionExample />,
 			},
 			{
 				title: "Interactive Event Handlers",

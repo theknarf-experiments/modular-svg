@@ -25,3 +25,4 @@ export { Graphic } from "./Graphic";
 // Reconciler exports for advanced usage and testing
 export type { ReconcilerRoot } from "./reconciler";
 export { act, createRoot } from "./reconciler";
+export type { TransitionOptions } from "./transitions";
