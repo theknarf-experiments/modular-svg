@@ -12,6 +12,7 @@
 	},
 	"scripts": {
 		"test": "vitest run",
+		"bench": "vitest bench --run",
 		"typecheck": "tsc --noEmit"
 	},
 	"license": "MIT",

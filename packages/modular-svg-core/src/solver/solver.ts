@@ -82,21 +82,26 @@ export function relax(
 	{ maxIter, epsilon, damping, angles }: RelaxOptions,
 ): void {
 	if (operators.length === 0) return;
-	const next = new Float64Array(values.length);
+	// next mirrors values between operators; an operator that declares its
+	// writes only has those slots copied back and checked (linear per sweep),
+	// one that does not gets the full scan
+	const next = new Float64Array(values);
 	let residual = Infinity;
+	const settle = (i: number): void => {
+		const diff = slotDiff(values[i], next[i], i, angles);
+		const abs = Math.abs(diff);
+		if (abs > residual) residual = abs;
+		values[i] += damping * diff;
+		// Hues blend the short way round and stay in [0, 360)
+		if (isAngle(i, angles)) values[i] = ((values[i] % 360) + 360) % 360;
+		next[i] = values[i];
+	};
 	for (let iter = 0; iter < maxIter && residual > epsilon; iter++) {
 		residual = 0;
 		for (const op of operators) {
-			next.set(values);
 			op(values, next);
-			for (let i = 0; i < values.length; i++) {
-				const diff = slotDiff(values[i], next[i], i, angles);
-				const abs = Math.abs(diff);
-				if (abs > residual) residual = abs;
-				values[i] += damping * diff;
-				// Hues blend the short way round and stay in [0, 360)
-				if (isAngle(i, angles)) values[i] = ((values[i] % 360) + 360) % 360;
-			}
+			if (op.writes) for (const i of op.writes) settle(i);
+			else for (let i = 0; i < values.length; i++) settle(i);
 		}
 	}
 }

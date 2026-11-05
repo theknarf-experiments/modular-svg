@@ -649,18 +649,17 @@ export function unsettled(
 	tolerance: number,
 	angles?: AngleSlots,
 ): string[] {
-	const next = new Float64Array(values.length);
+	// next mirrors values; each operator's declared writes are checked and reset
+	const next = new Float64Array(values);
 	const failing = new Set<string>();
 	operators.forEach((op, i) => {
-		next.set(values);
 		op(values, next);
-		for (let k = 0; k < values.length; k++) {
+		const written = op.writes ?? next.keys();
+		for (const k of written) {
 			// A non-finite value means the solve diverged: that never holds
 			const moved = Math.abs(slotDiff(values[k], next[k], k, angles));
-			if (!(moved <= tolerance)) {
-				failing.add(names[i] ?? `relation #${i}`);
-				break;
-			}
+			if (!(moved <= tolerance)) failing.add(names[i] ?? `relation #${i}`);
+			next[k] = values[k];
 		}
 	});
 	// Spans only follow their members; name them only if nothing else fails

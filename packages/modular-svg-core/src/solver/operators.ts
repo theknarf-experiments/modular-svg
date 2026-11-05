@@ -1,7 +1,31 @@
 import { contrastingLightness, luminanceOfOklch } from "../color.ts";
 import type { MotionSpec } from "../motion.ts";
 
-export type LayoutOperator = (cur: Float64Array, next: Float64Array) => void;
+/**
+ * An operator reads the current state and writes its targets into next.
+ * `writes` lists every slot it may write: the solver then copies and checks
+ * only those instead of the whole state, which keeps an iteration linear in
+ * the scene. Without it the solver falls back to scanning everything.
+ */
+export type LayoutOperator = ((
+	cur: Float64Array,
+	next: Float64Array,
+) => void) & {
+	writes?: readonly number[];
+};
+
+/** Every slot of each base, for a node record of `stride` slots. */
+export const slots = (bases: Iterable<number>, stride: number): number[] => {
+	const out = new Set<number>();
+	for (const base of bases) for (let k = 0; k < stride; k++) out.add(base + k);
+	return [...out];
+};
+
+/** Mark an operator with the slots it writes. */
+export const writing = (
+	op: (cur: Float64Array, next: Float64Array) => void,
+	writes: readonly number[],
+): LayoutOperator => Object.assign(op, { writes });
 
 export type ArrowGeometry = {
 	/** gap between the source box edge and the arrow start */
@@ -225,95 +249,98 @@ function stack(
 	const crossAnchor = opts.crossAnchor ?? null;
 	const mainSlot = horizontal ? 0 : 1;
 	const extentSlot = horizontal ? 2 : 3;
-	return (cur, next) => {
-		if (children.length === 0) return;
+	return writing(
+		(cur, next) => {
+			if (children.length === 0) return;
 
-		const { extents, gap } = resolveExtents(
-			cur,
-			next,
-			children,
-			extentSlot,
-			opts.spacing,
-			opts.total,
-			opts.extentOwned,
-		);
+			const { extents, gap } = resolveExtents(
+				cur,
+				next,
+				children,
+				extentSlot,
+				opts.spacing,
+				opts.total,
+				opts.extentOwned,
+			);
 
-		// Cumulative offsets along the main axis
-		const offsets: number[] = [];
-		let acc = 0;
-		for (const e of extents) {
-			offsets.push(acc);
-			acc += e + gap;
-		}
+			// Cumulative offsets along the main axis
+			const offsets: number[] = [];
+			let acc = 0;
+			for (const e of extents) {
+				offsets.push(acc);
+				acc += e + gap;
+			}
 
-		const start =
-			mainAnchor !== null
-				? cur[children[mainAnchor].base + mainSlot] - offsets[mainAnchor]
-				: cur[containerIndex + mainSlot];
+			const start =
+				mainAnchor !== null
+					? cur[children[mainAnchor].base + mainSlot] - offsets[mainAnchor]
+					: cur[containerIndex + mainSlot];
 
-		// Cross-axis alignment line
-		const line =
-			crossAnchor !== null
-				? horizontal
-					? alignCoordY(
-							cur,
-							children[crossAnchor].base,
-							alignment as AlignmentY,
-						)
-					: alignCoordX(
-							cur,
-							children[crossAnchor].base,
-							alignment as AlignmentX,
-						)
-				: horizontal
-					? alignCoordY(cur, containerIndex, alignment as AlignmentY)
-					: alignCoordX(cur, containerIndex, alignment as AlignmentX);
+			// Cross-axis alignment line
+			const line =
+				crossAnchor !== null
+					? horizontal
+						? alignCoordY(
+								cur,
+								children[crossAnchor].base,
+								alignment as AlignmentY,
+							)
+						: alignCoordX(
+								cur,
+								children[crossAnchor].base,
+								alignment as AlignmentX,
+							)
+					: horizontal
+						? alignCoordY(cur, containerIndex, alignment as AlignmentY)
+						: alignCoordX(cur, containerIndex, alignment as AlignmentX);
 
-		const xs: number[] = [];
-		const ys: number[] = [];
-		const ws: number[] = [];
-		const hs: number[] = [];
+			const xs: number[] = [];
+			const ys: number[] = [];
+			const ws: number[] = [];
+			const hs: number[] = [];
 
-		for (let i = 0; i < children.length; i++) {
-			const c = children[i];
-			const main = start + offsets[i];
-			const cross = horizontal
-				? targetYFromLine(cur, c.base, alignment as AlignmentY, line)
-				: targetXFromLine(cur, c.base, alignment as AlignmentX, line);
-			const targetX = horizontal ? main : cross;
-			const targetY = horizontal ? cross : main;
+			for (let i = 0; i < children.length; i++) {
+				const c = children[i];
+				const main = start + offsets[i];
+				const cross = horizontal
+					? targetYFromLine(cur, c.base, alignment as AlignmentY, line)
+					: targetXFromLine(cur, c.base, alignment as AlignmentX, line);
+				const targetX = horizontal ? main : cross;
+				const targetY = horizontal ? cross : main;
 
-			if (i !== mainAnchor) {
-				moveSubtree(
-					cur,
-					next,
-					c,
-					mainSlot as 0 | 1,
-					main - cur[c.base + mainSlot],
+				if (i !== mainAnchor) {
+					moveSubtree(
+						cur,
+						next,
+						c,
+						mainSlot as 0 | 1,
+						main - cur[c.base + mainSlot],
+					);
+				}
+				if (i !== crossAnchor) {
+					const crossSlot = (horizontal ? 1 : 0) as 0 | 1;
+					moveSubtree(cur, next, c, crossSlot, cross - cur[c.base + crossSlot]);
+				}
+
+				// Union uses the target positions except for anchored slots, which
+				// keep their current values.
+				xs.push(
+					i === (horizontal ? mainAnchor : crossAnchor) ? cur[c.base] : targetX,
 				);
-			}
-			if (i !== crossAnchor) {
-				const crossSlot = (horizontal ? 1 : 0) as 0 | 1;
-				moveSubtree(cur, next, c, crossSlot, cross - cur[c.base + crossSlot]);
+				ys.push(
+					i === (horizontal ? crossAnchor : mainAnchor)
+						? cur[c.base + 1]
+						: targetY,
+				);
+				// main-axis extent may have been assigned by a total mode
+				ws.push(horizontal ? extents[i] : cur[c.base + 2]);
+				hs.push(horizontal ? cur[c.base + 3] : extents[i]);
 			}
 
-			// Union uses the target positions except for anchored slots, which
-			// keep their current values.
-			xs.push(
-				i === (horizontal ? mainAnchor : crossAnchor) ? cur[c.base] : targetX,
-			);
-			ys.push(
-				i === (horizontal ? crossAnchor : mainAnchor)
-					? cur[c.base + 1]
-					: targetY,
-			);
-			// main-axis extent may have been assigned by a total mode
-			ws.push(horizontal ? extents[i] : cur[c.base + 2]);
-			hs.push(horizontal ? cur[c.base + 3] : extents[i]);
-		}
-
-		writeUnion(next, containerIndex, xs, ys, ws, hs);
-	};
+			writeUnion(next, containerIndex, xs, ys, ws, hs);
+		},
+		slots([...children.flatMap((c) => c.subtree), containerIndex], 4),
+	);
 }
 
 export function stackV(
@@ -340,14 +367,20 @@ export function alignX(
 	alignment: AlignmentX,
 	anchor: number,
 ): LayoutOperator {
-	return (cur, next) => {
-		const line = alignCoordX(cur, children[anchor].base, alignment);
-		for (let i = 0; i < children.length; i++) {
-			if (i === anchor) continue;
-			const target = targetXFromLine(cur, children[i].base, alignment, line);
-			moveSubtree(cur, next, children[i], 0, target - cur[children[i].base]);
-		}
-	};
+	return writing(
+		(cur, next) => {
+			const line = alignCoordX(cur, children[anchor].base, alignment);
+			for (let i = 0; i < children.length; i++) {
+				if (i === anchor) continue;
+				const target = targetXFromLine(cur, children[i].base, alignment, line);
+				moveSubtree(cur, next, children[i], 0, target - cur[children[i].base]);
+			}
+		},
+		slots(
+			children.flatMap((c) => c.subtree),
+			4,
+		),
+	);
 }
 
 export function alignY(
@@ -355,20 +388,26 @@ export function alignY(
 	alignment: AlignmentY,
 	anchor: number,
 ): LayoutOperator {
-	return (cur, next) => {
-		const line = alignCoordY(cur, children[anchor].base, alignment);
-		for (let i = 0; i < children.length; i++) {
-			if (i === anchor) continue;
-			const target = targetYFromLine(cur, children[i].base, alignment, line);
-			moveSubtree(
-				cur,
-				next,
-				children[i],
-				1,
-				target - cur[children[i].base + 1],
-			);
-		}
-	};
+	return writing(
+		(cur, next) => {
+			const line = alignCoordY(cur, children[anchor].base, alignment);
+			for (let i = 0; i < children.length; i++) {
+				if (i === anchor) continue;
+				const target = targetYFromLine(cur, children[i].base, alignment, line);
+				moveSubtree(
+					cur,
+					next,
+					children[i],
+					1,
+					target - cur[children[i].base + 1],
+				);
+			}
+		},
+		slots(
+			children.flatMap((c) => c.subtree),
+			4,
+		),
+	);
 }
 
 export type DistributeOptions = {
@@ -391,58 +430,64 @@ function distribute(
 	const anchor = opts.anchor ?? 0;
 	const slot = (horizontal ? 0 : 1) as 0 | 1;
 	const extentSlot = horizontal ? 2 : 3;
-	return (cur, next) => {
-		if (children.length < 2) return;
-		if (opts.spacing !== undefined || opts.total !== undefined) {
-			const { extents, gap } = resolveExtents(
-				cur,
-				next,
-				children,
-				extentSlot,
-				opts.spacing,
-				opts.total,
-				opts.extentOwned,
-			);
-			const offsets: number[] = [];
-			let acc = 0;
-			for (const e of extents) {
-				offsets.push(acc);
-				acc += e + gap;
-			}
-			const start = cur[children[anchor].base + slot] - offsets[anchor];
-			for (let i = 0; i < children.length; i++) {
-				if (i === anchor) continue;
-				const target = start + offsets[i];
-				moveSubtree(
+	return writing(
+		(cur, next) => {
+			if (children.length < 2) return;
+			if (opts.spacing !== undefined || opts.total !== undefined) {
+				const { extents, gap } = resolveExtents(
 					cur,
 					next,
-					children[i],
-					slot,
-					target - cur[children[i].base + slot],
+					children,
+					extentSlot,
+					opts.spacing,
+					opts.total,
+					opts.extentOwned,
 				);
+				const offsets: number[] = [];
+				let acc = 0;
+				for (const e of extents) {
+					offsets.push(acc);
+					acc += e + gap;
+				}
+				const start = cur[children[anchor].base + slot] - offsets[anchor];
+				for (let i = 0; i < children.length; i++) {
+					if (i === anchor) continue;
+					const target = start + offsets[i];
+					moveSubtree(
+						cur,
+						next,
+						children[i],
+						slot,
+						target - cur[children[i].base + slot],
+					);
+				}
+			} else {
+				let min = Infinity;
+				let max = -Infinity;
+				for (const c of children) {
+					const v = cur[c.base + slot];
+					if (v < min) min = v;
+					if (v > max) max = v;
+				}
+				const n = children.length;
+				const gap = (max - min) / (n - 1);
+				for (let i = 0; i < n; i++) {
+					const target = min + i * gap;
+					moveSubtree(
+						cur,
+						next,
+						children[i],
+						slot,
+						target - cur[children[i].base + slot],
+					);
+				}
 			}
-		} else {
-			let min = Infinity;
-			let max = -Infinity;
-			for (const c of children) {
-				const v = cur[c.base + slot];
-				if (v < min) min = v;
-				if (v > max) max = v;
-			}
-			const n = children.length;
-			const gap = (max - min) / (n - 1);
-			for (let i = 0; i < n; i++) {
-				const target = min + i * gap;
-				moveSubtree(
-					cur,
-					next,
-					children[i],
-					slot,
-					target - cur[children[i].base + slot],
-				);
-			}
-		}
-	};
+		},
+		slots(
+			children.flatMap((c) => c.subtree),
+			4,
+		),
+	);
 }
 
 export function distributeX(
@@ -480,44 +525,48 @@ export function backgroundOp(
 	opts: BackgroundOptions,
 ): LayoutOperator {
 	const { padding } = opts;
-	return (cur, next) => {
-		if (children.length === 0) return;
-		let minX = Infinity;
-		let minY = Infinity;
-		let maxX = -Infinity;
-		let maxY = -Infinity;
-		for (const c of children) {
-			minX = Math.min(minX, cur[c.base]);
-			minY = Math.min(minY, cur[c.base + 1]);
-			maxX = Math.max(maxX, cur[c.base] + cur[c.base + 2]);
-			maxY = Math.max(maxY, cur[c.base + 1] + cur[c.base + 3]);
-		}
+	return writing(
+		(cur, next) => {
+			if (children.length === 0) return;
+			let minX = Infinity;
+			let minY = Infinity;
+			let maxX = -Infinity;
+			let maxY = -Infinity;
+			for (const c of children) {
+				minX = Math.min(minX, cur[c.base]);
+				minY = Math.min(minY, cur[c.base + 1]);
+				maxX = Math.max(maxX, cur[c.base] + cur[c.base + 2]);
+				maxY = Math.max(maxY, cur[c.base + 1] + cur[c.base + 3]);
+			}
 
-		if (opts.width === undefined) {
-			next[boxIndex] = minX - padding;
-			next[boxIndex + 2] = maxX - minX + padding * 2;
-		} else {
-			next[boxIndex + 2] = opts.width;
-			for (let i = 0; i < children.length; i++) {
-				if (opts.xOwned?.[i]) continue;
-				const c = children[i];
-				const target = cur[boxIndex] + (opts.width - cur[c.base + 2]) / 2;
-				moveSubtree(cur, next, c, 0, target - cur[c.base]);
+			if (opts.width === undefined) {
+				next[boxIndex] = minX - padding;
+				next[boxIndex + 2] = maxX - minX + padding * 2;
+			} else {
+				next[boxIndex + 2] = opts.width;
+				for (let i = 0; i < children.length; i++) {
+					if (opts.xOwned?.[i]) continue;
+					const c = children[i];
+					const target = cur[boxIndex] + (opts.width - cur[c.base + 2]) / 2;
+					moveSubtree(cur, next, c, 0, target - cur[c.base]);
+				}
 			}
-		}
-		if (opts.height === undefined) {
-			next[boxIndex + 1] = minY - padding;
-			next[boxIndex + 3] = maxY - minY + padding * 2;
-		} else {
-			next[boxIndex + 3] = opts.height;
-			for (let i = 0; i < children.length; i++) {
-				if (opts.yOwned?.[i]) continue;
-				const c = children[i];
-				const target = cur[boxIndex + 1] + (opts.height - cur[c.base + 3]) / 2;
-				moveSubtree(cur, next, c, 1, target - cur[c.base + 1]);
+			if (opts.height === undefined) {
+				next[boxIndex + 1] = minY - padding;
+				next[boxIndex + 3] = maxY - minY + padding * 2;
+			} else {
+				next[boxIndex + 3] = opts.height;
+				for (let i = 0; i < children.length; i++) {
+					if (opts.yOwned?.[i]) continue;
+					const c = children[i];
+					const target =
+						cur[boxIndex + 1] + (opts.height - cur[c.base + 3]) / 2;
+					moveSubtree(cur, next, c, 1, target - cur[c.base + 1]);
+				}
 			}
-		}
-	};
+		},
+		slots([...children.flatMap((c) => c.subtree), boxIndex], 4),
+	);
 }
 
 // Copy one axis' position and extent from a source node onto a target (our
@@ -530,16 +579,19 @@ export function spanOp(
 ): LayoutOperator {
 	const slot = (horizontal ? 0 : 1) as 0 | 1;
 	const extentSlot = horizontal ? 2 : 3;
-	return (cur, next) => {
-		moveSubtree(
-			cur,
-			next,
-			target,
-			slot,
-			cur[sourceBase + slot] - cur[target.base + slot],
-		);
-		next[target.base + extentSlot] = cur[sourceBase + extentSlot];
-	};
+	return writing(
+		(cur, next) => {
+			moveSubtree(
+				cur,
+				next,
+				target,
+				slot,
+				cur[sourceBase + slot] - cur[target.base + slot],
+			);
+			next[target.base + extentSlot] = cur[sourceBase + extentSlot];
+		},
+		slots(target.subtree, 4),
+	);
 }
 
 type EndpointBox = { left: number; top: number; right: number; bottom: number };
@@ -609,24 +661,27 @@ export function lineOp(
 	source?: number[],
 	target?: number[],
 ): LayoutOperator {
-	return (cur, next) => {
-		const box = (base: number): EndpointBox => ({
-			left: cur[base],
-			top: cur[base + 1],
-			right: cur[base] + cur[base + 2],
-			bottom: cur[base + 1] + cur[base + 3],
-		});
-		const { fromX, fromY, toX, toY } = lineEndpoints(
-			box(fromBase),
-			box(toBase),
-			source,
-			target,
-		);
-		next[lineIndex] = Math.min(fromX, toX);
-		next[lineIndex + 1] = Math.min(fromY, toY);
-		next[lineIndex + 2] = Math.abs(toX - fromX);
-		next[lineIndex + 3] = Math.abs(toY - fromY);
-	};
+	return writing(
+		(cur, next) => {
+			const box = (base: number): EndpointBox => ({
+				left: cur[base],
+				top: cur[base + 1],
+				right: cur[base] + cur[base + 2],
+				bottom: cur[base + 1] + cur[base + 3],
+			});
+			const { fromX, fromY, toX, toY } = lineEndpoints(
+				box(fromBase),
+				box(toBase),
+				source,
+				target,
+			);
+			next[lineIndex] = Math.min(fromX, toX);
+			next[lineIndex + 1] = Math.min(fromY, toY);
+			next[lineIndex + 2] = Math.abs(toX - fromX);
+			next[lineIndex + 3] = Math.abs(toY - fromY);
+		},
+		slots([lineIndex], 4),
+	);
 }
 
 // Container bbox = union of children's current bboxes (Group, Align,
@@ -635,19 +690,24 @@ export function unionOp(
 	childBases: readonly number[],
 	containerIndex: number,
 ): LayoutOperator {
-	return (cur, next) => {
-		const xs: number[] = [];
-		const ys: number[] = [];
-		const ws: number[] = [];
-		const hs: number[] = [];
-		for (const base of childBases) {
-			xs.push(cur[base]);
-			ys.push(cur[base + 1]);
-			ws.push(cur[base + 2]);
-			hs.push(cur[base + 3]);
-		}
-		writeUnion(next, containerIndex, xs, ys, ws, hs);
-	};
+	return writing(
+		(cur, next) => {
+			// Straight from the state: this runs every sweep, often over many children
+			if (childBases.length === 0) return;
+			let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
+			for (const base of childBases) {
+				minX = Math.min(minX, cur[base]);
+				minY = Math.min(minY, cur[base + 1]);
+				maxX = Math.max(maxX, cur[base] + cur[base + 2]);
+				maxY = Math.max(maxY, cur[base + 1] + cur[base + 3]);
+			}
+			next[containerIndex] = minX;
+			next[containerIndex + 1] = minY;
+			next[containerIndex + 2] = maxX - minX;
+			next[containerIndex + 3] = maxY - minY;
+		},
+		slots([containerIndex], 4),
+	);
 }
 
 // --- Color operators -------------------------------------------------------
@@ -722,15 +782,18 @@ export function distinctColorsOp(
 	opts: DistinctColorsOptions,
 ): LayoutOperator {
 	const hues = distinctHues(colorBases.length, opts.startHue, opts.pinned);
-	return (_cur, next) => {
-		colorBases.forEach((base, i) => {
-			if (opts.owned[i]) return;
-			next[base + L] = opts.lightness;
-			next[base + C] = opts.chroma;
-			next[base + H] = hues[i];
-			next[base + A] = 1;
-		});
-	};
+	return writing(
+		(_cur, next) => {
+			colorBases.forEach((base, i) => {
+				if (opts.owned[i]) return;
+				next[base + L] = opts.lightness;
+				next[base + C] = opts.chroma;
+				next[base + H] = hues[i];
+				next[base + A] = 1;
+			});
+		},
+		slots(colorBases, 4),
+	);
 }
 
 /** Copy the first member's color, alpha included, onto the rest (the Span of color). */
@@ -738,10 +801,13 @@ export function sameColorOp(
 	sourceBase: number,
 	targetBases: readonly number[],
 ): LayoutOperator {
-	return (cur, next) => {
-		for (const base of targetBases)
-			for (let k = 0; k < 4; k++) next[base + k] = cur[sourceBase + k];
-	};
+	return writing(
+		(cur, next) => {
+			for (const base of targetBases)
+				for (let k = 0; k < 4; k++) next[base + k] = cur[sourceBase + k];
+		},
+		slots(targetBases, 4),
+	);
 }
 
 /**
@@ -754,12 +820,15 @@ export function shadeColorOp(
 	targetBases: readonly number[],
 	deltaL: number,
 ): LayoutOperator {
-	return (cur, next) => {
-		for (const base of targetBases) {
-			for (let k = 0; k < 4; k++) next[base + k] = cur[sourceBase + k];
-			next[base + L] = clamp01(cur[sourceBase + L] + deltaL);
-		}
-	};
+	return writing(
+		(cur, next) => {
+			for (const base of targetBases) {
+				for (let k = 0; k < 4; k++) next[base + k] = cur[sourceBase + k];
+				next[base + L] = clamp01(cur[sourceBase + L] + deltaL);
+			}
+		},
+		slots(targetBases, 4),
+	);
 }
 
 /**
@@ -772,18 +841,21 @@ export function contrastOp(
 	bgBase: number,
 	ratio: number,
 ): LayoutOperator {
-	return (cur, next) => {
-		const bgY = luminanceOfOklch(
-			cur[bgBase + L],
-			cur[bgBase + C],
-			cur[bgBase + H],
-		);
-		next[fgBase + L] = contrastingLightness(
-			cur[fgBase + C],
-			cur[fgBase + H],
-			cur[fgBase + L],
-			bgY,
-			ratio,
-		);
-	};
+	return writing(
+		(cur, next) => {
+			const bgY = luminanceOfOklch(
+				cur[bgBase + L],
+				cur[bgBase + C],
+				cur[bgBase + H],
+			);
+			next[fgBase + L] = contrastingLightness(
+				cur[fgBase + C],
+				cur[fgBase + H],
+				cur[fgBase + L],
+				bgY,
+				ratio,
+			);
+		},
+		slots([fgBase], 4),
+	);
 }

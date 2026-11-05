@@ -148,6 +148,7 @@ export function layoutBounds(
 	nodes?: NodeRecord[],
 ): BoundingBox2d {
 	const timeOnly = new Set(nodes?.filter(isTimeOnly).map((n) => n.id));
+	const byId = new Map(nodes?.map((n) => [n.id, n]));
 	const boxes = Object.entries(layout)
 		.filter(([id]) => !timeOnly.has(id))
 		.map(([, box]) => boundingBoxFromRect(box))
@@ -158,7 +159,7 @@ export function layoutBounds(
 
 	const withStroke = Object.entries(layout).reduce<BoundingBox2d | undefined>(
 		(acc, [id, box]) => {
-			const n = nodes?.find((m) => m.id === id);
+			const n = byId.get(id);
 			const sw = n?.strokeWidth ?? (n?.type === "arrow" ? 3 : 0);
 			if (!sw) return acc;
 			const bb = boundingBoxFromRect({
