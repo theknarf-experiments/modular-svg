@@ -171,6 +171,21 @@ export function GitGraph({
 
 						{c.tag && (
 							<>
+								{/* The commit is already placed by its lane, so the tag hangs
+								    off it: a spot 16px before the commit (anchored on the
+								    commit), then the tag's edge aligned to that spot. A
+								    distribute over [tag, commit] would anchor on the tag (a
+								    background box counts as placed) and fight the lane. */}
+								<rect
+									key={`${anchorId(c.id)}-tagspot`}
+									width={0}
+									height={0}
+									stroke-width={0}
+								/>
+								<distribute axis={horizontal ? "y" : "x"} spacing={16}>
+									<ref target={`${anchorId(c.id)}-tagspot`} />
+									<ref target={anchorId(c.id)} />
+								</distribute>
 								<background
 									key={`${anchorId(c.id)}-tag`}
 									padding={3}
@@ -185,10 +200,10 @@ export function GitGraph({
 									<ref target={anchorId(c.id)} />
 									<ref target={`${anchorId(c.id)}-tag`} />
 								</align>
-								<distribute axis={horizontal ? "y" : "x"} spacing={16}>
+								<align alignment={horizontal ? "bottom" : "right"}>
+									<ref target={`${anchorId(c.id)}-tagspot`} />
 									<ref target={`${anchorId(c.id)}-tag`} />
-									<ref target={anchorId(c.id)} />
-								</distribute>
+								</align>
 								{React.createElement(
 									"line",
 									{
