@@ -131,6 +131,14 @@ export type MotionSpec = (
 			ease?: Ease;
 	  }
 	| {
+			kind: "travel";
+			/** ids of the waypoints, in order */
+			via: readonly string[];
+			/** offsets from the mover's rest position to each waypoint, known after layout */
+			points?: readonly { x: number; y: number }[];
+			ease?: Ease;
+	  }
+	| {
 			kind: "sampled";
 			fn: SampleFn;
 			/** max drift per lane, in the lane's units (translate is px distance) */
@@ -301,6 +309,31 @@ function onePass(spec: MotionSpec, start: number, duration: number): Expanded {
 		}
 		case "sampled":
 			return sampledPass(spec, start, duration);
+		case "travel": {
+			if (!spec.points)
+				throw new Error("travel: waypoints are resolved after layout");
+			// Legs take time in proportion to their length, so the speed is even
+			const path = [{ x: 0, y: 0 }, ...spec.points];
+			const lengths = path
+				.slice(1)
+				.map((p, i) => Math.hypot(p.x - path[i].x, p.y - path[i].y));
+			const total = lengths.reduce((a, b) => a + b, 0);
+			const ease = resolveEase(spec.ease ?? "linear");
+			let at = start;
+			const steps = spec.points.map((p, i) => {
+				const over =
+					total > 0
+						? (duration * lengths[i]) / total
+						: duration / lengths.length;
+				const step = { start: at, over, ease, values: { x: p.x, y: p.y } };
+				at += over;
+				return step;
+			});
+			return {
+				initial: { x: 0, y: 0 },
+				steps: steps.filter((s) => s.over > 0),
+			};
+		}
 		case "motion": {
 			const from = checkValues(spec.from ?? {}, what);
 			const k = duration / intrinsicDuration(spec);

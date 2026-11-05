@@ -16,6 +16,53 @@ produces an SVG string.
 The CLI reads a JSON scene either from a file or from `stdin` and writes the
 resulting SVG to `stdout` or to the file specified as the second argument.
 
+## Time
+
+Animation is expressed the same way as layout and color: as relations over
+`Ref`s, solved by the same iteration. The motion vocabulary follows
+[svjeez](https://github.com/saiashirwad/svjeez), and the output is a
+self-contained SVG with CSS keyframes and no runtime script.
+
+**Motions** are nodes that ref the marks they animate. Each gets a time span
+(`start`, `duration`), from `at`/`over` props or from relations:
+
+| Motion | Does |
+| --- | --- |
+| `Enter from`, `Exit to` | arrive from / leave to `opacity x y scale rotate blur` |
+| `Draw` | stroke a shape on |
+| `Shake amplitude`, `Wiggle amplitude seed` | damped shake; seeded looping noise |
+| `Motion from steps` | svjeez-style steps: `{to, over, ease}`, `{set}`, `{wait}`; any channel, `fill`/`stroke`/`width`/`height`/`d` included |
+| `Sampled fn tolerance` | bake a function of time into few keyframes |
+| `Travel` | move the first child through the following refs, at even speed |
+
+Eases: `linear in out inOut pop hold steps(n)` or bezier points. `loop` repeats a
+motion's span until the scene ends (or `n` times).
+
+**Time relations** ref motions, marks (a mark spans its motions) or other
+relations (a relation spans its members), and moving one carries its contents:
+
+| Relation | Meaning |
+| --- | --- |
+| `Sequence gap` | back to back, exact gap (negative overlaps) |
+| `SameTime align` | starts (or `end`, `center`) line up |
+| `Stagger spacing\|total` | starts evenly spaced |
+| `Before gap` | each starts no earlier than the previous ends (inequality) |
+| `After gap` | the first starts after every other ends (a join) |
+| `During` | the rest stay inside the first's span |
+| `Stretch` | the rest take the first's span |
+| `At time` | pin starts |
+| `Beat bpm\|period offset` + `OnBeat every snap` | a beat grid, and starts snapped onto it |
+
+As with layout, a relation anchors on its first member whose start is already
+fixed (pinned by `at`/`At`/`Beat`, or placed by an earlier relation) and moves
+the rest; two relations fighting over one start, or an inequality that pinned
+starts violate, produce warnings. See `examples/pipeline.json` and the
+Animation page of the docs.
+
+```bash
+./bin/modular-svg.ts examples/pipeline.json pipeline.svg --loop --duration 4
+```
+
 ## Solver Architecture
 
 The layout solver is built around an approximate fixed-point method inspired by Bluefish. It parses a JSON tree of marks and relations, compiles it into numeric variables and simple operators, then runs a damped Picard iteration until the layout stabilizes.

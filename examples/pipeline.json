@@ -1,0 +1,94 @@
+{
+	"type": "Group",
+	"children": [
+		{
+			"type": "StackH",
+			"id": "stages",
+			"props": { "spacing": 50 },
+			"children": [
+				{
+					"type": "Rect",
+					"id": "build",
+					"props": { "width": 70, "height": 40, "fill": "#E8F1FF", "rx": 6 }
+				},
+				{
+					"type": "Rect",
+					"id": "test",
+					"props": { "width": 70, "height": 40, "fill": "#F3EEFF", "rx": 6 }
+				},
+				{
+					"type": "Rect",
+					"id": "ship",
+					"props": { "width": 70, "height": 40, "fill": "#E6F7EE", "rx": 6 }
+				}
+			]
+		},
+		{
+			"type": "Arrow",
+			"id": "a1",
+			"children": [
+				{ "type": "Ref", "target": "build" },
+				{ "type": "Ref", "target": "test" }
+			]
+		},
+		{
+			"type": "Arrow",
+			"id": "a2",
+			"children": [
+				{ "type": "Ref", "target": "test" },
+				{ "type": "Ref", "target": "ship" }
+			]
+		},
+		{ "type": "Beat", "id": "beat", "props": { "bpm": 100 } },
+		{
+			"type": "Enter",
+			"id": "buildIn",
+			"props": { "over": 0.4, "from": { "opacity": 0, "y": 10 } },
+			"children": [{ "type": "Ref", "target": "build" }]
+		},
+		{
+			"type": "Draw",
+			"id": "a1Draw",
+			"props": { "over": 0.3 },
+			"children": [{ "type": "Ref", "target": "a1" }]
+		},
+		{
+			"type": "Enter",
+			"id": "testIn",
+			"props": { "over": 0.4, "from": { "opacity": 0, "y": 10 } },
+			"children": [{ "type": "Ref", "target": "test" }]
+		},
+		{
+			"type": "Draw",
+			"id": "a2Draw",
+			"props": { "over": 0.3 },
+			"children": [{ "type": "Ref", "target": "a2" }]
+		},
+		{
+			"type": "Enter",
+			"id": "shipIn",
+			"props": { "over": 0.4, "from": { "scale": 0 }, "ease": "pop" },
+			"children": [{ "type": "Ref", "target": "ship" }]
+		},
+		{
+			"type": "Before",
+			"props": { "gap": 0.1 },
+			"children": [
+				{ "type": "Ref", "target": "buildIn" },
+				{ "type": "Ref", "target": "a1Draw" },
+				{ "type": "Ref", "target": "testIn" },
+				{ "type": "Ref", "target": "a2Draw" },
+				{ "type": "Ref", "target": "shipIn" }
+			]
+		},
+		{
+			"type": "OnBeat",
+			"children": [
+				{ "type": "Ref", "target": "beat" },
+				{ "type": "Ref", "target": "buildIn" },
+				{ "type": "Ref", "target": "testIn" },
+				{ "type": "Ref", "target": "shipIn" }
+			]
+		}
+	]
+}

@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { Command } from "commander";
 import {
 	buildSceneFromJson,
+	checkTime,
 	layoutToSvg,
 	solveLayout,
 	validate,
@@ -27,6 +28,8 @@ program
 	.argument("[input]", "scene JSON file or '-' to read from stdin")
 	.argument("[output]", "output SVG file or '-' for stdout")
 	.option("-m, --margin <number>", "margin around the SVG", "3")
+	.option("-d, --duration <seconds>", "animation length (default: last motion)")
+	.option("-l, --loop", "replay the animation forever")
 	.action(
 		async (input: string | undefined, output: string | undefined, opts) => {
 			const raw = await readInput(input);
@@ -39,7 +42,14 @@ program
 			}
 			const scene = buildSceneFromJson(data);
 			const layout = solveLayout(scene);
-			const svg = layoutToSvg(layout, scene.nodes, Number(opts.margin));
+			for (const w of [...scene.warnings, ...checkTime(scene, layout)])
+				console.error(`warning: ${w}`);
+			const svg = layoutToSvg(layout, scene.nodes, Number(opts.margin), {
+				animation: {
+					loop: !!opts.loop,
+					...(opts.duration ? { duration: Number(opts.duration) } : {}),
+				},
+			});
 			if (output && output !== "-") {
 				await writeFile(output, svg);
 			} else {

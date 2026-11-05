@@ -1,4 +1,15 @@
 // Type declarations for modular-svg elements
+import type { Ease, MotionStep, Values } from "@modular-svg/react";
+
+// Every motion and time-group node can be pinned (`at`) and sized (`over`)
+type Timed = {
+	key?: React.Key;
+	at?: number;
+	over?: number;
+	children?: React.ReactNode;
+};
+type Motion = Timed & { ease?: Ease; loop?: boolean | number };
+
 declare module "react" {
 	namespace JSX {
 		interface IntrinsicElements {
@@ -166,13 +177,52 @@ declare module "react" {
 				fill?: string;
 				stroke?: string;
 				"stroke-width"?: number;
+				"stroke-linecap"?: "butt" | "round" | "square";
+				"stroke-linejoin"?: "miter" | "round" | "bevel";
+				"stroke-dasharray"?: string;
+				zOrder?: number;
 			};
 			group: {
 				key?: React.Key;
 				children?: React.ReactNode;
 			};
+
+			// Motions: animate the marks they ref over their solved span
+			motion: Motion & { from?: Values; steps: MotionStep[] };
+			enter: Motion & { from?: Values };
+			exit: Motion & { to?: Values };
+			draw: Motion;
+			shake: Motion & { amplitude?: Values; rate?: number };
+			wiggle: Motion & {
+				amplitude?: Values;
+				seed?: string | number;
+				rate?: number;
+				period?: number;
+			};
+			sampled: Motion & {
+				fn: (t: number) => Values;
+				tolerance: Record<string, number>;
+				step?: number;
+			};
+			/** moves its first child through the rest, in order */
+			travel: Motion;
+
+			// Time relations: constrain the spans of what they ref
+			sequence: Timed & { gap?: number };
+			sameTime: Timed & { align?: "start" | "end" | "center" };
+			stagger: Timed & { spacing?: number; total?: number };
+			before: Timed & { gap?: number };
+			after: { key?: React.Key; gap?: number; children?: React.ReactNode };
+			during: { key?: React.Key; children?: React.ReactNode };
+			stretch: { key?: React.Key; children?: React.ReactNode };
+			at: { key?: React.Key; time: number; children?: React.ReactNode };
+			beat: { key?: React.Key; bpm?: number; period?: number; offset?: number };
+			onBeat: {
+				key?: React.Key;
+				every?: number;
+				snap?: "next" | "nearest";
+				children?: React.ReactNode;
+			};
 		}
 	}
 }
-
-export {};

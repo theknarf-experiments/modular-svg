@@ -180,3 +180,31 @@ describe("animated SVG output", () => {
 		expect([ast.width, ast.height]).toEqual([23, 23]);
 	});
 });
+
+describe("Travel", () => {
+	it("moves the mover through ref'd waypoints at even speed", () => {
+		const { ast } = render([
+			{
+				type: "StackH",
+				props: { spacing: 80 },
+				children: [box("a"), box("b"), box("c")],
+			},
+			{ type: "Circle", id: "dot", props: { r: 3 } },
+			{
+				type: "Align",
+				props: { alignment: "center" },
+				children: [ref("a"), ref("dot")],
+			},
+			{
+				type: "Travel",
+				id: "trip",
+				props: { over: 2 },
+				children: [ref("dot"), ref("b"), ref("c")],
+			},
+		]);
+		// two equal legs of 100px: halfway at b, the end at c
+		expect(ast.css).toMatch(
+			/0%\{translate:0px 0px[^}]*\}50%\{translate:100px 0px[^}]*\}100%\{translate:200px 0px\}/,
+		);
+	});
+});

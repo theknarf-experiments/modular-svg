@@ -652,7 +652,15 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	};
 	for (const t of timeNodes) {
 		if (t.rec.type !== "motion") continue;
-		t.rec.targets = t.children.map((c) => ({ id: c.id, marks: marksUnder(c) }));
+		// Travel moves its first child through the rest, which stay put
+		const travel = t.rec.motion?.kind === "travel";
+		const [mover, ...via] = t.children;
+		if (t.rec.motion?.kind === "travel" && mover)
+			t.rec.motion = { ...t.rec.motion, via: via.map((v) => v.id) };
+		t.rec.targets = (travel ? (mover ? [mover] : []) : t.children).map((c) => ({
+			id: c.id,
+			marks: marksUnder(c),
+		}));
 		if (t.children.length === 0)
 			targetWarnings.push(`${t.type}(${t.rec.id}) has no target`);
 	}

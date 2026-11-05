@@ -1,5 +1,19 @@
 import { NavLink, Outlet } from "react-router";
 import { ExampleSection } from "./ExampleSection";
+import { BeatExample } from "./examples/animation/BeatExample";
+import beatExampleCode from "./examples/animation/BeatExample.tsx?raw";
+import { DeployFlowExample } from "./examples/animation/DeployFlowExample";
+import deployFlowExampleCode from "./examples/animation/DeployFlowExample.tsx?raw";
+import { EasingExample } from "./examples/animation/EasingExample";
+import easingExampleCode from "./examples/animation/EasingExample.tsx?raw";
+import { HelloMotion } from "./examples/animation/HelloMotion";
+import helloMotionCode from "./examples/animation/HelloMotion.tsx?raw";
+import { JoinExample } from "./examples/animation/JoinExample";
+import joinExampleCode from "./examples/animation/JoinExample.tsx?raw";
+import { OrbitExample } from "./examples/animation/OrbitExample";
+import orbitExampleCode from "./examples/animation/OrbitExample.tsx?raw";
+import { ToastExample } from "./examples/animation/ToastExample";
+import toastExampleCode from "./examples/animation/ToastExample.tsx?raw";
 import { BakingRecipe } from "./examples/BakingRecipe";
 import bakingRecipeCode from "./examples/BakingRecipe.tsx?raw";
 import { BarChart } from "./examples/BarChart";
@@ -128,6 +142,61 @@ export const pages: Page[] = [
 					"React contexts automatically flow into Graphic children - no special setup required",
 				code: contextForwardingCode,
 				element: <ContextForwarding />,
+			},
+		],
+	},
+	{
+		path: "/animation/",
+		title: "Animation",
+		sections: [
+			{
+				title: "Motions and time relations",
+				description:
+					"Motions (enter, draw, shake, ...) are nodes that ref the marks they animate. Time relations ref motions, marks or other relations, and the solver places every span - here, the dot pops right after the curve is drawn",
+				code: helloMotionCode,
+				element: <HelloMotion />,
+			},
+			{
+				title: "Toast",
+				description:
+					"Ported from svjeez: every start time follows from a relation (overlap, sequence, same time), so lengthening one motion reflows the rest. Motions on one mark stack: the card enters and exits through two wrappers",
+				code: toastExampleCode,
+				element: <ToastExample />,
+			},
+			{
+				title: "Orbit",
+				description:
+					"Ported from svjeez: sampled bakes a function of time into few keyframes, wiggle loops seeded noise, and the ring's spin is stretched to a beat used as a clock",
+				code: orbitExampleCode,
+				element: <OrbitExample />,
+			},
+			{
+				title: "Easing",
+				description:
+					"Ported from svjeez: travel moves a mark to a ref'd waypoint, so each dot's distance comes from layout; one SameTime starts all eight",
+				code: easingExampleCode,
+				element: <EasingExample />,
+			},
+			{
+				title: "Deploy flow",
+				description:
+					"Ported from svjeez's review-flow: the chart reveals in sequence, and After waits for the whole reveal before a comet travels the route through the boxes",
+				code: deployFlowExampleCode,
+				element: <DeployFlowExample />,
+			},
+			{
+				title: "On the beat",
+				description:
+					"Before keeps the notes in order, OnBeat snaps each onto a 120 bpm grid; longer notes push the rest later. Stretch fits the metronome pulse to one beat",
+				code: beatExampleCode,
+				element: <BeatExample />,
+			},
+			{
+				title: "Join",
+				description:
+					"After waits for the latest of several leaders; change a duration and the schedule is solved again",
+				code: joinExampleCode,
+				element: <JoinExample />,
 			},
 		],
 	},

@@ -1,3 +1,4 @@
+import type { AnimationOptions } from "./animation.ts";
 import type { LayoutResult, NodeRecord } from "./solver/index.ts";
 import { layoutToAst, type SvgDocument, type SvgElement } from "./svg_ast.ts";
 
@@ -165,7 +166,8 @@ export function layoutToSvg(
 	layout: LayoutResult,
 	nodes?: NodeRecord[],
 	margin = 0,
+	opts: { animation?: AnimationOptions | false } = {},
 ): string {
-	const ast = layoutToAst(layout, nodes, margin);
+	const ast = layoutToAst(layout, nodes, margin, opts);
 	return serializeToSvg(ast);
 }

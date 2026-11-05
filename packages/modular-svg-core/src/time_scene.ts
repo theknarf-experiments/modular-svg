@@ -30,6 +30,7 @@ export const MOTION_TYPES = new Set([
 	"Shake",
 	"Wiggle",
 	"Sampled",
+	"Travel",
 ]);
 
 // Relations with a span of their own (they group their members in time)
@@ -79,6 +80,9 @@ export function motionSpecOf(type: string, props: Props): MotionSpec {
 				ease,
 				loop: loop ?? true,
 			};
+		case "Travel":
+			// Waypoints are filled in by the parser once the children are known
+			return { kind: "travel", via: [], ease, loop };
 		case "Sampled":
 			if (typeof props.fn !== "function")
 				throw new Error("Sampled needs an fn prop: (t) => values");
@@ -165,7 +169,7 @@ export function buildTime(
 	const motionsOn = new Map<string, NodeRecord[]>();
 	for (const t of order) {
 		if (!t.rec.motion) continue;
-		for (const target of t.children) {
+		for (const target of t.rec.targets ?? []) {
 			motionsOn.set(target.id, [...(motionsOn.get(target.id) ?? []), t.rec]);
 		}
 	}

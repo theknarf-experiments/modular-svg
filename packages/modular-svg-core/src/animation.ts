@@ -5,6 +5,7 @@ import {
 	expandMotion,
 	type Key,
 	keysOf,
+	type MotionSpec,
 	moving,
 	type ResolvedEase,
 	type Step,
@@ -236,7 +237,7 @@ export function compileAnimation(
 	for (const m of motions) {
 		const { start, duration } = span(m.id);
 		const expanded = expandMotion(
-			m.motion as NonNullable<NodeRecord["motion"]>,
+			resolveTravel(m, layout),
 			start,
 			duration,
 			period,
@@ -437,6 +438,26 @@ export function compileAnimation(
 		for (const s of m.shells) s.class = named(s.class);
 	}
 	return { duration: period, css: named(css), marks };
+}
+
+const center = (b: LayoutResult[string]) => ({
+	x: b.x + b.width / 2,
+	y: b.y + b.height / 2,
+});
+
+// Travel's waypoints are refs: their offsets come from the solved layout
+function resolveTravel(m: NodeRecord, layout: LayoutResult): MotionSpec {
+	const spec = m.motion as MotionSpec;
+	if (spec.kind !== "travel") return spec;
+	const mover = m.targets?.[0];
+	if (!mover || spec.via.length === 0)
+		throw new Error(`${m.id}: Travel needs a mover and at least one waypoint`);
+	const from = center(layout[mover.id]);
+	const points = spec.via.map((id) => {
+		const to = center(layout[id]);
+		return { x: to.x - from.x, y: to.y - from.y };
+	});
+	return { ...spec, points };
 }
 
 function hash(text: string): string {
