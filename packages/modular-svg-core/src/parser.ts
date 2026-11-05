@@ -22,6 +22,7 @@ import {
 	stackV,
 	unionOp,
 } from "./solver/operators.ts";
+import { COLOR_ANGLES, solveColors } from "./solver/solver.ts";
 import {
 	buildTime,
 	checkTime,
@@ -39,6 +40,8 @@ export type JsonScene = {
 	operators: LayoutOperator[];
 	/** the relation each layout operator came from */
 	operatorNames: string[];
+	/** the relation each color operator came from */
+	colorOperatorNames: string[];
 	/** operators over the color array (3 slots per node: h, s, l) */
 	colorOperators: LayoutOperator[];
 	/** initial h,s,l per node */
@@ -196,6 +199,23 @@ export function linearPathBounds(
 	if (minX === Infinity) return undefined;
 	return { minX, minY, maxX, maxY };
 }
+
+/** A scene with nothing in it. */
+export const emptyScene = (): JsonScene => ({
+	nodes: [],
+	operators: [],
+	operatorNames: [],
+	colorOperators: [],
+	colorOperatorNames: [],
+	colorSeed: [],
+	coloredIds: [],
+	timeOperators: [],
+	timeOperatorNames: [],
+	timeSeed: [],
+	timedIds: [],
+	timeChecks: [],
+	warnings: [],
+});
 
 export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	const nodes: NodeRecord[] = [];
@@ -812,9 +832,12 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			: `${d.kind}(${d.children.map((c) => c.id).join(", ")})`;
 	};
 
+	const colorOpNames: string[] = [];
 	for (const d of descs) {
 		descLoop(d);
 		while (opNames.length < ops.length) opNames.push(descName(d));
+		while (colorOpNames.length < colorOps.length)
+			colorOpNames.push(descName(d));
 	}
 
 	function descLoop(d: Desc): void {
@@ -1031,6 +1054,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		operators: ops,
 		operatorNames: opNames,
 		colorOperators: colorOps,
+		colorOperatorNames: colorOpNames,
 		colorSeed,
 		coloredIds: [...coloredIds],
 		timeOperators: time.timeOperators,
@@ -1069,10 +1093,27 @@ export function checkLayout(
 	return names.length > 0 ? [unsettledMessage("layout", names)] : [];
 }
 
-/** Everything wrong with a solution: unsatisfied layout and time relations, schedule checks. */
+/** Color relations the solved colors do not satisfy (fixed-point check). */
+export function checkColor(scene: JsonScene): string[] {
+	if (scene.colorOperators.length === 0) return [];
+	const names = unsettled(
+		solveColors(scene),
+		scene.colorOperators,
+		scene.colorOperatorNames,
+		1e-3,
+		COLOR_ANGLES,
+	);
+	return names.length > 0 ? [unsettledMessage("colors", names)] : [];
+}
+
+/** Everything wrong with a solution: unsatisfied layout, color and time relations, schedule checks. */
 export function checkSolution(
 	scene: JsonScene,
 	layout: Parameters<typeof checkLayout>[1] & Parameters<typeof checkTime>[1],
 ): string[] {
-	return [...checkLayout(scene, layout), ...checkTime(scene, layout)];
+	return [
+		...checkLayout(scene, layout),
+		...checkColor(scene),
+		...checkTime(scene, layout),
+	];
 }

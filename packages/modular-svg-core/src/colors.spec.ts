@@ -223,3 +223,52 @@ describe("color constraints", () => {
 		}
 	});
 });
+
+describe("color correctness", () => {
+	it("blends hue the short way round", async () => {
+		const { relax, angleDiff } = await import("./solver/solver.ts");
+		expect(angleDiff(350, 10)).toBe(20);
+		expect(angleDiff(10, 350)).toBe(-20);
+		// one damped step from 350 toward 10 lands on 0, not 180
+		const values = new Float64Array([350]);
+		relax(
+			values,
+			[
+				(_cur, next) => {
+					next[0] = 10;
+				},
+			],
+			{
+				maxIter: 1,
+				epsilon: 0,
+				damping: 0.5,
+				angles: { stride: 1, offset: 0 },
+			},
+		);
+		expect(values[0]).toBe(0);
+	});
+
+	it("names color relations that cannot all hold", async () => {
+		const { buildSceneFromJson, checkSolution } = await import("./parser.ts");
+		const { solveLayout } = await import("./solver/index.ts");
+		const ref = (target: string) => ({ type: "Ref", target });
+		const rect = (id: string, fill?: string) => ({
+			type: "Rect",
+			id,
+			props: { width: 10, height: 10, ...(fill ? { fill } : {}) },
+		});
+		const scene = buildSceneFromJson({
+			type: "Group",
+			children: [
+				rect("red", "#ff0000"),
+				rect("blue", "#0000ff"),
+				rect("t"),
+				{ type: "SameColor", children: [ref("red"), ref("t")] },
+				{ type: "SameColor", children: [ref("blue"), ref("t")] },
+			],
+		});
+		expect(checkSolution(scene, solveLayout(scene))).toEqual([
+			"sameColor(red, t), sameColor(blue, t) cannot all hold; the colors did not settle",
+		]);
+	});
+});

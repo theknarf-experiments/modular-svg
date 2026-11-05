@@ -1,5 +1,5 @@
 import type { JsonScene } from "@modular-svg/core";
-import { buildSceneFromJson } from "@modular-svg/core";
+import { buildSceneFromJson, emptyScene } from "@modular-svg/core";
 import * as React from "react";
 import Reconciler from "react-reconciler";
 import { DefaultEventPriority } from "react-reconciler/constants";
@@ -558,22 +558,7 @@ export function createRoot(): ReconcilerRoot {
 		},
 
 		getScene(): JsonScene {
-			if (container.rootInstances.length === 0) {
-				return {
-					nodes: [],
-					operators: [],
-					operatorNames: [],
-					colorOperators: [],
-					colorSeed: [],
-					coloredIds: [],
-					timeOperators: [],
-					timeOperatorNames: [],
-					timeSeed: [],
-					timedIds: [],
-					timeChecks: [],
-					warnings: [],
-				};
-			}
+			if (container.rootInstances.length === 0) return emptyScene();
 
 			// If we have multiple root instances (e.g., from fragment), wrap in Group
 			let json: Record<string, unknown>;

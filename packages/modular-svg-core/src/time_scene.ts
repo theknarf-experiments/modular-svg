@@ -8,6 +8,7 @@ import {
 	type Values,
 } from "./motion.ts";
 import type { LayoutOperator, NodeRecord } from "./solver/operators.ts";
+import { type AngleSlots, slotDiff } from "./solver/solver.ts";
 import {
 	afterOp,
 	articulateOp,
@@ -646,6 +647,7 @@ export function unsettled(
 	operators: readonly LayoutOperator[],
 	names: readonly string[],
 	tolerance: number,
+	angles?: AngleSlots,
 ): string[] {
 	const next = new Float64Array(values.length);
 	const failing = new Set<string>();
@@ -653,7 +655,7 @@ export function unsettled(
 		next.set(values);
 		op(values, next);
 		for (let k = 0; k < values.length; k++) {
-			if (Math.abs(next[k] - values[k]) > tolerance) {
+			if (Math.abs(slotDiff(values[k], next[k], k, angles)) > tolerance) {
 				failing.add(names[i] ?? `relation #${i}`);
 				break;
 			}

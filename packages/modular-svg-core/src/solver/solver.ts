@@ -33,13 +33,42 @@ export type LayoutResult = Record<
 	}
 >;
 
-type RelaxOptions = { maxIter: number; epsilon: number; damping: number };
+/** Slots holding an angle in degrees: every `stride`th slot from `offset`. */
+export type AngleSlots = { stride: number; offset: number };
+
+type RelaxOptions = {
+	maxIter: number;
+	epsilon: number;
+	damping: number;
+	angles?: AngleSlots;
+};
+
+/** The signed shortest turn from a to b, in degrees (-180..180]. */
+export const angleDiff = (a: number, b: number): number => {
+	const d = ((((b - a) % 360) + 540) % 360) - 180;
+	return d === -180 ? 180 : d;
+};
+
+const isAngle = (i: number, angles?: AngleSlots) =>
+	angles !== undefined && i % angles.stride === angles.offset;
+
+/** How far an operator moved slot i, taking angles the short way round. */
+export const slotDiff = (
+	from: number,
+	to: number,
+	i: number,
+	angles?: AngleSlots,
+) => (isAngle(i, angles) ? angleDiff(from, to) : to - from);
+
+/** Color slots per node (h, s, l), and which of them is the hue. */
+export const COLOR_SLOTS = 3;
+export const COLOR_ANGLES: AngleSlots = { stride: COLOR_SLOTS, offset: 0 };
 
 /** Damped fixed-point iteration: each operator pulls the state part of the way to its target. */
 export function relax(
 	values: Float64Array,
 	operators: readonly LayoutOperator[],
-	{ maxIter, epsilon, damping }: RelaxOptions,
+	{ maxIter, epsilon, damping, angles }: RelaxOptions,
 ): void {
 	if (operators.length === 0) return;
 	const next = new Float64Array(values.length);
@@ -50,10 +79,12 @@ export function relax(
 			next.set(values);
 			op(values, next);
 			for (let i = 0; i < values.length; i++) {
-				const diff = next[i] - values[i];
+				const diff = slotDiff(values[i], next[i], i, angles);
 				const abs = Math.abs(diff);
 				if (abs > residual) residual = abs;
 				values[i] += damping * diff;
+				// Hues blend the short way round and stay in [0, 360)
+				if (isAngle(i, angles)) values[i] = ((values[i] % 360) + 360) % 360;
 			}
 		}
 	}
@@ -94,6 +125,21 @@ export function compileScene(scene: Scene): {
 	return { indexMap, cur, operators: scene.operators };
 }
 
+/** Solve only the colors: COLOR_SLOTS per node, by the same damped iteration. */
+export function solveColors(
+	scene: Scene,
+	opts?: Partial<RelaxOptions>,
+): Float64Array {
+	const colors = new Float64Array(scene.colorSeed ?? []);
+	relax(colors, scene.colorOperators ?? [], {
+		maxIter: opts?.maxIter ?? 100,
+		epsilon: opts?.epsilon ?? 1e-6,
+		damping: opts?.damping ?? 0.5,
+		angles: COLOR_ANGLES,
+	});
+	return colors;
+}
+
 export function solveLayout(
 	scene: Scene,
 	opts?: { maxIter?: number; epsilon?: number; damping?: number },
@@ -105,9 +151,7 @@ export function solveLayout(
 		damping: opts?.damping ?? 0.5,
 	};
 	relax(cur, operators, relaxOpts);
-	// Colors are solved by the same damped iteration over their own array
-	const colors = new Float64Array(scene.colorSeed ?? []);
-	relax(colors, scene.colorOperators ?? [], relaxOpts);
+	const colors = solveColors(scene, relaxOpts);
 	const times = solveTime(scene, { damping: relaxOpts.damping });
 	const timed = new Set(scene.timedIds ?? []);
 	const colored = new Set(scene.coloredIds ?? []);
