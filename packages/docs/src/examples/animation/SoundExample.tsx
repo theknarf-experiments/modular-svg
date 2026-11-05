@@ -33,25 +33,32 @@ function play(audio: AudioContext, pitch: number, seconds: number) {
 export function SoundExample() {
 	const [solution, onSolve] = useSolution();
 	const [audio, setAudio] = useState<AudioContext>();
+	const [on, setOn] = useState(false);
+
+	// Browsers only allow audio after a click: create it then, and suspend it
+	// to mute, which also cuts off any note still ringing
+	const toggle = () => {
+		const ctx = audio ?? new AudioContext();
+		setAudio(ctx);
+		if (on) ctx.suspend();
+		else ctx.resume();
+		setOn(!on);
+	};
 
 	useCues(
 		solution,
 		Object.fromEntries(
 			notes.map((n, i) => [
 				`hit${i}`,
-				() => audio && play(audio, n.pitch, n.over),
+				() => on && audio && play(audio, n.pitch, n.over),
 			]),
 		),
 	);
 
 	return (
 		<div>
-			<button
-				type="button"
-				onClick={() => setAudio((a) => a ?? new AudioContext())}
-				style={{ marginBottom: "1rem" }}
-			>
-				{audio ? "Sound is on" : "Turn sound on"}
+			<button type="button" onClick={toggle} style={{ marginBottom: "1rem" }}>
+				{on ? "Turn sound off" : "Turn sound on"}
 			</button>
 			<Graphic margin={16} animation={{ loop: true }} onSolve={onSolve}>
 				<stackH key="notes" spacing={10} alignment="bottom">
