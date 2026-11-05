@@ -47,7 +47,7 @@ const sceneArb = fc.integer({ min: 2, max: 6 }).chain((n) =>
 	}),
 );
 
-type Scene = fc.RecordValue<{
+type Scene = {
 	rects: { width: number; height: number; pin?: { x: number; y: number } }[];
 	relations: {
 		type: string;
@@ -56,7 +56,7 @@ type Scene = fc.RecordValue<{
 		axis: "x" | "y";
 		spacing: number;
 	}[];
-}>;
+};
 
 function json(s: Scene) {
 	const ref = (i: number) => ({ type: "Ref", target: `r${i}` });
