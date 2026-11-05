@@ -22,6 +22,8 @@ import { PolyrhythmExample } from "./examples/animation/PolyrhythmExample";
 import polyrhythmExampleCode from "./examples/animation/PolyrhythmExample.tsx?raw";
 import { ScrubberExample } from "./examples/animation/ScrubberExample";
 import scrubberExampleCode from "./examples/animation/ScrubberExample.tsx?raw";
+import { SoundExample } from "./examples/animation/SoundExample";
+import soundExampleCode from "./examples/animation/SoundExample.tsx?raw";
 import { TempoExample } from "./examples/animation/TempoExample";
 import tempoExampleCode from "./examples/animation/TempoExample.tsx?raw";
 import { ToastExample } from "./examples/animation/ToastExample";
@@ -251,6 +253,13 @@ export const pages: Page[] = [
 					"Tempo and note lengths are state: drag the tempo or click a note, and Before + OnBeat re-solve where every note lands",
 				code: tempoExampleCode,
 				element: <TempoExample />,
+			},
+			{
+				title: "Sound cues",
+				description:
+					"onSolve hands out the solved schedule and a live clock; useCues calls back as the animation passes each ref. Here every hit plays a note through Web Audio - no audio in the solver or the React package, just the data and a hook",
+				code: soundExampleCode,
+				element: <SoundExample />,
 			},
 		],
 	},

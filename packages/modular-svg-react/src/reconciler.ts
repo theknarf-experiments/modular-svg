@@ -1,4 +1,4 @@
-import type { LayoutOperator, NodeRecord } from "@modular-svg/core";
+import type { JsonScene } from "@modular-svg/core";
 import { buildSceneFromJson } from "@modular-svg/core";
 import * as React from "react";
 import Reconciler from "react-reconciler";
@@ -506,7 +506,7 @@ const reconciler = Reconciler(hostConfig);
 export type ReconcilerRoot = {
 	render: (element: React.ReactNode) => Promise<void>;
 	unmount: () => Promise<void>;
-	getScene: () => { nodes: NodeRecord[]; operators: LayoutOperator[] };
+	getScene: () => JsonScene;
 };
 
 // Create root function
@@ -557,9 +557,20 @@ export function createRoot(): ReconcilerRoot {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 		},
 
-		getScene(): { nodes: NodeRecord[]; operators: LayoutOperator[] } {
+		getScene(): JsonScene {
 			if (container.rootInstances.length === 0) {
-				return { nodes: [], operators: [] };
+				return {
+					nodes: [],
+					operators: [],
+					colorOperators: [],
+					colorSeed: [],
+					coloredIds: [],
+					timeOperators: [],
+					timeSeed: [],
+					timedIds: [],
+					timeChecks: [],
+					warnings: [],
+				};
 			}
 
 			// If we have multiple root instances (e.g., from fragment), wrap in Group

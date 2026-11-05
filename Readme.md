@@ -71,6 +71,19 @@ Animation page of the docs.
 ./bin/modular-svg.ts examples/pipeline.json pipeline.svg --loop --duration 4
 ```
 
+In React, `Graphic` takes `playhead` (hold every motion at a time, for
+scrubbing) and `onSolve`, which hands out the solved spans of every timed ref,
+the layout boxes, warnings and a live animation clock. `useCues(solution,
+{ hit3: () => ..., "hit3:end": () => ... })` calls back as the animation
+passes those refs, so sound or anything else can follow the solved schedule
+without the solver knowing about it:
+
+```tsx
+const [solution, onSolve] = useSolution();
+useCues(solution, { kick: () => playKick() });
+return <Graphic onSolve={onSolve}>...</Graphic>;
+```
+
 ## Solver Architecture
 
 The layout solver is built around an approximate fixed-point method inspired by Bluefish. It parses a JSON tree of marks and relations, compiles it into numeric variables and simple operators, then runs a damped Picard iteration until the layout stabilizes.

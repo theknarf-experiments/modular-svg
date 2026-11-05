@@ -1,5 +1,6 @@
 import {
 	type AnimationOptions,
+	checkTime,
 	layoutToAst,
 	type SvgDocument,
 	type SvgElement,
@@ -7,6 +8,7 @@ import {
 } from "@modular-svg/core";
 import { FiberProvider, useContextBridge } from "its-fine";
 import * as React from "react";
+import { animationTime, type Solution } from "./cues";
 import {
 	createRoot,
 	getEventHandlers,
@@ -24,6 +26,11 @@ export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
 	 * Applies to the live DOM only; the scene's SVG output is unchanged.
 	 */
 	playhead?: number;
+	/**
+	 * Called with what the solver decided (spans, boxes, warnings) and a live
+	 * animation clock, every time the scene is solved; see useCues.
+	 */
+	onSolve?: (solution: Solution) => void;
 };
 
 // Layout effect in the browser; plain effect under SSR, which warns otherwise
@@ -220,9 +227,15 @@ function GraphicImpl({
 	title,
 	animation,
 	playhead,
+	onSolve,
 	...props
 }: GraphicProps) {
 	const svgRef = React.useRef<SVGSVGElement>(null);
+	const solvedRef = React.useRef<Omit<Solution, "time"> | null>(null);
+	// What was last committed; re-renders with an identical result are skipped
+	const lastKeyRef = React.useRef<string | null>(null);
+	const onSolveRef = React.useRef(onSolve);
+	onSolveRef.current = onSolve;
 	const rootRef = React.useRef<ReconcilerRoot | null>(null);
 	const [ast, setAst] = React.useState<SvgDocument | null>(null);
 
@@ -247,8 +260,27 @@ function GraphicImpl({
 			if (scene.nodes.length > 0) {
 				const layout = solveLayout(scene);
 				const svgAst = layoutToAst(layout, scene.nodes, margin, { animation });
+				const spans: Solution["spans"] = {};
+				for (const id of scene.timedIds) {
+					const box = layout[id];
+					spans[id] = { start: box.start ?? 0, duration: box.duration ?? 0 };
+				}
+				const solved = {
+					spans,
+					boxes: layout,
+					duration: svgAst.duration ?? 0,
+					loop: animation !== false && !!animation?.loop,
+					warnings: [...scene.warnings, ...checkTime(scene, layout)],
+				};
+				// An onSolve that sets parent state re-renders us with new children;
+				// stopping on an unchanged result keeps that from looping forever
+				const key = JSON.stringify([svgAst, solved]);
+				if (key === lastKeyRef.current) return;
+				lastKeyRef.current = key;
+				solvedRef.current = solved;
 				setAst(svgAst);
 			} else {
+				lastKeyRef.current = null;
 				setAst(null);
 			}
 		}
@@ -264,6 +296,16 @@ function GraphicImpl({
 			}
 		};
 	}, []);
+
+	// After commit, so the solution's clock can read the rendered animations
+	React.useEffect(() => {
+		const solved = solvedRef.current;
+		if (!ast || !solved) return;
+		onSolveRef.current?.({
+			...solved,
+			time: () => (svgRef.current ? animationTime(svgRef.current) : undefined),
+		});
+	}, [ast]);
 
 	// Before paint, so a scrubbed frame never flashes the live one
 	useIsomorphicLayoutEffect(() => {
