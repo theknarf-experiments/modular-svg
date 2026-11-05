@@ -1,5 +1,4 @@
 import { Layout, PageContent, pages } from "./App";
-import "./modular-svg.d.ts";
 
 // Shared route config for both the client (createBrowserRouter) and the
 // static site generator (createStaticHandler). Child paths are relative to

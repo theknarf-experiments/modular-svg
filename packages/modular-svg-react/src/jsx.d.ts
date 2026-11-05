@@ -1,10 +1,11 @@
-// Type declarations for modular-svg elements
+// JSX types for the scene elements the reconciler understands. Shipped with
+// the package (referenced from index.ts), so importing it is enough.
 import type {
 	AuthoredValues,
 	Ease,
 	MotionStep,
 	Values,
-} from "@modular-svg/react";
+} from "@modular-svg/core";
 
 // Every motion and time-group node can be pinned (`at`) and sized (`over`)
 type Timed = {

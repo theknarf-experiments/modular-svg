@@ -80,7 +80,6 @@ import transitionExampleCode from "./examples/TransitionExample.tsx?raw";
 import vennDiagramCode from "./examples/VennDiagram.tsx?raw";
 import { VennDiagramExample } from "./examples/VennDiagramExample";
 import vennDiagramExampleCode from "./examples/VennDiagramExample.tsx?raw";
-import "./modular-svg.d.ts";
 
 type Section = {
 	title: string;

@@ -1,3 +1,4 @@
+/// <reference path="./jsx.d.ts" />
 // Main exports for @modular-svg/react
 
 // Motion and timing types for typing the time intrinsics
