@@ -84,8 +84,12 @@ declare module "react" {
 			// Color constraints
 			distinctColors: {
 				key?: React.Key;
-				saturation?: number;
+				/** OKLCH lightness of the generated colors (0..1, default 0.7) */
 				lightness?: number;
+				/** OKLCH chroma (about 0..0.3, default 0.14) */
+				chroma?: number;
+				/** @deprecated HSL-era; scaled to a chroma */
+				saturation?: number;
 				startHue?: number;
 				children?: React.ReactNode;
 			};

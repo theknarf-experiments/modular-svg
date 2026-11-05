@@ -73,7 +73,7 @@ export function VennDiagram({
 						{p.label}
 					</text>
 				))}
-				<distinctColors saturation={0.6} lightness={0.55}>
+				<distinctColors chroma={0.15} lightness={0.72}>
 					{placed.map((p) => (
 						<ref key={p.label} target={circleId(p.label)} />
 					))}

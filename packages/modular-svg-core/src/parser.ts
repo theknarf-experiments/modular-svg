@@ -1,4 +1,4 @@
-import { parseColor } from "./color.ts";
+import { parseRgba, rgbToOklch } from "./color.ts";
 import type {
 	AlignmentX,
 	AlignmentY,
@@ -22,7 +22,7 @@ import {
 	stackV,
 	unionOp,
 } from "./solver/operators.ts";
-import { COLOR_ANGLES, solveColors } from "./solver/solver.ts";
+import { COLOR_ANGLES, COLOR_SLOTS, solveColors } from "./solver/solver.ts";
 import {
 	buildTime,
 	checkTime,
@@ -800,20 +800,26 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	const ops: LayoutOperator[] = [];
 	const colorOps: LayoutOperator[] = [];
 	const coloredIds = new Set<string>();
-	// Color slots: 3 per node (h, s, l), seeded from parseable fills.
-	// A parseable explicit fill is a pinned (owned) color.
+	// Color slots: COLOR_SLOTS per node (OKLCH lightness, chroma, hue,
+	// alpha), seeded from parseable fills. An explicit fill is a pinned color.
 	const nodeIndex = new Map(nodes.map((n, i) => [n.id, i]));
 	const colorSeed: number[] = [];
 	const colorOwned: boolean[] = [];
+	// A pinned hue that DistinctColors steers around (grays have none)
+	const pinnedHue: (number | undefined)[] = [];
 	for (const n of nodes) {
-		const parsed = n.fill !== undefined ? parseColor(n.fill) : undefined;
-		colorSeed.push(parsed?.h ?? 0, parsed?.s ?? 0, parsed?.l ?? 0.5);
+		const parsed = n.fill !== undefined ? parseRgba(n.fill) : undefined;
+		const [l, c, h] = parsed
+			? rgbToOklch(parsed.r, parsed.g, parsed.b)
+			: [0.5, 0, 0];
+		colorSeed.push(l, c, h, parsed?.a ?? 1);
 		colorOwned.push(n.fill !== undefined);
+		pinnedHue.push(parsed && c > 0.02 ? h : undefined);
 	}
 	const colorBase = (rec: NodeRecord): number => {
 		const i = nodeIndex.get(rec.id);
 		if (i === undefined) throw new Error(`Unknown id ${rec.id}`);
-		return i * 3;
+		return i * COLOR_SLOTS;
 	};
 
 	// Which relation each operator came from, for the post-solve check
@@ -986,14 +992,22 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			hardOwned.add(`${d.line.id}:h`);
 			markGuide(d.line.id);
 		} else if (d.kind === "distinctColors") {
-			const owned = d.children.map((c) => colorOwned[nodeIndex.get(c.id) ?? 0]);
+			const at = (c: NodeRecord) => nodeIndex.get(c.id) ?? 0;
+			const owned = d.children.map((c) => colorOwned[at(c)]);
+			// `saturation` predates OKLCH; it scales to a comparable chroma
+			const saturation = d.props.saturation as number | undefined;
 			colorOps.push(
 				distinctColorsOp(
 					d.children.map((c) => colorBase(c)),
 					{
-						saturation: (d.props.saturation as number) ?? 0.6,
-						lightness: (d.props.lightness as number) ?? 0.55,
+						lightness: (d.props.lightness as number) ?? 0.7,
+						chroma:
+							(d.props.chroma as number | undefined) ??
+							(saturation !== undefined ? saturation * 0.25 : 0.14),
 						startHue: (d.props.startHue as number) ?? 30,
+						pinned: d.children.map((c, i) =>
+							owned[i] ? pinnedHue[at(c)] : undefined,
+						),
 						owned,
 					},
 				),

@@ -235,12 +235,19 @@ export function contrastRatio(y1: number, y2: number): number {
 	return (hi + 0.05) / (lo + 0.05);
 }
 
-// The lightness (keeping h and s) that satisfies the contrast ratio against
-// a background luminance, staying as close to the current lightness as
-// possible; falls back to whichever extreme has the most contrast.
+/** WCAG relative luminance of an OKLCH color as displayed (gamut mapped). */
+export function luminanceOfOklch(L: number, C: number, h: number): number {
+	return luminance(...oklchToDisplayRgb(L, C, h));
+}
+
+/**
+ * The OKLCH lightness (keeping chroma and hue) that meets the contrast ratio
+ * against a background luminance, as close to the current lightness as
+ * possible; falls back to whichever extreme has the most contrast.
+ */
 export function contrastingLightness(
+	C: number,
 	h: number,
-	s: number,
 	currentL: number,
 	bgLuminance: number,
 	ratio: number,
@@ -249,18 +256,16 @@ export function contrastingLightness(
 	let bestDist = Infinity;
 	let extreme = 0;
 	let extremeRatio = 0;
-	for (let l = 0; l <= 1.0001; l += 0.02) {
-		const r = contrastRatio(luminanceOfHsl(h, s, l), bgLuminance);
+	for (let i = 0; i <= 200; i++) {
+		const l = i / 200;
+		const r = contrastRatio(luminanceOfOklch(l, C, h), bgLuminance);
 		if (r > extremeRatio) {
 			extremeRatio = r;
 			extreme = l;
 		}
-		if (r >= ratio) {
-			const dist = Math.abs(l - currentL);
-			if (dist < bestDist) {
-				bestDist = dist;
-				best = l;
-			}
+		if (r >= ratio && Math.abs(l - currentL) < bestDist) {
+			bestDist = Math.abs(l - currentL);
+			best = l;
 		}
 	}
 	return best ?? extreme;

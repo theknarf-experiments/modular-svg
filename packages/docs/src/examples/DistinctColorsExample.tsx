@@ -49,7 +49,7 @@ export function DistinctColorsExample() {
 							<circle key={id} r={22} stroke="#333" stroke-width={1} />
 						))}
 					</stackH>
-					<distinctColors startHue={startHue} saturation={0.6} lightness={0.55}>
+					<distinctColors startHue={startHue} chroma={0.15} lightness={0.72}>
 						{ids.map((id) => (
 							<ref key={id} target={id} />
 						))}

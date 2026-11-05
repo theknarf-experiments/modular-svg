@@ -1,4 +1,4 @@
-import { contrastingLightness, luminanceOfHsl } from "../color.ts";
+import { contrastingLightness, luminanceOfOklch } from "../color.ts";
 import type { MotionSpec } from "../motion.ts";
 
 export type LayoutOperator = (cur: Float64Array, next: Float64Array) => void;
@@ -651,52 +651,104 @@ export function unionOp(
 }
 
 // --- Color operators -------------------------------------------------------
-// Colors are solver variables too: each node has (h, s, l) slots in a
-// separate color array, solved by the same damped fixed-point loop.
+// Colors are solver variables too: each node has COLOR_SLOTS slots in a
+// separate color array (OKLCH lightness, chroma, hue in degrees, alpha),
+// solved by the same damped fixed-point loop. OKLCH is perceptual, so equal
+// lightness looks equally light whatever the hue.
+
+const L = 0;
+const C = 1;
+const H = 2;
+const A = 3;
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+/**
+ * Hues for n members spread evenly round the wheel. Members with a pinned
+ * hue keep it: the wheel is turned so they sit on slots (or as near as they
+ * can), and the free members take the remaining slots, so generated hues
+ * keep their distance from pinned ones.
+ */
+export function distinctHues(
+	n: number,
+	startHue: number,
+	pinned: readonly (number | undefined)[],
+): number[] {
+	const step = 360 / n;
+	const near = (a: number, b: number) => {
+		const d = Math.abs((((a - b) % 360) + 360) % 360);
+		return Math.min(d, 360 - d);
+	};
+	const fixed = pinned.filter((h): h is number => h !== undefined);
+	// Try turning the wheel onto each pinned hue (or start where asked)
+	const turns = fixed.length > 0 ? fixed : [startHue];
+	let best = { turn: startHue, cost: Infinity };
+	for (const turn of turns) {
+		const slots = Array.from({ length: n }, (_, k) => turn + k * step);
+		const cost = fixed.reduce(
+			(sum, h) => sum + Math.min(...slots.map((s) => near(h, s))) ** 2,
+			0,
+		);
+		if (cost < best.cost) best = { turn, cost };
+	}
+	const free = Array.from(
+		{ length: n },
+		(_, k) => (((best.turn + k * step) % 360) + 360) % 360,
+	);
+	// Pinned members claim their nearest slot; the rest go in slot order
+	for (const h of fixed) {
+		let at = 0;
+		for (let k = 1; k < free.length; k++)
+			if (near(h, free[k]) < near(h, free[at])) at = k;
+		free.splice(at, 1);
+	}
+	return pinned.map((h) => h ?? (free.shift() as number));
+}
 
 export type DistinctColorsOptions = {
-	saturation: number;
+	/** OKLCH lightness of the generated colors (0..1) */
 	lightness: number;
+	/** OKLCH chroma of the generated colors (about 0..0.3) */
+	chroma: number;
 	startHue: number;
-	/** children with a user-pinned color are skipped */
-	owned?: readonly boolean[];
+	/** each member's pinned hue; pinned members are left as they are */
+	pinned: readonly (number | undefined)[];
+	owned: readonly boolean[];
 };
 
-// Spread the children's hues evenly around the wheel (a distribute in hue
-// space); saturation and lightness are set uniformly.
+/** Distinct hues at one perceived lightness (a distribute in hue space). */
 export function distinctColorsOp(
 	colorBases: readonly number[],
 	opts: DistinctColorsOptions,
 ): LayoutOperator {
+	const hues = distinctHues(colorBases.length, opts.startHue, opts.pinned);
 	return (_cur, next) => {
-		const n = colorBases.length;
-		for (let i = 0; i < n; i++) {
-			if (opts.owned?.[i]) continue;
-			const base = colorBases[i];
-			next[base] = (opts.startHue + (i * 360) / n) % 360;
-			next[base + 1] = opts.saturation;
-			next[base + 2] = opts.lightness;
-		}
+		colorBases.forEach((base, i) => {
+			if (opts.owned[i]) return;
+			next[base + L] = opts.lightness;
+			next[base + C] = opts.chroma;
+			next[base + H] = hues[i];
+			next[base + A] = 1;
+		});
 	};
 }
 
-// Copy the first child's color onto the rest (the Span of color space)
+/** Copy the first member's color, alpha included, onto the rest (the Span of color). */
 export function sameColorOp(
 	sourceBase: number,
 	targetBases: readonly number[],
 ): LayoutOperator {
 	return (cur, next) => {
-		for (const base of targetBases) {
-			next[base] = cur[sourceBase];
-			next[base + 1] = cur[sourceBase + 1];
-			next[base + 2] = cur[sourceBase + 2];
-		}
+		for (const base of targetBases)
+			for (let k = 0; k < 4; k++) next[base + k] = cur[sourceBase + k];
 	};
 }
 
-// Copy the source color onto targets with the lightness shifted by deltaL
-// (positive = lighten, negative = darken; clamped to [0, 1]). Keep the
-// source distinct from the targets so this stays a feed-forward relation.
+/**
+ * Copy the source color onto targets with the perceived lightness shifted
+ * by deltaL (positive = lighten, negative = darken; clamped to [0, 1]). Keep
+ * the source distinct from the targets so this stays a feed-forward relation.
+ */
 export function shadeColorOp(
 	sourceBase: number,
 	targetBases: readonly number[],
@@ -704,26 +756,32 @@ export function shadeColorOp(
 ): LayoutOperator {
 	return (cur, next) => {
 		for (const base of targetBases) {
-			next[base] = cur[sourceBase];
-			next[base + 1] = cur[sourceBase + 1];
-			next[base + 2] = Math.max(0, Math.min(1, cur[sourceBase + 2] + deltaL));
+			for (let k = 0; k < 4; k++) next[base + k] = cur[sourceBase + k];
+			next[base + L] = clamp01(cur[sourceBase + L] + deltaL);
 		}
 	};
 }
 
-// Adjust the foreground's lightness (keeping hue and saturation) until the
-// WCAG contrast ratio against the background's current color is satisfied.
+/**
+ * Adjust the foreground's lightness (keeping chroma and hue) until the WCAG
+ * contrast ratio against the background's current color is met, moving as
+ * little as possible.
+ */
 export function contrastOp(
 	fgBase: number,
 	bgBase: number,
 	ratio: number,
 ): LayoutOperator {
 	return (cur, next) => {
-		const bgY = luminanceOfHsl(cur[bgBase], cur[bgBase + 1], cur[bgBase + 2]);
-		next[fgBase + 2] = contrastingLightness(
-			cur[fgBase],
-			cur[fgBase + 1],
-			cur[fgBase + 2],
+		const bgY = luminanceOfOklch(
+			cur[bgBase + L],
+			cur[bgBase + C],
+			cur[bgBase + H],
+		);
+		next[fgBase + L] = contrastingLightness(
+			cur[fgBase + C],
+			cur[fgBase + H],
+			cur[fgBase + L],
 			bgY,
 			ratio,
 		);

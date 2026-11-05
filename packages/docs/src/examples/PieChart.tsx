@@ -100,7 +100,7 @@ export function PieChart({
 
 				{/* Colors (declared after the nodes they reference). The swatches
 				    hold the base palette; slices derive from them. */}
-				<distinctColors saturation={0.55} lightness={0.6}>
+				<distinctColors chroma={0.14} lightness={0.75}>
 					{slices.map((s) => (
 						<ref key={s.label} target={swatchId(s.label)} />
 					))}

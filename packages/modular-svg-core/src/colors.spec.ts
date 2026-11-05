@@ -272,3 +272,103 @@ describe("color correctness", () => {
 		]);
 	});
 });
+
+describe("perceptual colors", () => {
+	const ref = (target: string) => ({ type: "Ref", target });
+	const rect = (id: string, fill?: string) => ({
+		type: "Rect",
+		id,
+		props: { width: 10, height: 10, ...(fill ? { fill } : {}) },
+	});
+	const solveFills = (children: unknown[]) =>
+		fills({ type: "Group", id: "root", children });
+
+	it("gives distinct colors one perceived lightness", async () => {
+		const { parseRgba, luminance } = await import("./color.ts");
+		const ids = ["a", "b", "c", "d", "e", "f"];
+		const f = solveFills([
+			...ids.map((id) => rect(id)),
+			{ type: "DistinctColors", children: ids.map(ref) },
+		]);
+		const ys = ids.map((id) => {
+			const c = parseRgba(f[id]);
+			return c ? luminance(c.r, c.g, c.b) : Number.NaN;
+		});
+		// HSL gave luminance from 0.15 to 0.52 for the same nominal lightness
+		expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(0.06);
+	});
+
+	it("steers generated hues away from a pinned one", async () => {
+		const { parseRgba, rgbToOklch } = await import("./color.ts");
+		const { angleDiff } = await import("./solver/solver.ts");
+		const f = solveFills([
+			rect("pinned", "#e03131"),
+			rect("b"),
+			rect("c"),
+			rect("d"),
+			{ type: "DistinctColors", children: ["pinned", "b", "c", "d"].map(ref) },
+		]);
+		const hue = (hex: string) => {
+			const c = parseRgba(hex);
+			return c ? rgbToOklch(c.r, c.g, c.b)[2] : Number.NaN;
+		};
+		const red = hue("#e03131");
+		for (const id of ["b", "c", "d"])
+			expect(Math.abs(angleDiff(red, hue(f[id])))).toBeGreaterThan(80);
+	});
+
+	it("carries alpha through relations", () => {
+		const f = solveFills([
+			rect("a", "rgba(51, 102, 153, 0.5)"),
+			rect("b"),
+			rect("c"),
+			{ type: "SameColor", children: [ref("a"), ref("b")] },
+			{
+				type: "Darken",
+				props: { amount: 0.1 },
+				children: [ref("a"), ref("c")],
+			},
+		]);
+		expect(f.b).toBe("#33669980");
+		expect(f.c.endsWith("80")).toBe(true);
+	});
+});
+
+describe("distinctHues (properties)", async () => {
+	const fc = (await import("fast-check")).default;
+	const { distinctHues } = await import("./solver/operators.ts");
+	const { angleDiff } = await import("./solver/solver.ts");
+
+	it("keeps pinned hues and spaces the free ones a full step from each other", () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 2, max: 9 }).chain((n) =>
+					fc.tuple(
+						fc.constant(n),
+						fc.array(
+							fc.option(fc.integer({ min: 0, max: 359 }), {
+								nil: undefined,
+								freq: 2,
+							}),
+							{ minLength: n, maxLength: n },
+						),
+					),
+				),
+				fc.integer({ min: 0, max: 359 }),
+				([n, pinned], start) => {
+					const hues = distinctHues(n, start, pinned);
+					expect(hues).toHaveLength(n);
+					pinned.forEach((h, i) => {
+						if (h !== undefined) expect(hues[i]).toBe(h);
+					});
+					const free = hues.filter((_, i) => pinned[i] === undefined);
+					for (let i = 0; i < free.length; i++)
+						for (let j = i + 1; j < free.length; j++)
+							expect(Math.abs(angleDiff(free[i], free[j]))).toBeGreaterThan(
+								360 / n - 1e-6,
+							);
+				},
+			),
+		);
+	});
+});

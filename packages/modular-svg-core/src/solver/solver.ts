@@ -1,4 +1,12 @@
-import { hslToHex } from "../color.ts";
+import { oklchToDisplayRgb, rgbaToHex } from "../color.ts";
+
+/** A solved color slot group as displayable hex (8 digits when translucent). */
+const colorHex = (colors: Float64Array, base: number): string =>
+	rgbaToHex(
+		...oklchToDisplayRgb(colors[base], colors[base + 1], colors[base + 2]),
+		colors[base + 3],
+	);
+
 import type { LayoutOperator, NodeRecord } from "./index.ts";
 
 export type Scene = {
@@ -60,9 +68,9 @@ export const slotDiff = (
 	angles?: AngleSlots,
 ) => (isAngle(i, angles) ? angleDiff(from, to) : to - from);
 
-/** Color slots per node (h, s, l), and which of them is the hue. */
-export const COLOR_SLOTS = 3;
-export const COLOR_ANGLES: AngleSlots = { stride: COLOR_SLOTS, offset: 0 };
+/** Color slots per node (OKLCH lightness, chroma, hue, alpha); hue is an angle. */
+export const COLOR_SLOTS = 4;
+export const COLOR_ANGLES: AngleSlots = { stride: COLOR_SLOTS, offset: 2 };
 
 /** Damped fixed-point iteration: each operator pulls the state part of the way to its target. */
 export function relax(
@@ -166,7 +174,7 @@ export function solveLayout(
 			height: cur[base + 3],
 			...(colored.has(n.id)
 				? {
-						fill: hslToHex(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]),
+						fill: colorHex(colors, i * COLOR_SLOTS),
 					}
 				: {}),
 			...(timed.has(n.id)
