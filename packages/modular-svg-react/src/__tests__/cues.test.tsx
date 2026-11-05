@@ -1,6 +1,7 @@
+import { cuesBetween } from "@modular-svg/core";
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { cuesBetween, type Solution } from "../cues";
+import type { Solution } from "../cues";
 import { Graphic } from "../Graphic";
 
 const solution = (loop: boolean) => ({

@@ -1,7 +1,10 @@
-import type { LayoutResult } from "@modular-svg/core";
+import {
+	type Cue,
+	cuesBetween,
+	type LayoutResult,
+	type Span,
+} from "@modular-svg/core";
 import * as React from "react";
-
-export type Span = { start: number; duration: number };
 
 /** What the solver decided for a scene, handed out by Graphic's onSolve. */
 export type Solution = {
@@ -22,40 +25,8 @@ export type Solution = {
 	time: () => number | undefined;
 };
 
-export type Cue = { id: string; edge: "start" | "end"; at: number };
-
 /** Handlers by ref id: "hit3" fires as hit3 starts, "hit3:end" as it ends. */
 export type CueHandlers = Record<string, (cue: Cue) => void>;
-
-/**
- * Cues whose time falls in (from, to] on the unwrapped clock. A looping
- * scene repeats every cue each pass. A backwards jump (scrubbing) fires
- * nothing.
- */
-export function cuesBetween(
-	solution: Pick<Solution, "spans" | "duration" | "loop">,
-	keys: readonly string[],
-	from: number,
-	to: number,
-): Cue[] {
-	if (!(to > from)) return [];
-	const found: Cue[] = [];
-	for (const key of keys) {
-		const [id, suffix] = key.split(":");
-		const span = solution.spans[id];
-		if (!span) continue;
-		const edge = suffix === "end" ? "end" : "start";
-		const at = edge === "end" ? span.start + span.duration : span.start;
-		const period = solution.duration;
-		if (solution.loop && period > 0) {
-			// Every pass k plays this cue at at + k * period
-			const first = Math.floor((from - at) / period) + 1;
-			for (let k = Math.max(0, first); at + k * period <= to; k++)
-				found.push({ id, edge, at: at + k * period });
-		} else if (at > from && at <= to) found.push({ id, edge, at });
-	}
-	return found.sort((a, b) => a.at - b.at);
-}
 
 /**
  * Call handlers as the animation reaches the refs they name. Driven by the
