@@ -8,6 +8,7 @@ import {
 	type MotionSpec,
 	moving,
 	type ResolvedEase,
+	resolveColorRefs,
 	type Step,
 	type Values,
 } from "./motion.ts";
@@ -164,10 +165,21 @@ function restValue(
 ): number | string {
 	const identity = CHANNELS[channel].identity;
 	if (identity !== undefined) return identity;
+	// A connector's solved color is drawn as its stroke (see layoutToAst)
+	const connector =
+		mark.type === "line" || mark.type === "curve" || mark.type === "arrow";
 	if (channel === "fill")
-		return box.fill ?? mark.fill ?? (mark.type === "text" ? "black" : "none");
+		return (
+			(connector ? undefined : box.fill) ??
+			mark.fill ??
+			(mark.type === "text" ? "black" : "none")
+		);
 	if (channel === "stroke")
-		return mark.stroke ?? (mark.type === "text" ? "none" : "black");
+		return (
+			(connector ? box.fill : undefined) ??
+			mark.stroke ??
+			(mark.type === "text" ? "none" : "black")
+		);
 	if (channel === "width") return box.width;
 	if (channel === "height") return box.height;
 	if (channel === "d") return mark.d ?? "";
@@ -241,7 +253,10 @@ export function compileAnimation(
 	for (const m of motions) {
 		const { start, duration } = span(m.id);
 		const expanded = expandMotion(
-			resolveTravel(m, layout),
+			resolveColorRefs(resolveTravel(m, layout), (id) => {
+				const node = byId.get(id);
+				return layout[id]?.fill ?? node?.fill ?? node?.stroke;
+			}),
 			start,
 			duration,
 			period,

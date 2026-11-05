@@ -35,6 +35,10 @@ self-contained SVG with CSS keyframes and no runtime script.
 | `Sampled fn tolerance` | bake a function of time into few keyframes |
 | `Travel` | move the first child through the following refs, at even speed |
 
+Colors in `Motion` (`fill`, `stroke`) may be `{ ref: "id" }`: that node's
+solved color, so motions can animate to colors that `DistinctColors`,
+`SameColor` and the other color relations picked.
+
 Eases: `linear in out inOut pop hold steps(n)` or bezier points. `loop` repeats a
 motion's span until the scene ends (or `n` times).
 

@@ -16,6 +16,8 @@ import { JoinExample } from "./examples/animation/JoinExample";
 import joinExampleCode from "./examples/animation/JoinExample.tsx?raw";
 import { OrbitExample } from "./examples/animation/OrbitExample";
 import orbitExampleCode from "./examples/animation/OrbitExample.tsx?raw";
+import { PaletteExample } from "./examples/animation/PaletteExample";
+import paletteExampleCode from "./examples/animation/PaletteExample.tsx?raw";
 import { PhrasingExample } from "./examples/animation/PhrasingExample";
 import phrasingExampleCode from "./examples/animation/PhrasingExample.tsx?raw";
 import { PolyrhythmExample } from "./examples/animation/PolyrhythmExample";
@@ -24,6 +26,8 @@ import { ScrubberExample } from "./examples/animation/ScrubberExample";
 import scrubberExampleCode from "./examples/animation/ScrubberExample.tsx?raw";
 import { SoundExample } from "./examples/animation/SoundExample";
 import soundExampleCode from "./examples/animation/SoundExample.tsx?raw";
+import { StatusExample } from "./examples/animation/StatusExample";
+import statusExampleCode from "./examples/animation/StatusExample.tsx?raw";
 import { TempoExample } from "./examples/animation/TempoExample";
 import tempoExampleCode from "./examples/animation/TempoExample.tsx?raw";
 import { ToastExample } from "./examples/animation/ToastExample";
@@ -190,6 +194,20 @@ export const pages: Page[] = [
 					"Ported from svjeez: travel moves a mark to a ref'd waypoint, so each dot's distance comes from layout; one SameTime starts all eight",
 				code: easingExampleCode,
 				element: <EasingExample />,
+			},
+			{
+				title: "Color",
+				description:
+					"fill and stroke animate like any channel: each phase of the status chip is its own motion on the same color lanes, and a hold ease makes a hard flash",
+				code: statusExampleCode,
+				element: <StatusExample />,
+			},
+			{
+				title: "Palette",
+				description:
+					"Color relations meet time: DistinctColors picks the hues and motions animate to them with { ref: id }, the solved color of another node. The swatches bloom in a stagger, then the cursor takes each swatch's color as it passes",
+				code: paletteExampleCode,
+				element: <PaletteExample />,
 			},
 			{
 				title: "Deploy flow",

@@ -3,6 +3,8 @@
 // Motion and timing types for typing the time intrinsics
 export type {
 	AnimationOptions,
+	AuthoredValues,
+	ColorRef,
 	Ease,
 	MotionStep,
 	Values,

@@ -224,3 +224,60 @@ describe("scene length", () => {
 		expect(ast.duration).toBe(3);
 	});
 });
+
+describe("animating colors", () => {
+	it("animates to another node's solved color", () => {
+		const { ast } = render([
+			{
+				type: "StackH",
+				children: [
+					box("a", { fill: undefined }),
+					box("b", { fill: undefined }),
+					box("cursor"),
+				],
+			},
+			{ type: "DistinctColors", children: [ref("a"), ref("b")] },
+			on("Motion", "m", "cursor", {
+				steps: [
+					{ to: { fill: { ref: "a" } }, over: 1 },
+					{ to: { fill: { ref: "b" } }, over: 1 },
+				],
+			}),
+		]);
+		const fills = [...(ast.css ?? "").matchAll(/fill:(#[0-9a-f]+)/g)].map(
+			(m) => m[1],
+		);
+		const solved = (id: string) => {
+			const el = ast.children.find((c) => c.type === "rect" && c.id === id);
+			return el && el.type === "rect" ? el.fill : undefined;
+		};
+		// starts at its own fill, then each swatch's solved hue
+		expect(fills[0]).toBe("#fff");
+		expect(fills).toContain(solved("a"));
+		expect(fills.at(-1)).toBe(solved("b"));
+	});
+
+	it("starts a connector's stroke from its solved color", () => {
+		const { ast } = render([
+			{ type: "StackH", children: [box("a"), box("b")] },
+			{ type: "Line", id: "l", children: [ref("a"), ref("b")] },
+			{ type: "SameColor", children: [ref("a"), ref("l")] },
+			on("Motion", "m", "l", {
+				steps: [{ to: { stroke: "#ff0000" }, over: 1 }],
+			}),
+		]);
+		expect(ast.css).toMatch(/0%\{stroke:#ffffff/);
+	});
+
+	it("names the ref when it has no color", () => {
+		expect(() =>
+			render([
+				box("a"),
+				{ type: "Group", id: "g" },
+				on("Motion", "m", "a", {
+					steps: [{ to: { fill: { ref: "g" } }, over: 1 }],
+				}),
+			]),
+		).toThrow(/g has no color to take/);
+	});
+});

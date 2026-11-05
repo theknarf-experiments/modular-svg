@@ -1,5 +1,10 @@
 // Type declarations for modular-svg elements
-import type { Ease, MotionStep, Values } from "@modular-svg/react";
+import type {
+	AuthoredValues,
+	Ease,
+	MotionStep,
+	Values,
+} from "@modular-svg/react";
 
 // Every motion and time-group node can be pinned (`at`) and sized (`over`)
 type Timed = {
@@ -190,7 +195,8 @@ declare module "react" {
 			};
 
 			// Motions: animate the marks they ref over their solved span
-			motion: Motion & { from?: Values; steps: MotionStep[] };
+			/** colors in from/steps may be { ref: id }: that node's solved color */
+			motion: Motion & { from?: AuthoredValues; steps: MotionStep[] };
 			enter: Motion & { from?: Values };
 			exit: Motion & { to?: Values };
 			draw: Motion;

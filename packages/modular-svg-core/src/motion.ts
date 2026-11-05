@@ -78,6 +78,19 @@ export type Channel =
 
 export type Values = Partial<Record<Channel, number | string>>;
 
+/** A color taken from another node's solved color (after color relations). */
+export type ColorRef = { ref: string };
+
+/** Values as authored: colors may name another node's solved color. */
+export type AuthoredValues = Partial<
+	Record<Channel, number | string | ColorRef>
+>;
+
+const isColorRef = (v: unknown): v is ColorRef =>
+	typeof v === "object" &&
+	v !== null &&
+	typeof (v as ColorRef).ref === "string";
+
 /** Mark kinds a channel may animate on; undefined means every mark. */
 type ChannelSpec = {
 	lane: string;
@@ -128,9 +141,9 @@ type RestChannel = "opacity" | "x" | "y" | "scale" | "rotate" | "blur";
 
 export type MotionStep =
 	/** transition from the current values, starting at the cursor (or `at`, relative to the motion's start) */
-	| { to: Values; over: number; ease?: Ease; at?: number }
+	| { to: AuthoredValues; over: number; ease?: Ease; at?: number }
 	/** hard cut at the cursor */
-	| { set: Values; at?: number }
+	| { set: AuthoredValues; at?: number }
 	/** hold; advances the cursor */
 	| { wait: number };
 
@@ -138,7 +151,7 @@ export type MotionStep =
 export type SampleFn = (t: number) => Values;
 
 export type MotionSpec = (
-	| { kind: "motion"; from?: Values; steps: readonly MotionStep[] }
+	| { kind: "motion"; from?: AuthoredValues; steps: readonly MotionStep[] }
 	| { kind: "enter"; from?: Values; ease?: Ease }
 	| { kind: "exit"; to?: Values; ease?: Ease }
 	| { kind: "draw"; ease?: Ease }
@@ -186,14 +199,50 @@ const HOLD = NAMED.hold;
 /** Default length of a motion that no relation or `over` sizes. */
 export const DEFAULT_OVER = 0.5;
 
-function checkValues(values: Values, what: string): Values {
+function checkValues(values: AuthoredValues, what: string): Values {
 	for (const [k, v] of Object.entries(values)) {
+		if (isColorRef(v))
+			throw new Error(
+				`${what}: ${k} names ${v.ref}'s color, which is only known after solving`,
+			);
 		if (!isChannel(k))
 			throw new Error(`${what}: "${k}" is not an animatable channel`);
 		if (typeof v === "number" && !Number.isFinite(v))
 			throw new Error(`${what}: ${k} must be finite, got ${v}`);
 	}
-	return values;
+	return values as Values;
+}
+
+/** Replace color refs in a motion with the colors they name. */
+export function resolveColorRefs(
+	spec: MotionSpec,
+	colorOf: (id: string) => string | undefined,
+): MotionSpec {
+	if (spec.kind !== "motion") return spec;
+	const resolve = (
+		values: AuthoredValues | undefined,
+	): AuthoredValues | undefined =>
+		values &&
+		Object.fromEntries(
+			Object.entries(values).map(([k, v]) => {
+				if (!isColorRef(v)) return [k, v];
+				const color = colorOf(v.ref);
+				if (color === undefined)
+					throw new Error(`${k}: ${v.ref} has no color to take`);
+				return [k, color];
+			}),
+		);
+	return {
+		...spec,
+		from: resolve(spec.from),
+		steps: spec.steps.map((step) =>
+			"to" in step
+				? { ...step, to: resolve(step.to) ?? {} }
+				: "set" in step
+					? { ...step, set: resolve(step.set) ?? {} }
+					: step,
+		),
+	};
 }
 
 /** The length a motion has before any relation stretches it. */
