@@ -28,6 +28,22 @@ declare module "react" {
 				alignment?: string;
 				children?: React.ReactNode;
 			};
+			enter: {
+				key?: React.Key;
+				over?: number;
+				at?: number;
+				from?: Record<string, number>;
+				children?: React.ReactNode;
+			};
+			draw: { key?: React.Key; over?: number; children?: React.ReactNode };
+			sampled: {
+				key?: React.Key;
+				over?: number;
+				fn: (t: number) => Record<string, number>;
+				tolerance: Record<string, number>;
+				children?: React.ReactNode;
+			};
+			sequence: { key?: React.Key; gap?: number; children?: React.ReactNode };
 			distribute: {
 				key?: React.Key;
 				axis?: "x" | "y";

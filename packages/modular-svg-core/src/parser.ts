@@ -22,6 +22,14 @@ import {
 	stackV,
 	unionOp,
 } from "./solver/operators.ts";
+import {
+	buildTime,
+	MOTION_TYPES,
+	motionSpecOf,
+	TIME_TYPES,
+	type TimeCheck,
+	type TimeNode,
+} from "./time_scene.ts";
 
 export type JsonScene = {
 	nodes: NodeRecord[];
@@ -32,6 +40,12 @@ export type JsonScene = {
 	colorSeed: number[];
 	/** ids whose solved color should be emitted */
 	coloredIds: string[];
+	/** operators over the time array (2 slots per node: start, duration) */
+	timeOperators: LayoutOperator[];
+	timeSeed: number[];
+	timedIds: string[];
+	/** run against a solved layout with checkTime */
+	timeChecks: TimeCheck[];
 	/** Ownership conflicts detected at parse time (over-constrained scenes) */
 	warnings: string[];
 };
@@ -185,6 +199,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	const userOwned = new Set<string>();
 	// Structural children (Refs excluded) for subtree moves
 	const structuralChildren = new Map<string, NodeRecord[]>();
+	// Every walked node in post-order, with all children, for the time domain
+	const timeNodes: TimeNode[] = [];
 	type Desc =
 		| {
 				kind: "stackV" | "stackH";
@@ -333,7 +349,19 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			zOrder: props.zOrder as number | undefined,
 			attrs: extraAttrs(props),
 		};
-		if (n.type === "Rect") {
+		if (MOTION_TYPES.has(n.type)) {
+			rec = {
+				id: nodeId,
+				x: 0,
+				y: 0,
+				width: 0,
+				height: 0,
+				type: "motion",
+				motion: motionSpecOf(n.type, props),
+			};
+		} else if (TIME_TYPES.has(n.type)) {
+			rec = { id: nodeId, x: 0, y: 0, width: 0, height: 0, type: "timing" };
+		} else if (n.type === "Rect") {
 			rec = {
 				...common,
 				type: "rect",
@@ -496,18 +524,31 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 
 	function walk(node: AnyNode, path = "0"): NodeRecord {
 		const rec = ensureNode(node, path);
+		if (node.type === "Ref") return rec;
+		const allChildren = (node.children ?? []).map((child, i) =>
+			walk(child, `${path}.${i}`),
+		);
+		const allStructural = (node.children ?? [])
+			.map((child, i) => ({ child, rec: allChildren[i] }))
+			.filter(({ child }) => child.type !== "Ref")
+			.map(({ rec: r }) => r);
+		timeNodes.push({
+			rec,
+			type: node.type,
+			props: node.props ?? {},
+			children: allChildren,
+			structural: allStructural,
+		});
+		// Time-only nodes take no space, so layout relations never see them
+		const spatial = (r: NodeRecord) =>
+			r.type !== "motion" && r.type !== "timing";
+		const children = allChildren.filter(spatial);
+		const structural = allStructural.filter(spatial);
 		if (Array.isArray(node.children)) {
-			const children = node.children.map((child, i) =>
-				walk(child, `${path}.${i}`),
-			);
-			structuralChildren.set(
-				rec.id,
-				node.children
-					.map((child, i) => ({ child, rec: children[i] }))
-					.filter(({ child }) => child.type !== "Ref")
-					.map(({ rec: r }) => r),
-			);
-			if (node.type === "StackV" || node.type === "StackH") {
+			structuralChildren.set(rec.id, structural);
+			if (rec.type === "motion" || rec.type === "timing") {
+				// Time-only nodes take no part in layout
+			} else if (node.type === "StackV" || node.type === "StackH") {
 				descs.push({
 					kind: node.type === "StackV" ? "stackV" : "stackH",
 					container: rec,
@@ -592,6 +633,29 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	}
 
 	walk(json as AnyNode);
+
+	const targetWarnings: string[] = [];
+	// A motion animates the marks under each target (a container's descendants)
+	const marksUnder = (rec: NodeRecord, seen = new Set<string>()): string[] => {
+		if (seen.has(rec.id)) return [];
+		seen.add(rec.id);
+		const own =
+			rec.type && rec.type !== "motion" && rec.type !== "timing"
+				? [rec.id]
+				: [];
+		return [
+			...own,
+			...(structuralChildren.get(rec.id) ?? []).flatMap((c) =>
+				marksUnder(c, seen),
+			),
+		];
+	};
+	for (const t of timeNodes) {
+		if (t.rec.type !== "motion") continue;
+		t.rec.targets = t.children.map((c) => ({ id: c.id, marks: marksUnder(c) }));
+		if (t.children.length === 0)
+			targetWarnings.push(`${t.type}(${t.rec.id}) has no target`);
+	}
 
 	const indexMap = new Map<string, number>();
 	nodes.forEach((n, i) => {
@@ -925,12 +989,18 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		}
 	}
 
+	const time = buildTime(nodes, timeNodes);
+
 	return {
 		nodes,
 		operators: ops,
 		colorOperators: colorOps,
 		colorSeed,
 		coloredIds: [...coloredIds],
-		warnings,
+		timeOperators: time.timeOperators,
+		timeSeed: time.timeSeed,
+		timedIds: time.timedIds,
+		timeChecks: time.timeChecks,
+		warnings: [...warnings, ...targetWarnings, ...time.warnings],
 	};
 }

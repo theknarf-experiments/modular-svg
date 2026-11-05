@@ -10,12 +10,69 @@ export type Scene = {
 	colorSeed?: number[];
 	/** ids whose solved color should be emitted into the result */
 	coloredIds?: string[];
+	/** operators over the time array (2 slots per node: start, duration) */
+	timeOperators?: LayoutOperator[];
+	/** initial start, duration per node (length nodes * 2) */
+	timeSeed?: number[];
+	/** ids whose solved time span should be emitted into the result */
+	timedIds?: string[];
 };
 
 export type LayoutResult = Record<
 	string,
-	{ x: number; y: number; width: number; height: number; fill?: string }
+	{
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		fill?: string;
+		/** solved start time in seconds, for timed nodes */
+		start?: number;
+		/** solved duration in seconds, for timed nodes */
+		duration?: number;
+	}
 >;
+
+type RelaxOptions = { maxIter: number; epsilon: number; damping: number };
+
+/** Damped fixed-point iteration: each operator pulls the state part of the way to its target. */
+export function relax(
+	values: Float64Array,
+	operators: readonly LayoutOperator[],
+	{ maxIter, epsilon, damping }: RelaxOptions,
+): void {
+	if (operators.length === 0) return;
+	const next = new Float64Array(values.length);
+	let residual = Infinity;
+	for (let iter = 0; iter < maxIter && residual > epsilon; iter++) {
+		residual = 0;
+		for (const op of operators) {
+			next.set(values);
+			op(values, next);
+			for (let i = 0; i < values.length; i++) {
+				const diff = next[i] - values[i];
+				const abs = Math.abs(diff);
+				if (abs > residual) residual = abs;
+				values[i] += damping * diff;
+			}
+		}
+	}
+}
+
+/** Solve only the time domain; the array holds start, duration per node. */
+export function solveTime(
+	scene: Scene,
+	opts?: Partial<RelaxOptions>,
+): Float64Array {
+	const times = new Float64Array(scene.timeSeed ?? []);
+	relax(times, scene.timeOperators ?? [], {
+		// Time feeds keyframe percentages, so it converges further than layout
+		maxIter: opts?.maxIter ?? 400,
+		epsilon: opts?.epsilon ?? 1e-9,
+		damping: opts?.damping ?? 0.5,
+	});
+	return times;
+}
 
 export function compileScene(scene: Scene): {
 	indexMap: Map<string, number>;
@@ -42,47 +99,17 @@ export function solveLayout(
 	opts?: { maxIter?: number; epsilon?: number; damping?: number },
 ): LayoutResult {
 	const { indexMap, cur, operators } = compileScene(scene);
-	const maxIter = opts?.maxIter ?? 100;
-	const epsilon = opts?.epsilon ?? 1e-6;
-	const lambda = opts?.damping ?? 0.5;
-	const next = new Float64Array(cur.length);
-	let iter = 0;
-	let residual = Infinity;
-	while (iter < maxIter && residual > epsilon) {
-		residual = 0;
-		for (const op of operators) {
-			next.set(cur);
-			op(cur, next);
-			for (let i = 0; i < cur.length; i++) {
-				const diff = next[i] - cur[i];
-				const abs = Math.abs(diff);
-				if (abs > residual) residual = abs;
-				cur[i] += lambda * diff;
-			}
-		}
-		iter++;
-	}
+	const relaxOpts = {
+		maxIter: opts?.maxIter ?? 100,
+		epsilon: opts?.epsilon ?? 1e-6,
+		damping: opts?.damping ?? 0.5,
+	};
+	relax(cur, operators, relaxOpts);
 	// Colors are solved by the same damped iteration over their own array
 	const colors = new Float64Array(scene.colorSeed ?? []);
-	if (scene.colorOperators?.length) {
-		const cNext = new Float64Array(colors.length);
-		let cIter = 0;
-		let cResidual = Infinity;
-		while (cIter < maxIter && cResidual > epsilon) {
-			cResidual = 0;
-			for (const op of scene.colorOperators) {
-				cNext.set(colors);
-				op(colors, cNext);
-				for (let i = 0; i < colors.length; i++) {
-					const diff = cNext[i] - colors[i];
-					const abs = Math.abs(diff);
-					if (abs > cResidual) cResidual = abs;
-					colors[i] += lambda * diff;
-				}
-			}
-			cIter++;
-		}
-	}
+	relax(colors, scene.colorOperators ?? [], relaxOpts);
+	const times = solveTime(scene, { damping: relaxOpts.damping });
+	const timed = new Set(scene.timedIds ?? []);
 	const colored = new Set(scene.coloredIds ?? []);
 
 	const result: LayoutResult = {};
@@ -98,7 +125,16 @@ export function solveLayout(
 						fill: hslToHex(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]),
 					}
 				: {}),
+			...(timed.has(n.id)
+				? {
+						start: roundTime(times[i * 2]),
+						duration: roundTime(times[i * 2 + 1]),
+					}
+				: {}),
 		};
 	});
 	return result;
 }
+
+// Keyframes are written in percentages; drop the damping residue
+const roundTime = (t: number): number => Math.round(t * 1e6) / 1e6 || 0;

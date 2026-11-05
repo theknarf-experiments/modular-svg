@@ -107,15 +107,27 @@ function serializeElement(element: SvgElement): string {
 	}
 
 	if (element.type === "path") {
-		return xml("path", {
-			id: element.id,
-			d: element.d,
-			transform: element.transform,
-			fill: element.fill,
-			stroke: element.stroke,
-			"stroke-width": element.strokeWidth,
-			...element.attrs,
-		});
+		return xml(
+			"path",
+			{
+				id: element.id,
+				d: element.d,
+				transform: element.transform,
+				fill: element.fill,
+				stroke: element.stroke,
+				"stroke-width": element.strokeWidth,
+				...element.attrs,
+			},
+			element.animate?.map((a) => xml("animate", a)),
+		);
+	}
+
+	if (element.type === "g") {
+		return xml(
+			"g",
+			{ id: element.id, ...element.attrs },
+			element.children.map(serializeElement),
+		);
 	}
 
 	if (element.type === "image") {
@@ -136,6 +148,7 @@ function serializeElement(element: SvgElement): string {
 // Serialize SVG AST to string
 export function serializeToSvg(ast: SvgDocument): string {
 	const body = ast.children.map(serializeElement);
+	if (ast.css) body.unshift(xml("style", {}, escapeXml(ast.css)));
 	return xml(
 		"svg",
 		{

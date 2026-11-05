@@ -1,4 +1,10 @@
 import {
+	type AnimationOptions,
+	compileAnimation,
+	type MarkAnimation,
+	type SmilAnimate,
+} from "./animation.ts";
+import {
 	addVec,
 	type BoundingBox2d,
 	boundingBoxFromPoints,
@@ -25,7 +31,16 @@ export type SvgElement =
 	| LineElement
 	| PolygonElement
 	| PathElement
-	| ImageElement;
+	| ImageElement
+	| GroupElement;
+
+/** A wrapper group; animation uses one per stacked motion. */
+export type GroupElement = {
+	type: "g";
+	id?: string;
+	attrs?: PassthroughAttrs;
+	children: SvgElement[];
+};
 
 export type RectElement = {
 	type: "rect";
@@ -98,6 +113,8 @@ export type PathElement = {
 	stroke?: string;
 	strokeWidth?: number;
 	attrs?: PassthroughAttrs;
+	/** SMIL animations rendered as children */
+	animate?: SmilAnimate[];
 };
 
 export type ImageElement = {
@@ -115,15 +132,25 @@ export type SvgDocument = {
 	width: number;
 	height: number;
 	children: SvgElement[];
+	/** stylesheet for animated scenes */
+	css?: string;
+	/** seconds the animation runs */
+	duration?: number;
 };
+
+/** Nodes that only exist in time take no space. */
+const isTimeOnly = (n: NodeRecord | undefined): boolean =>
+	n?.type === "motion" || n?.type === "timing";
 
 // Helper to compute layout bounds including stroke widths
 export function layoutBounds(
 	layout: LayoutResult,
 	nodes?: NodeRecord[],
 ): BoundingBox2d {
-	const boxes = Object.values(layout)
-		.map(boundingBoxFromRect)
+	const timeOnly = new Set(nodes?.filter(isTimeOnly).map((n) => n.id));
+	const boxes = Object.entries(layout)
+		.filter(([id]) => !timeOnly.has(id))
+		.map(([, box]) => boundingBoxFromRect(box))
 		.reduce<BoundingBox2d | undefined>(
 			(acc, bb) => (acc ? unionBoundingBox2d(acc, bb) : bb),
 			undefined,
@@ -501,6 +528,7 @@ export function layoutToAst(
 	layout: LayoutResult,
 	nodes?: NodeRecord[],
 	margin = 0,
+	opts: { animation?: AnimationOptions | false } = {},
 ): SvgDocument {
 	const byId = new Map<string, NodeRecord>();
 	if (nodes) for (const n of nodes) byId.set(n.id, n);
@@ -511,13 +539,17 @@ export function layoutToAst(
 	// Translate the layout so its bounds start at the margin; otherwise
 	// content with a positive minimum would sit outside the viewport.
 	const offset = vec(-min.x + margin, -min.y + margin);
+	const animation =
+		nodes && opts.animation !== false
+			? compileAnimation(layout, nodes, offset, opts.animation)
+			: undefined;
 
 	// Elements grouped per node so multi-element marks (arrows) sort together
 	const groups: { zOrder: number; elements: SvgElement[] }[] = [];
 
 	for (const [id, box] of Object.entries(layout)) {
 		const raw = byId.get(id);
-		if (!raw?.type) continue;
+		if (!raw?.type || isTimeOnly(raw)) continue;
 		// Solved constraint colors: strokes for connector marks, fills otherwise
 		const n = box.fill
 			? raw.type === "line" || raw.type === "curve" || raw.type === "arrow"
@@ -547,6 +579,8 @@ export function layoutToAst(
 		} else {
 			elements = [buildRect(id, box, n, offset)];
 		}
+		const animated = animation?.marks.get(id);
+		if (elements && animated) elements = animateElements(elements, animated);
 		if (elements) groups.push({ zOrder: n.zOrder ?? 0, elements });
 	}
 
@@ -563,5 +597,33 @@ export function layoutToAst(
 		width,
 		height,
 		children,
+		...(animation ? { css: animation.css, duration: animation.duration } : {}),
 	};
+}
+
+// The mark's own elements take its class, pins and SMIL; its shells wrap them
+function animateElements(
+	elements: SvgElement[],
+	animation: MarkAnimation,
+): SvgElement[] {
+	const own = elements.map((el): SvgElement => {
+		if (el.type === "g") return el;
+		const cls = [el.attrs?.class, animation.attrs.class]
+			.filter(Boolean)
+			.join(" ");
+		const attrs = {
+			...el.attrs,
+			...animation.attrs,
+			...(cls ? { class: cls } : {}),
+		};
+		return el.type === "path" && animation.smil.length > 0
+			? { ...el, attrs, animate: animation.smil }
+			: { ...el, attrs };
+	});
+	return animation.shells.reduceRight<SvgElement[]>(
+		(inner, shell) => [
+			{ type: "g", attrs: { class: shell.class }, children: inner },
+		],
+		own,
+	);
 }

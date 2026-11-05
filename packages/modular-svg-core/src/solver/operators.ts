@@ -1,4 +1,5 @@
 import { contrastingLightness, luminanceOfHsl } from "../color.ts";
+import type { MotionSpec } from "../motion.ts";
 
 export type LayoutOperator = (cur: Float64Array, next: Float64Array) => void;
 
@@ -24,7 +25,14 @@ export type NodeRecord = {
 		| "line"
 		| "curve"
 		| "path"
-		| "arc";
+		| "arc"
+		/** a motion node: animates its targets over its solved time span */
+		| "motion"
+		/** a time relation or beat: constrains time, renders nothing */
+		| "timing";
+	motion?: MotionSpec;
+	/** for motions: each targeted node and the marks it covers */
+	targets?: { id: string; marks: string[] }[];
 	r?: number;
 	/** inner radius for arc marks (donut sectors); 0 = full pie slice */
 	innerR?: number;

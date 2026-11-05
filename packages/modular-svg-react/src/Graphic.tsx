@@ -1,4 +1,5 @@
 import {
+	type AnimationOptions,
 	layoutToAst,
 	type SvgDocument,
 	type SvgElement,
@@ -12,11 +13,13 @@ import {
 	type ReconcilerRoot,
 } from "./reconciler";
 
-export interface GraphicProps extends React.HTMLAttributes<HTMLDivElement> {
+export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
 	children?: React.ReactNode;
 	margin?: number;
 	title?: string;
-}
+	/** playback of motions in the scene (duration, loop, reduced-motion still); false renders them still */
+	animation?: AnimationOptions | false;
+};
 
 // React DOM wants camelCase SVG attribute names (fontSize, strokeDasharray);
 // scene attrs use the SVG spellings. data-* and aria-* stay as-is.
@@ -26,7 +29,13 @@ function reactifyAttrs(
 	if (!attrs) return undefined;
 	const out: Record<string, string | number> = {};
 	for (const [k, v] of Object.entries(attrs)) {
-		if (k.startsWith("data-") || k.startsWith("aria-") || !k.includes("-")) {
+		if (k === "class") {
+			out.className = v;
+		} else if (
+			k.startsWith("data-") ||
+			k.startsWith("aria-") ||
+			!k.includes("-")
+		) {
 			out[k] = v;
 		} else {
 			out[k.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())] = v;
@@ -134,7 +143,24 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 				strokeWidth={element.strokeWidth}
 				{...attrs}
 				{...handlers}
-			/>
+			>
+				{element.animate?.map((a) => (
+					<animate key={a.attributeName} {...reactifyAttrs(a)} />
+				))}
+			</path>
+		);
+	}
+
+	if (element.type === "g") {
+		return (
+			<g id={element.id} {...attrs}>
+				{element.children.map((child, index) => (
+					<SvgElementRenderer
+						key={child.id ?? `element-${index}`}
+						element={child}
+					/>
+				))}
+			</g>
 		);
 	}
 
@@ -157,7 +183,13 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 }
 
 // Internal Graphic component that uses context bridge
-function GraphicImpl({ children, margin = 0, title, ...props }: GraphicProps) {
+function GraphicImpl({
+	children,
+	margin = 0,
+	title,
+	animation,
+	...props
+}: GraphicProps) {
 	const rootRef = React.useRef<ReconcilerRoot | null>(null);
 	const [ast, setAst] = React.useState<SvgDocument | null>(null);
 
@@ -181,7 +213,7 @@ function GraphicImpl({ children, margin = 0, title, ...props }: GraphicProps) {
 			// Only render if we have nodes
 			if (scene.nodes.length > 0) {
 				const layout = solveLayout(scene);
-				const svgAst = layoutToAst(layout, scene.nodes, margin);
+				const svgAst = layoutToAst(layout, scene.nodes, margin, { animation });
 				setAst(svgAst);
 			} else {
 				setAst(null);
@@ -189,7 +221,7 @@ function GraphicImpl({ children, margin = 0, title, ...props }: GraphicProps) {
 		}
 
 		render();
-	}, [children, margin, ContextBridge]);
+	}, [children, margin, animation, ContextBridge]);
 
 	// Cleanup on unmount
 	React.useEffect(() => {
@@ -214,6 +246,7 @@ function GraphicImpl({ children, margin = 0, title, ...props }: GraphicProps) {
 				aria-label={title || "Modular SVG diagram"}
 			>
 				{title && <title>{title}</title>}
+				{ast.css && <style>{ast.css}</style>}
 				{ast.children.map((element, index) => (
 					<SvgElementRenderer
 						key={element.id ?? `element-${index}`}
