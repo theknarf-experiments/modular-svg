@@ -6,7 +6,7 @@
 		"test": "pnpm -r run test && pnpm test:root",
 		"test:root": "vitest run",
 		"lint": "biome check --error-on-warnings",
-		"typecheck": "pnpm -r run typecheck"
+		"typecheck": "pnpm -r run typecheck && tsc --noEmit"
 	},
 	"license": "MIT",
 	"devDependencies": {

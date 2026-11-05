@@ -18,5 +18,7 @@
 		"strictNullChecks": true,
 		"noImplicitThis": true,
 		"skipLibCheck": true
-	}
+	},
+	// The repo root's own TypeScript; packages set their own include
+	"include": ["bin", "examples", "vitest.config.ts"]
 }
