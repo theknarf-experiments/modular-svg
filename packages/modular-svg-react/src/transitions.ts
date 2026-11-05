@@ -9,6 +9,8 @@ export type TransitionOptions = {
 	/** seconds a change takes (default 0.3) */
 	duration?: number;
 	ease?: Ease;
+	/** fade marks in when they appear and out when they go (default true) */
+	fade?: boolean;
 };
 
 /** One attribute moving from its previous solved value to the new one. */
@@ -77,12 +79,27 @@ export function diffTransitions(
 	before: SvgDocument | null,
 	after: SvgDocument,
 	live?: (id: string, attribute: string) => number | undefined,
+	opts: { fade?: boolean } = {},
 ): Map<string, Transition[]> {
 	const old = elementsById(before);
 	const out = new Map<string, Transition[]>();
+	const fade = opts.fade ?? true;
 	for (const [id, el] of elementsById(after)) {
 		const prev = old.get(id);
-		if (!prev || prev.type !== el.type) continue;
+		if (!prev) {
+			// New marks fade up to their own opacity
+			if (fade && el.type !== "g")
+				out.set(id, [
+					{
+						attributeName: "opacity",
+						from: "0",
+						to: String(el.attrs?.opacity ?? 1),
+						kind: "attribute",
+					},
+				]);
+			continue;
+		}
+		if (prev.type !== el.type) continue;
 		const a = attributesOf(prev);
 		const b = attributesOf(el);
 		const changes: Transition[] = [];
@@ -134,4 +151,31 @@ export function timingAttributes(
 	if (ease.kind === "linear") return { ...timing, calcMode: "linear" };
 	if (ease.kind === "steps") return { ...timing, calcMode: "discrete" };
 	return { ...timing, calcMode: "spline", keySplines: ease.points.join(" ") };
+}
+
+/**
+ * Marks of the previous document that the new one no longer has, with a
+ * fade out each: rendered on top until the transition ends.
+ */
+export function exiting(
+	before: SvgDocument | null,
+	after: SvgDocument,
+): { elements: SvgElement[]; fades: Map<string, Transition[]> } {
+	const now = elementsById(after);
+	const elements: SvgElement[] = [];
+	const fades = new Map<string, Transition[]>();
+	for (const [id, el] of elementsById(before)) {
+		if (now.has(id) || el.type === "g") continue;
+		// Its own SMIL would keep morphing a mark that is on its way out
+		elements.push(el.type === "path" ? { ...el, animate: undefined } : el);
+		fades.set(id, [
+			{
+				attributeName: "opacity",
+				from: String(el.attrs?.opacity ?? 1),
+				to: "0",
+				kind: "attribute",
+			},
+		]);
+	}
+	return { elements, fades };
 }

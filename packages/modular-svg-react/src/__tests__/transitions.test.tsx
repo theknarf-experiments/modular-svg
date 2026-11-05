@@ -2,7 +2,7 @@ import type { SvgDocument } from "@modular-svg/core";
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Graphic } from "../Graphic";
-import { diffTransitions, timingAttributes } from "../transitions";
+import { diffTransitions, exiting, timingAttributes } from "../transitions";
 
 const doc = (children: SvgDocument["children"]): SvgDocument => ({
 	width: 100,
@@ -21,7 +21,10 @@ describe("diffTransitions", () => {
 			{ type: "rect", id: "new", x: 0, y: 0, width: 1, height: 1 },
 		]);
 		const t = diffTransitions(before, after);
-		expect([...t.keys()]).toEqual(["a"]);
+		expect([...t.keys()]).toEqual(["a", "new"]);
+		expect(t.get("new")).toEqual([
+			{ attributeName: "opacity", from: "0", to: "1", kind: "attribute" },
+		]);
 		expect(t.get("a")).toEqual([
 			{ attributeName: "cx", from: "10", to: "40", kind: "attribute" },
 			{ attributeName: "fill", from: "#f00", to: "#00f", kind: "attribute" },
@@ -143,5 +146,73 @@ describe("reduced motion", () => {
 		} finally {
 			globalThis.matchMedia = original;
 		}
+	});
+});
+
+describe("appearing and leaving", () => {
+	const before = doc([
+		{ type: "circle", id: "stay", cx: 0, cy: 0, r: 1 },
+		{ type: "path", id: "gone", d: "M0 0 L1 1", animate: [] },
+	]);
+	const after = doc([
+		{ type: "circle", id: "stay", cx: 0, cy: 0, r: 1 },
+		{
+			type: "rect",
+			id: "fresh",
+			x: 0,
+			y: 0,
+			width: 1,
+			height: 1,
+			attrs: { opacity: 0.5 },
+		},
+	]);
+
+	it("fades new marks up to their own opacity, unless fading is off", () => {
+		expect(diffTransitions(before, after).get("fresh")?.[0]).toMatchObject({
+			from: "0",
+			to: "0.5",
+		});
+		expect(
+			diffTransitions(before, after, undefined, { fade: false }).has("fresh"),
+		).toBe(false);
+	});
+
+	it("keeps removed marks around, without their own SMIL, to fade out", () => {
+		const { elements, fades } = exiting(before, after);
+		expect(elements.map((e) => e.id)).toEqual(["gone"]);
+		expect(elements[0].type === "path" && elements[0].animate).toBeUndefined();
+		expect(fades.get("gone")?.[0]).toMatchObject({
+			attributeName: "opacity",
+			to: "0",
+		});
+	});
+});
+
+describe("Graphic leaving marks", () => {
+	it("renders a removed mark until its fade ends", async () => {
+		const scene = (both: boolean) => (
+			<Graphic transition={{ duration: 0.1 }}>
+				<stackH>
+					<circle key="a" r={5} />
+					{both && <circle key="b" r={5} />}
+				</stackH>
+			</Graphic>
+		);
+		const { container, rerender } = render(scene(true));
+		await waitFor(() =>
+			expect(container.querySelector("circle#b")).toBeTruthy(),
+		);
+		rerender(scene(false));
+		await waitFor(() =>
+			expect(
+				container
+					.querySelector("circle#b animate")
+					?.getAttribute("attributeName"),
+			).toBe("opacity"),
+		);
+		await waitFor(
+			() => expect(container.querySelector("circle#b")).toBeNull(),
+			{ timeout: 1000 },
+		);
 	});
 });

@@ -152,7 +152,7 @@ export const pages: Page[] = [
 			{
 				title: "Transitions",
 				description:
-					"With transition, every re-solve tweens marks from their previous solved geometry and color: flip the stack, rotate the order or recolor, and boxes slide, arrows reshape and fills blend instead of jumping",
+					"With transition, every re-solve tweens marks from their previous solved geometry and color: flip the stack, rotate the order or recolor, and boxes slide, arrows reshape and fills blend instead of jumping; added steps fade in and removed ones fade out",
 				code: transitionExampleCode,
 				element: <TransitionExample />,
 			},

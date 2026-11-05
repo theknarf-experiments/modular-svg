@@ -16,6 +16,7 @@ import {
 } from "./reconciler";
 import {
 	diffTransitions,
+	exiting,
 	type Transition,
 	type TransitionOptions,
 	timingAttributes,
@@ -296,7 +297,11 @@ function GraphicImpl({
 		byId: Map<string, Transition[]>;
 		timing: Record<string, string>;
 		generation: number;
+		/** marks that are gone from the solution but still fading out */
+		leaving: SvgElement[];
 	} | null>(null);
+	// Where the animation clock was when the schedule changed, to carry on from
+	const resumeRef = React.useRef<number | undefined>(undefined);
 	const committedRef = React.useRef<SvgDocument | null>(null);
 	// While marks tween, the canvas keeps room for where they come from
 	const [room, setRoom] = React.useState<{
@@ -355,6 +360,16 @@ function GraphicImpl({
 				if (solved.warnings.length > 0 && !isProduction())
 					console.warn(`modular-svg: ${solved.warnings.join("\n")}`);
 				solvedRef.current = solved;
+				// A new schedule restarts every CSS animation; remember the clock
+				// so the timeline carries on instead of jumping back to zero
+				const previous = committedRef.current;
+				resumeRef.current =
+					previous?.css &&
+					svgAst.css &&
+					previous.css !== svgAst.css &&
+					svgRef.current
+						? animationTime(svgRef.current)
+						: undefined;
 				const tween = transitionRef.current;
 				if (tween && committedRef.current && !prefersReducedMotion()) {
 					const options = tween === true ? {} : tween;
@@ -364,8 +379,10 @@ function GraphicImpl({
 						width: Math.max(prev.width, svgAst.width),
 						height: Math.max(prev.height, svgAst.height),
 					});
-					setTweens((prev) => ({
-						byId: diffTransitions(committedRef.current, svgAst, (id, name) => {
+					const byId = diffTransitions(
+						prev,
+						svgAst,
+						(id, name) => {
 							// Mid-transition, start from what is on screen, not the old target
 							const el = svg?.querySelector(`[id="${id}"]`) as
 								| (SVGElement &
@@ -373,9 +390,19 @@ function GraphicImpl({
 								| null;
 							const value = el?.[name]?.animVal?.value;
 							return typeof value === "number" ? value : undefined;
-						}),
+						},
+						{ fade: options.fade },
+					);
+					const gone =
+						options.fade === false
+							? { elements: [], fades: new Map<string, Transition[]>() }
+							: exiting(prev, svgAst);
+					for (const [id, fade] of gone.fades) byId.set(id, fade);
+					setTweens((last) => ({
+						byId,
 						timing: timingAttributes(options),
-						generation: (prev?.generation ?? 0) + 1,
+						generation: (last?.generation ?? 0) + 1,
+						leaving: gone.elements,
 					}));
 				} else {
 					// Frozen tweens from an earlier change would hold their old targets
@@ -405,17 +432,33 @@ function GraphicImpl({
 		if (!room) return;
 		const options = transitionRef.current === true ? {} : transitionRef.current;
 		const timer = setTimeout(
-			() => setRoom(null),
+			() => {
+				setRoom(null);
+				// Faded-out marks are done; frozen tweens on the rest stay harmless
+				setTweens((last) =>
+					last && last.leaving.length > 0 ? { ...last, leaving: [] } : last,
+				);
+			},
 			((options || undefined)?.duration ?? 0.3) * 1000,
 		);
 		return () => clearTimeout(timer);
 	}, [room]);
 
-	// Start the new transitions once their elements are in the DOM
+	// Continue a changed schedule where the old one was, then start the new
+	// transitions (after the seek, so they begin at the new current time)
 	useIsomorphicLayoutEffect(() => {
 		committedRef.current = ast;
 		const svg = svgRef.current;
-		if (!svg || !tweens) return;
+		if (!svg) return;
+		const resume = resumeRef.current;
+		resumeRef.current = undefined;
+		if (resume !== undefined && playhead === undefined) {
+			if (typeof svg.getAnimations === "function")
+				for (const a of svg.getAnimations({ subtree: true }))
+					a.currentTime = resume * 1000;
+			svg.setCurrentTime?.(resume);
+		}
+		if (!tweens) return;
 		for (const a of svg.querySelectorAll("[data-transition]")) {
 			(a as SVGAnimationElement).beginElement?.();
 		}
@@ -456,6 +499,12 @@ function GraphicImpl({
 					{ast.children.map((element, index) => (
 						<SvgElementRenderer
 							key={element.id ?? `element-${index}`}
+							element={element}
+						/>
+					))}
+					{tweens?.leaving.map((element, index) => (
+						<SvgElementRenderer
+							key={`leaving-${element.id ?? index}`}
 							element={element}
 						/>
 					))}
