@@ -175,36 +175,161 @@ export function stretchOp(
 }
 
 /**
+ * A tempo change: the period scales by `ratio` linearly over `ramp` beats
+ * (ritardando when ratio > 1, accelerando when < 1), then holds.
+ */
+export type Tempo = { ratio: number; ramp: number };
+
+/**
+ * Musical time for a beat: `beats(t)` counts beats since the downbeat (as a
+ * real number) and `time(u)` maps back, following any tempo ramp. Uniform
+ * beats are the linear case. Before the downbeat the first period applies.
+ */
+export function beatWarp(
+	origin: number,
+	period: number,
+	tempo?: Tempo,
+): { time: (u: number) => number; beats: (t: number) => number } {
+	const n = tempo && tempo.ramp > 0 ? tempo.ramp : 0;
+	const p1 = period * (n > 0 ? (tempo?.ratio ?? 1) : 1);
+	// Over the ramp the period grows linearly, so elapsed time is quadratic
+	const a = n > 0 ? (p1 - period) / (2 * n) : 0;
+	const rampEnd = period * n + a * n * n;
+	return {
+		time: (u) => {
+			if (u <= 0) return origin + period * u;
+			if (u <= n) return origin + period * u + a * u * u;
+			return origin + rampEnd + p1 * (u - n);
+		},
+		beats: (t) => {
+			const dt = t - origin;
+			if (dt <= 0) return dt / period;
+			if (dt <= rampEnd) {
+				if (a === 0) return dt / period;
+				return (
+					(-period + Math.sqrt(Math.max(0, period * period + 4 * a * dt))) /
+					(2 * a)
+				);
+			}
+			return n + (dt - rampEnd) / p1;
+		},
+	};
+}
+
+/** Where on the beat grid things may land. */
+export type BeatGrid = {
+	every: number;
+	/** steps per `every` beats (2 = eighths, 3 = triplets) */
+	division: number;
+	/** grid shift in steps (0.5 = offbeat) */
+	offset: number;
+	/** where every second step falls within its pair; 0.5 is straight, 2/3 a triplet swing */
+	swing: number;
+	tempo?: Tempo;
+};
+
+/**
+ * Snap a time onto the grid of a beat whose downbeat is `origin` and first
+ * period `period`. `next` picks the first grid point at or after t.
+ */
+export function snapToGrid(
+	t: number,
+	origin: number,
+	period: number,
+	grid: BeatGrid,
+	snap: "next" | "nearest",
+): number {
+	const warp = beatWarp(origin, period, grid.tempo);
+	const step = grid.every / grid.division;
+	const point = (k: number): number => {
+		const pair = Math.floor(k / 2);
+		const odd = k - 2 * pair;
+		return (2 * pair + (odd ? 2 * grid.swing : 0) + grid.offset) * step;
+	};
+	const u = warp.beats(t);
+	const k0 = Math.floor(u / step - grid.offset);
+	let best: number | undefined;
+	for (let k = k0 - 2; k <= k0 + 3; k++) {
+		const p = point(k);
+		if (snap === "next") {
+			// Tolerate float noise so a point sitting on the grid stays on it
+			if (p >= u - 1e-6 && (best === undefined || p < best)) best = p;
+		} else if (best === undefined || Math.abs(p - u) < Math.abs(best - u))
+			best = p;
+	}
+	return warp.time(best ?? u);
+}
+
+/**
  * Snap onto a beat grid (the beat node's start is the downbeat, its duration
- * the period). The grid is every `every` beats, split into `division` steps
- * and shifted by `offset` steps (0.5 = offbeat). `align: "end"` lands the end
- * on the grid instead of the start, like a pickup into the beat. `next` only
- * pushes later, so it composes with Before/After; `nearest` may pull earlier.
+ * the first period). `align: "end"` lands the end on the grid instead of the
+ * start, like a pickup into the beat. `next` only pushes later, so it
+ * composes with Before/After; `nearest` may pull earlier.
  */
 export function onBeatOp(
 	beat: number,
 	children: readonly TimeChild[],
-	opts: {
-		every: number;
-		division: number;
-		offset: number;
+	opts: BeatGrid & {
 		align: "start" | "end";
 		snap: "next" | "nearest";
 		movable: readonly boolean[];
 	},
 ): LayoutOperator {
 	return (cur, next) => {
-		const period = (cur[beat + 1] * opts.every) / opts.division;
-		if (!(period > 0)) return;
-		const origin = cur[beat] + opts.offset * period;
+		if (!(cur[beat + 1] > 0)) return;
 		children.forEach((c, i) => {
 			if (!opts.movable[i]) return;
 			const at = coord(cur, c.base, opts.align);
-			const k = (at - origin) / period;
-			// Tolerate float noise so a point sitting on the grid stays on it
-			const n = opts.snap === "next" ? Math.ceil(k - 1e-6) : Math.round(k);
-			shift(cur, next, c, origin + n * period - at);
+			const to = snapToGrid(at, cur[beat], cur[beat + 1], opts, opts.snap);
+			shift(cur, next, c, to - at);
 		});
+	};
+}
+
+/** Members last `beats` beats from where they start, following the tempo. */
+export function beatLengthOp(
+	beat: number,
+	children: readonly number[],
+	beats: number,
+	tempo?: Tempo,
+): LayoutOperator {
+	return (cur, next) => {
+		if (!(cur[beat + 1] > 0)) return;
+		const warp = beatWarp(cur[beat], cur[beat + 1], tempo);
+		for (const c of children) {
+			next[c + 1] = warp.time(warp.beats(cur[c]) + beats) - cur[c];
+		}
+	};
+}
+
+/** `of[0]` beats of the first take as long as `of[1]` of the second, from one downbeat. */
+export function polyrhythmOp(
+	a: number,
+	b: number,
+	of: readonly [number, number],
+): LayoutOperator {
+	return (cur, next) => {
+		next[b] = cur[a];
+		next[b + 1] = (cur[a + 1] * of[0]) / of[1];
+	};
+}
+
+/** A fermata spans its members and holds `hold` seconds past their end. */
+export function holdOp(
+	children: readonly number[],
+	container: number,
+	hold: number,
+): LayoutOperator {
+	return (cur, next) => {
+		if (children.length === 0) return;
+		let lo = Infinity;
+		let hi = -Infinity;
+		for (const c of children) {
+			lo = Math.min(lo, cur[c]);
+			hi = Math.max(hi, end(cur, c));
+		}
+		next[container] = lo;
+		next[container + 1] = hi - lo + hold;
 	};
 }
 

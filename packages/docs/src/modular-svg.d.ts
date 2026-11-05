@@ -230,7 +230,33 @@ declare module "react" {
 				children?: React.ReactNode;
 			};
 			at: { key?: React.Key; time: number; children?: React.ReactNode };
-			beat: { key?: React.Key; bpm?: number; period?: number; offset?: number };
+			beat: {
+				key?: React.Key;
+				bpm?: number;
+				period?: number;
+				offset?: number;
+				/** tempo change: reach toBpm (or toPeriod) over `ramp` beats */
+				toBpm?: number;
+				toPeriod?: number;
+				ramp?: number;
+			};
+			/** a span on bar lines: `count` bars of `beats` beats of the beat it refs */
+			bar: {
+				key?: React.Key;
+				beats?: number;
+				count?: number;
+				children?: React.ReactNode;
+			};
+			/** an empty span: a silence to sequence */
+			rest: { key?: React.Key; over?: number; at?: number };
+			/** spans its members plus a hold */
+			fermata: { key?: React.Key; hold?: number; children?: React.ReactNode };
+			/** of[0] beats of the first in the time of of[1] beats of the second */
+			polyrhythm: {
+				key?: React.Key;
+				of?: [number, number];
+				children?: React.ReactNode;
+			};
 			onBeat: {
 				key?: React.Key;
 				every?: number;
@@ -238,6 +264,8 @@ declare module "react" {
 				division?: number;
 				/** shift the grid by steps (0.5 = offbeat) */
 				offset?: number;
+				/** where every second step falls in its pair (0.5 straight, 2/3 swung) */
+				swing?: number;
 				/** end lands on the grid: a pickup */
 				align?: "start" | "end";
 				snap?: "next" | "nearest";

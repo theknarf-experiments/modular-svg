@@ -208,3 +208,19 @@ describe("Travel", () => {
 		);
 	});
 });
+
+describe("scene length", () => {
+	it("runs to the end of a trailing hold", () => {
+		const { ast } = render([
+			box("a"),
+			on("Enter", "in", "a", { over: 1 }),
+			{
+				type: "Fermata",
+				id: "held",
+				props: { hold: 2 },
+				children: [ref("in")],
+			},
+		]);
+		expect(ast.duration).toBe(3);
+	});
+});

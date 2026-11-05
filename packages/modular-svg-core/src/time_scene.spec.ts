@@ -279,4 +279,144 @@ describe("time relations over refs", () => {
 		expect(gaps[0]).toBeGreaterThan(gaps[1]);
 		expect(span("z")[0]).toBeCloseTo(1, 6);
 	});
+
+	it("makes bars spans you can sequence and fit things into", () => {
+		const { span, warnings } = solve([
+			dot("a"),
+			{ type: "Beat", id: "beat", props: { bpm: 120 } },
+			{
+				type: "Bar",
+				id: "intro",
+				props: { count: 2 },
+				children: [ref("beat")],
+			},
+			{ type: "Bar", id: "verse", children: [ref("beat")] },
+			{ type: "Sequence", children: [ref("intro"), ref("verse")] },
+			motion("Enter", "x", "a"),
+			{ type: "Stretch", children: [ref("verse"), ref("x")] },
+		]);
+		expect(span("intro")).toEqual([0, 4]);
+		expect(span("verse")).toEqual([4, 2]);
+		expect(span("x")).toEqual([4, 2]);
+		expect(warnings).toEqual([]);
+	});
+
+	it("bars land on bar lines", () => {
+		const { span } = solve([
+			dot("a"),
+			{ type: "Beat", id: "beat", props: { bpm: 60 } },
+			motion("Enter", "x", "a", { over: 1.5 }),
+			{ type: "Bar", id: "next", props: { beats: 3 }, children: [ref("beat")] },
+			{ type: "Before", children: [ref("x"), ref("next")] },
+		]);
+		expect(span("next")).toEqual([3, 3]);
+	});
+
+	it("swings offbeats and follows a ritardando", () => {
+		const { span, warnings } = solve([
+			dot("a"),
+			dot("b"),
+			{ type: "Beat", id: "swung", props: { bpm: 60 } },
+			{ type: "Beat", id: "slowing", props: { bpm: 60, toBpm: 30, ramp: 4 } },
+			motion("Enter", "x", "a", { at: 0.55 }),
+			motion("Enter", "y", "b", { at: 2.1 }),
+			{
+				type: "OnBeat",
+				props: { division: 2, swing: 2 / 3 },
+				children: [ref("swung"), ref("x")],
+			},
+			{ type: "OnBeat", children: [ref("slowing"), ref("y")] },
+		]);
+		// x and y are pinned by at, so they stay and the checks say so
+		expect(warnings.join()).toMatch(/x is off the beat/);
+		expect(span("y")[0]).toBe(2.1);
+
+		const free = solve([
+			dot("a"),
+			dot("b"),
+			{ type: "Beat", id: "swung", props: { bpm: 60 } },
+			{ type: "Beat", id: "slowing", props: { bpm: 60, toBpm: 30, ramp: 4 } },
+			motion("Enter", "x", "a"),
+			motion("Enter", "y", "b"),
+			motion("Enter", "z", "b"),
+			{ type: "Before", props: { gap: 0.05 }, children: [ref("x"), ref("z")] },
+			{
+				type: "OnBeat",
+				props: { division: 2, swing: 2 / 3 },
+				children: [ref("swung"), ref("z")],
+			},
+			{
+				type: "Stretch",
+				props: { beats: 1 },
+				children: [ref("slowing"), ref("y")],
+			},
+		]);
+		expect(free.span("z")[0]).toBeCloseTo(2 / 3, 6);
+		// one beat from the downbeat of a slowing tempo lasts longer than the first period
+		expect(free.span("y")[1]).toBe(1.125);
+		expect(free.warnings).toEqual([]);
+	});
+
+	it("rests and fermatas hold time without touching what they hold", () => {
+		const { span } = solve([
+			dot("a"),
+			dot("b"),
+			motion("Enter", "x", "a", { over: 1 }),
+			motion("Enter", "y", "b", { over: 1 }),
+			{ type: "Fermata", id: "held", props: { hold: 2 }, children: [ref("x")] },
+			{ type: "Rest", id: "breath", props: { over: 0.5 } },
+			{ type: "Sequence", children: [ref("held"), ref("breath"), ref("y")] },
+		]);
+		expect(span("x")).toEqual([0, 1]);
+		expect(span("held")).toEqual([0, 3]);
+		expect(span("y")[0]).toBe(3.5);
+	});
+
+	it("locks beats into a polyrhythm", () => {
+		const { span } = solve([
+			{ type: "Beat", id: "three", props: { bpm: 90, offset: 1 } },
+			{ type: "Beat", id: "two", props: { bpm: 60 } },
+			{
+				type: "Polyrhythm",
+				props: { of: [3, 2] },
+				children: [ref("three"), ref("two")],
+			},
+		]);
+		expect(span("two")[0]).toBe(1);
+		expect(span("two")[1]).toBeCloseTo((60 / 90) * 1.5, 6);
+	});
+
+	it("warns when Legato and Sequence tie the same pair", () => {
+		const { warnings } = solve([
+			dot("a"),
+			dot("b"),
+			motion("Enter", "x", "a"),
+			motion("Enter", "y", "b"),
+			{ type: "Sequence", children: [ref("x"), ref("y")] },
+			{ type: "Legato", children: [ref("x"), ref("y")] },
+		]);
+		expect(warnings.join()).toMatch(
+			/both tie x to y: the length of x is undetermined/,
+		);
+	});
+
+	it("places a beat without an offset, so a tempo can start with its section", () => {
+		const { span } = solve([
+			dot("a"),
+			{ type: "Beat", id: "beat", props: { bpm: 120 } },
+			{ type: "Bar", id: "intro", children: [ref("beat")] },
+			{ type: "Beat", id: "faster", props: { bpm: 120, toBpm: 240, ramp: 4 } },
+			{ type: "Sequence", children: [ref("intro"), ref("faster")] },
+			motion("Enter", "x", "a", { over: 0.1 }),
+			{
+				type: "Stretch",
+				props: { beats: 4 },
+				children: [ref("faster"), ref("x")],
+			},
+			{ type: "Sequence", children: [ref("intro"), ref("x")] },
+		]);
+		expect(span("faster")[0]).toBe(2);
+		// four beats ramping 0.5s -> 0.25s take 0.5*4 - 0.25*4/2 = 1.5s
+		expect(span("x")).toEqual([2, 1.5]);
+	});
 });

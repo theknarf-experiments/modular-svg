@@ -5,10 +5,14 @@ import {
 	afterOp,
 	articulateOp,
 	atOp,
+	beatLengthOp,
+	beatWarp,
 	beforeOp,
 	duringOp,
+	holdOp,
 	lengthOp,
 	onBeatOp,
+	polyrhythmOp,
 	sameTimeOp,
 	sequenceOp,
 	staggerOp,
@@ -185,6 +189,7 @@ describe("time operators", () => {
 				onBeatOp(0, [leaf(1), leaf(2)], {
 					every: 1,
 					division: 1,
+					swing: 0.5,
 					offset: 0,
 					align: "start",
 					snap: "next",
@@ -203,6 +208,7 @@ describe("time operators", () => {
 				onBeatOp(0, [leaf(1)], {
 					every: 4,
 					division: 1,
+					swing: 0.5,
 					offset: 0,
 					align: "start",
 					snap: "next",
@@ -220,6 +226,7 @@ describe("time operators", () => {
 				onBeatOp(0, [leaf(1)], {
 					every: 1,
 					division: 1,
+					swing: 0.5,
 					offset: 0,
 					align: "start",
 					snap: "nearest",
@@ -242,6 +249,7 @@ describe("time operators", () => {
 				onBeatOp(0, [leaf(2)], {
 					every: 1,
 					division: 1,
+					swing: 0.5,
 					offset: 0,
 					align: "start",
 					snap: "next",
@@ -257,6 +265,7 @@ describe("musical time operators", () => {
 	const grid = {
 		every: 1,
 		division: 1,
+		swing: 0.5,
 		offset: 0,
 		align: "start" as const,
 		snap: "next" as const,
@@ -334,5 +343,90 @@ describe("musical time operators", () => {
 			],
 		);
 		expect(r.map(([s]) => s)).toEqual([0, 0.75, 1]);
+	});
+});
+
+describe("more musical time", () => {
+	const grid = {
+		every: 1,
+		division: 1,
+		offset: 0,
+		swing: 0.5,
+		align: "start" as const,
+		snap: "next" as const,
+		movable: [true],
+	};
+
+	it("swings every second step late", () => {
+		// eighths with a 2:1 swing: the "and" falls at 2/3 of the beat
+		const r = solve(
+			[
+				[0, 1],
+				[0.55, 1],
+			],
+			[onBeatOp(0, [leaf(1)], { ...grid, division: 2, swing: 2 / 3 })],
+		);
+		expect(r[1][0]).toBeCloseTo(2 / 3, 6);
+	});
+
+	it("follows a tempo ramp: a ritardando stretches later beats", () => {
+		// period 1 slowing to 2 over 4 beats: beat k lands at k + k^2/8
+		const warp = beatWarp(0, 1, { ratio: 2, ramp: 4 });
+		expect(warp.time(2)).toBe(2.5);
+		expect(warp.time(4)).toBe(6);
+		expect(warp.time(5)).toBe(8);
+		expect(warp.beats(warp.time(3.3))).toBeCloseTo(3.3, 9);
+		const r = solve(
+			[
+				[0, 1],
+				[2.1, 1],
+			],
+			[onBeatOp(0, [leaf(1)], { ...grid, tempo: { ratio: 2, ramp: 4 } })],
+		);
+		expect(r[1][0]).toBe(2.5);
+	});
+
+	it("measures beat lengths in the local tempo", () => {
+		// beat 4 lands at 6s, where the ramp has ended: one beat is the final period
+		const after = solve(
+			[
+				[0, 1],
+				[6, 0],
+			],
+			[beatLengthOp(0, [2], 1, { ratio: 2, ramp: 4 })],
+		);
+		expect(after[1]).toEqual([6, 2]);
+		// from the downbeat, one beat spans 1 + 1/8 as the period grows
+		const during = solve(
+			[
+				[0, 1],
+				[0, 0],
+			],
+			[beatLengthOp(0, [2], 1, { ratio: 2, ramp: 4 })],
+		);
+		expect(during[1]).toEqual([0, 1.125]);
+	});
+
+	it("locks two beats into a polyrhythm", () => {
+		const r = solve(
+			[
+				[0.5, 0.6],
+				[0, 1],
+			],
+			[polyrhythmOp(0, 2, [3, 2])],
+		);
+		expect(r[1][0]).toBe(0.5);
+		expect(r[1][1]).toBeCloseTo(0.9, 9);
+	});
+
+	it("holds a fermata past its members", () => {
+		const r = solve(
+			[
+				[0, 0],
+				[1, 2],
+			],
+			[holdOp([2], 0, 0.5)],
+		);
+		expect(r[0]).toEqual([1, 2.5]);
 	});
 });

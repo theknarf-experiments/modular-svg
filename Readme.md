@@ -52,7 +52,14 @@ relations (a relation spans its members), and moving one carries its contents:
 | `Stretch` | the rest take the first's span; with `beats`, only its length times `beats` (note values) |
 | `At time` | pin starts |
 | `Legato`, `Staccato fraction` | each lasts until the next starts (or that fraction of it) |
-| `Beat bpm\|period offset` + `OnBeat every division offset align snap` | a beat grid and starts snapped onto it; `division` subdivides (3 = triplets), `offset={0.5}` is the offbeat, `align="end"` lands the end on the beat (a pickup) |
+| `Beat bpm\|period offset toBpm ramp` | a beat; `toBpm` over `ramp` beats makes a ritardando or accelerando that every beat relation follows |
+| `OnBeat every division offset swing align snap` | snap onto the beat grid: `division` subdivides (3 = triplets), `offset={0.5}` is the offbeat, `swing={2/3}` swings every second step, `align="end"` lands the end on the grid (a pickup) |
+| `Bar beats count` | a span on bar lines lasting `count` bars, to sequence sections or fit things into |
+| `Rest over`, `Fermata hold` | an empty span; a span of its members plus a hold |
+| `Polyrhythm of` | `of={[3, 2]}`: three of the first beat in the time of two of the second |
+
+A `Sequence` and a `Legato` over the same pair are circular (each sets the
+other's input), which warns: place legato members with `Stagger`, `OnBeat` or `At`.
 
 As with layout, a relation anchors on its first member whose start is already
 fixed (pinned by `at`/`At`/`Beat`, or placed by an earlier relation) and moves

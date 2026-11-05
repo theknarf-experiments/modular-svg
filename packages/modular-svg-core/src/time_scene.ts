@@ -12,14 +12,20 @@ import {
 	afterOp,
 	articulateOp,
 	atOp,
+	type BeatGrid,
+	beatLengthOp,
 	beforeOp,
 	duringOp,
+	holdOp,
 	lengthOp,
 	onBeatOp,
+	polyrhythmOp,
 	sameTimeOp,
 	sequenceOp,
+	snapToGrid,
 	staggerOp,
 	stretchOp,
+	type Tempo,
 	TIME_EPSILON,
 	type TimeAlignment,
 	type TimeChild,
@@ -38,7 +44,15 @@ export const MOTION_TYPES = new Set([
 ]);
 
 // Relations with a span of their own (they group their members in time)
-const TIME_GROUPS = new Set(["Sequence", "SameTime", "Stagger", "Before"]);
+const TIME_GROUPS = new Set([
+	"Sequence",
+	"SameTime",
+	"Stagger",
+	"Before",
+	"Fermata",
+]);
+// Spans of their own with nothing inside: grids and silences
+const TIME_LEAVES = new Set(["Beat", "Bar", "Rest"]);
 // Pure constraints: no span, nothing to Ref
 const TIME_CONSTRAINTS = new Set([
 	"Legato",
@@ -48,12 +62,13 @@ const TIME_CONSTRAINTS = new Set([
 	"Stretch",
 	"At",
 	"OnBeat",
+	"Polyrhythm",
 ]);
 
 export const TIME_TYPES = new Set([
 	...TIME_GROUPS,
 	...TIME_CONSTRAINTS,
-	"Beat",
+	...TIME_LEAVES,
 ]);
 
 type Props = Record<string, unknown>;
@@ -168,6 +183,8 @@ export function buildTime(
 					? 60 / num(t.props.bpm, 120)
 					: num(t.props.period, 0.5);
 			timeSeed.push(num(t.props.offset, 0), period);
+		} else if (t?.type === "Rest") {
+			timeSeed.push(num(t.props.at, 0), num(t.props.over, 0.5));
 		} else timeSeed.push(num(t?.props.at, 0), 0);
 	}
 
@@ -183,7 +200,10 @@ export function buildTime(
 	// Time children: what a node spans and carries along when moved
 	const timeChildren = (n: NodeRecord): NodeRecord[] => {
 		const t = byId.get(n.id);
-		if (n.motion || t?.type === "Beat" || (t && TIME_CONSTRAINTS.has(t.type)))
+		if (
+			n.motion ||
+			(t && (TIME_LEAVES.has(t.type) || TIME_CONSTRAINTS.has(t.type)))
+		)
 			return [];
 		const members =
 			t && TIME_GROUPS.has(t.type) ? t.children : (t?.structural ?? []);
@@ -198,7 +218,7 @@ export function buildTime(
 		const t = byId.get(n.id);
 		const yes =
 			!!n.motion ||
-			t?.type === "Beat" ||
+			(t !== undefined && TIME_LEAVES.has(t.type)) ||
 			timeChildren(n).some((c) => isTimed(c, seen));
 		if (yes) timed.add(n.id);
 		return yes;
@@ -223,12 +243,13 @@ export function buildTime(
 		subtree: subtree(n),
 	});
 
-	// Pinned: an absolute start (`at`, At, a Beat) anywhere in the subtree.
+	// Pinned: an absolute start (`at`, At, a Beat's offset) anywhere in the subtree.
 	// Claimed: placed relative to something else by an exact relation.
 	const ownPin = new Set<string>();
 	for (const t of order) {
 		if (
-			t.type === "Beat" ||
+			// A beat without an offset may be placed by relations (a section's tempo)
+			(t.type === "Beat" && t.props.offset !== undefined) ||
 			(t.props.at !== undefined && !TIME_CONSTRAINTS.has(t.type))
 		)
 			ownPin.add(t.rec.id);
@@ -284,6 +305,42 @@ export function buildTime(
 		}
 	};
 
+	// A Beat's tempo ramp: bpm -> toBpm (or period -> toPeriod) over `ramp` beats
+	const tempoOf = (beat: NodeRecord): Tempo | undefined => {
+		const p = byId.get(beat.id)?.props ?? {};
+		const ramp = num(p.ramp, 0);
+		if (!(ramp > 0)) return undefined;
+		const ratio =
+			p.toBpm !== undefined
+				? num(p.bpm, 120) / num(p.toBpm, 120)
+				: num(p.toPeriod, 1) / num(p.period, 1);
+		return { ratio: ratio > 0 ? ratio : 1, ramp };
+	};
+	const isBeat = (n: NodeRecord) => byId.get(n.id)?.type === "Beat";
+	const gridCheck = (
+		relation: string,
+		beat: NodeRecord,
+		m: NodeRecord,
+		grid: BeatGrid,
+		align: "start" | "end",
+	): void =>
+		spanCheck(
+			relation,
+			(span) => {
+				const [origin, period] = span(beat.id);
+				const [s0, d] = span(m.id);
+				const at = align === "end" ? s0 + d : s0;
+				return (
+					Math.abs(snapToGrid(at, origin, period, grid, "nearest") - at) <
+					TIME_EPSILON * 10
+				);
+			},
+			`${m.id} is off the beat`,
+		);
+	// Adjacent pairs a Sequence chains end-to-start, and pairs articulation ties
+	const sequencePairs: { relation: string; a: string; b: string }[] = [];
+	const articulatedPairs: { relation: string; a: string; b: string }[] = [];
+
 	const ops: LayoutOperator[] = [];
 	const spanCheck = (
 		relation: string,
@@ -315,6 +372,12 @@ export function buildTime(
 			ops.push(
 				sequenceOp(members.map(child), { gap: num(props.gap, 0), anchor }),
 			);
+			for (let i = 0; i + 1 < members.length; i++)
+				sequencePairs.push({
+					relation: name,
+					a: members[i].id,
+					b: members[i + 1].id,
+				});
 		} else if (t.type === "SameTime" && members.length > 1) {
 			const anchor = anchorOf(members);
 			claim(name, members, anchor);
@@ -399,13 +462,18 @@ export function buildTime(
 			const [source, ...targets] = members;
 			claimDurations(name, targets);
 			if (props.beats !== undefined) {
-				// Note values: only lengths, in multiples of the source's
+				// Note values: only lengths, in multiples of the source's; a
+				// Beat's are counted in its own (possibly changing) tempo
+				const targetsBases = targets.map((m) => base(m.id));
 				ops.push(
-					lengthOp(
-						base(source.id),
-						targets.map((m) => base(m.id)),
-						num(props.beats, 1),
-					),
+					isBeat(source)
+						? beatLengthOp(
+								base(source.id),
+								targetsBases,
+								num(props.beats, 1),
+								tempoOf(source),
+							)
+						: lengthOp(base(source.id), targetsBases, num(props.beats, 1)),
 				);
 			} else {
 				claim(name, targets, null);
@@ -426,6 +494,7 @@ export function buildTime(
 			);
 			for (let i = 0; i + 1 < members.length; i++) {
 				const [a, b] = [members[i].id, members[i + 1].id];
+				articulatedPairs.push({ relation: name, a, b });
 				spanCheck(
 					name,
 					(span) => span(b)[0] >= span(a)[0] - TIME_EPSILON,
@@ -434,48 +503,81 @@ export function buildTime(
 			}
 		} else if (t.type === "OnBeat" && members.length > 1) {
 			const [beat, ...rest] = members;
-			if (byId.get(beat.id)?.type !== "Beat")
+			if (!isBeat(beat))
 				warnings.push(
 					`${name}: the first member must be a Beat, got ${beat.id}`,
 				);
-			const grid = {
+			const grid: BeatGrid = {
 				every: num(props.every, 1),
 				division: Math.max(1, num(props.division, 1)),
 				offset: num(props.offset, 0),
-				align: props.align === "end" ? ("end" as const) : ("start" as const),
+				swing: num(props.swing, 0.5),
+				tempo: tempoOf(beat),
 			};
+			const align =
+				props.align === "end" ? ("end" as const) : ("start" as const);
 			const snap = props.snap === "nearest" ? "nearest" : "next";
 			ops.push(
 				onBeatOp(base(beat.id), rest.map(child), {
 					...grid,
+					align,
 					snap,
 					movable: rest.map((m) => !pinned(m)),
 				}),
 			);
-			for (const m of rest) {
-				spanCheck(
-					name,
-					(span) => {
-						const [origin, beatLength] = span(beat.id);
-						const period = (beatLength * grid.every) / grid.division;
-						const [s, d] = span(m.id);
-						const at = grid.align === "end" ? s + d : s;
-						const k = (at - origin) / period - grid.offset;
-						return Math.abs(k - Math.round(k)) * period < TIME_EPSILON * 10;
-					},
-					`${m.id} is off the beat`,
+			for (const m of rest) gridCheck(name, beat, m, grid, align);
+		} else if (t.type === "Bar") {
+			// A bar starts on a bar line and lasts `count` bars of `beats` beats
+			const beat = t.children[0];
+			if (!beat || !isBeat(beat)) {
+				warnings.push(`${name}: the first child must be a Beat`);
+			} else {
+				const beats = num(props.beats, 4);
+				const grid: BeatGrid = {
+					every: beats,
+					division: 1,
+					offset: 0,
+					swing: 0.5,
+					tempo: tempoOf(beat),
+				};
+				ops.push(
+					onBeatOp(base(beat.id), [child(rec)], {
+						...grid,
+						align: "start",
+						snap: "next",
+						movable: [!pinned(rec)],
+					}),
+					beatLengthOp(
+						base(beat.id),
+						[base(rec.id)],
+						beats * num(props.count, 1),
+						grid.tempo,
+					),
 				);
+				gridCheck(name, beat, rec, grid, "start");
 			}
+		} else if (t.type === "Polyrhythm" && members.length === 2) {
+			const [a, b] = members;
+			if (!isBeat(a) || !isBeat(b))
+				warnings.push(`${name}: both members must be Beats`);
+			const of = (props.of as [number, number] | undefined) ?? [3, 2];
+			ops.push(polyrhythmOp(base(a.id), base(b.id), of));
 		}
 
 		// Spans last, so a group re-derives itself after its relation moved members
 		const spanned = timeChildren(rec).filter((c) => timed.has(c.id));
 		if (spanned.length > 0)
 			ops.push(
-				timeUnionOp(
-					spanned.map((c) => base(c.id)),
-					base(rec.id),
-				),
+				t.type === "Fermata"
+					? holdOp(
+							spanned.map((c) => base(c.id)),
+							base(rec.id),
+							num(props.hold, 1),
+						)
+					: timeUnionOp(
+							spanned.map((c) => base(c.id)),
+							base(rec.id),
+						),
 			);
 	}
 
@@ -489,6 +591,16 @@ export function buildTime(
 					spanned.map((c) => base(c.id)),
 					base(n.id),
 				),
+			);
+	}
+
+	// A Sequence sets b's start from a's length while Legato sets a's length
+	// from b's start: together they are circular and the length is arbitrary
+	for (const art of articulatedPairs) {
+		const seq = sequencePairs.find((p) => p.a === art.a && p.b === art.b);
+		if (seq)
+			warnings.push(
+				`${art.relation} and ${seq.relation} both tie ${art.a} to ${art.b}: the length of ${art.a} is undetermined; place ${art.b} with something else (Stagger, OnBeat, At)`,
 			);
 	}
 

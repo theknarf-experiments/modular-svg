@@ -8,6 +8,8 @@ import { DeployFlowExample } from "./examples/animation/DeployFlowExample";
 import deployFlowExampleCode from "./examples/animation/DeployFlowExample.tsx?raw";
 import { EasingExample } from "./examples/animation/EasingExample";
 import easingExampleCode from "./examples/animation/EasingExample.tsx?raw";
+import { GrooveExample } from "./examples/animation/GrooveExample";
+import grooveExampleCode from "./examples/animation/GrooveExample.tsx?raw";
 import { HelloMotion } from "./examples/animation/HelloMotion";
 import helloMotionCode from "./examples/animation/HelloMotion.tsx?raw";
 import { JoinExample } from "./examples/animation/JoinExample";
@@ -16,6 +18,8 @@ import { OrbitExample } from "./examples/animation/OrbitExample";
 import orbitExampleCode from "./examples/animation/OrbitExample.tsx?raw";
 import { PhrasingExample } from "./examples/animation/PhrasingExample";
 import phrasingExampleCode from "./examples/animation/PhrasingExample.tsx?raw";
+import { PolyrhythmExample } from "./examples/animation/PolyrhythmExample";
+import polyrhythmExampleCode from "./examples/animation/PolyrhythmExample.tsx?raw";
 import { ScrubberExample } from "./examples/animation/ScrubberExample";
 import scrubberExampleCode from "./examples/animation/ScrubberExample.tsx?raw";
 import { TempoExample } from "./examples/animation/TempoExample";
@@ -205,6 +209,20 @@ export const pages: Page[] = [
 					"More from music: an eased Stagger lets the cascade settle, arrows are pickups that land their tips on the beat (OnBeat align end), captions are legato (each holds until the next starts), and the last lasts four beats (Stretch beats)",
 				code: phrasingExampleCode,
 				element: <PhrasingExample />,
+			},
+			{
+				title: "Groove",
+				description:
+					"Bars are spans you can sequence: two bars of swung eighths (OnBeat swing), then a bar on a beat that speeds up (Beat toBpm + ramp), then a fermata on the final chord",
+				code: grooveExampleCode,
+				element: <GrooveExample />,
+			},
+			{
+				title: "Three against two",
+				description:
+					"Polyrhythm locks a second beat to the first so two of its beats take as long as three; each pulse is stretched to its own beat and loops",
+				code: polyrhythmExampleCode,
+				element: <PolyrhythmExample />,
 			},
 			{
 				title: "Join",

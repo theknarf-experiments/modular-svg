@@ -228,6 +228,10 @@ export function compileAnimation(
 					(typeof loop === "number" ? Math.max(1, Math.floor(loop)) : 1)
 			);
 		}),
+		// Rests, bars and fermatas hold time too, so a trailing hold still plays
+		...Object.values(layout).map((b) =>
+			b.start !== undefined ? b.start + (b.duration ?? 0) : 0,
+		),
 	);
 	const period = opts.duration ?? natural;
 	if (!(period > 0)) return undefined;
