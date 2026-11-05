@@ -2,6 +2,8 @@ import { NavLink, Outlet } from "react-router";
 import { ExampleSection } from "./ExampleSection";
 import { BeatExample } from "./examples/animation/BeatExample";
 import beatExampleCode from "./examples/animation/BeatExample.tsx?raw";
+import { ClickRouteExample } from "./examples/animation/ClickRouteExample";
+import clickRouteExampleCode from "./examples/animation/ClickRouteExample.tsx?raw";
 import { DeployFlowExample } from "./examples/animation/DeployFlowExample";
 import deployFlowExampleCode from "./examples/animation/DeployFlowExample.tsx?raw";
 import { EasingExample } from "./examples/animation/EasingExample";
@@ -12,6 +14,10 @@ import { JoinExample } from "./examples/animation/JoinExample";
 import joinExampleCode from "./examples/animation/JoinExample.tsx?raw";
 import { OrbitExample } from "./examples/animation/OrbitExample";
 import orbitExampleCode from "./examples/animation/OrbitExample.tsx?raw";
+import { ScrubberExample } from "./examples/animation/ScrubberExample";
+import scrubberExampleCode from "./examples/animation/ScrubberExample.tsx?raw";
+import { TempoExample } from "./examples/animation/TempoExample";
+import tempoExampleCode from "./examples/animation/TempoExample.tsx?raw";
 import { ToastExample } from "./examples/animation/ToastExample";
 import toastExampleCode from "./examples/animation/ToastExample.tsx?raw";
 import { BakingRecipe } from "./examples/BakingRecipe";
@@ -197,6 +203,27 @@ export const pages: Page[] = [
 					"After waits for the latest of several leaders; change a duration and the schedule is solved again",
 				code: joinExampleCode,
 				element: <JoinExample />,
+			},
+			{
+				title: "Scrubbing",
+				description:
+					"The playhead prop holds every motion at a time, so React can own the clock: play, pause, or drag through the solved schedule",
+				code: scrubberExampleCode,
+				element: <ScrubberExample />,
+			},
+			{
+				title: "Click to route",
+				description:
+					"Click a stage and a change travels from there; the Travel waypoints are just the refs ahead of it, taken from state",
+				code: clickRouteExampleCode,
+				element: <ClickRouteExample />,
+			},
+			{
+				title: "Tempo",
+				description:
+					"Tempo and note lengths are state: drag the tempo or click a note, and Before + OnBeat re-solve where every note lands",
+				code: tempoExampleCode,
+				element: <TempoExample />,
 			},
 		],
 	},

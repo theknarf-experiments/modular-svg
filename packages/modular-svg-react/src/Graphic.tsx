@@ -19,7 +19,38 @@ export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
 	title?: string;
 	/** playback of motions in the scene (duration, loop, reduced-motion still); false renders them still */
 	animation?: AnimationOptions | false;
+	/**
+	 * Hold the animation at this many seconds (scrubbing); undefined plays.
+	 * Applies to the live DOM only; the scene's SVG output is unchanged.
+	 */
+	playhead?: number;
 };
+
+// Layout effect in the browser; plain effect under SSR, which warns otherwise
+const useIsomorphicLayoutEffect =
+	typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;
+
+// Seek every CSS and SMIL animation in the graphic, or let them run again
+function seek(svg: SVGSVGElement, playhead: number | undefined): void {
+	const animations =
+		typeof svg.getAnimations === "function"
+			? svg.getAnimations({ subtree: true })
+			: [];
+	for (const a of animations) {
+		if (playhead === undefined) {
+			if (a.playState === "paused") a.play();
+		} else {
+			a.pause();
+			a.currentTime = playhead * 1000;
+		}
+	}
+	if (typeof svg.pauseAnimations !== "function") return;
+	if (playhead === undefined) svg.unpauseAnimations();
+	else {
+		svg.pauseAnimations();
+		svg.setCurrentTime(playhead);
+	}
+}
 
 // React DOM wants camelCase SVG attribute names (fontSize, strokeDasharray);
 // scene attrs use the SVG spellings. data-* and aria-* stay as-is.
@@ -188,8 +219,10 @@ function GraphicImpl({
 	margin = 0,
 	title,
 	animation,
+	playhead,
 	...props
 }: GraphicProps) {
+	const svgRef = React.useRef<SVGSVGElement>(null);
 	const rootRef = React.useRef<ReconcilerRoot | null>(null);
 	const [ast, setAst] = React.useState<SvgDocument | null>(null);
 
@@ -232,6 +265,11 @@ function GraphicImpl({
 		};
 	}, []);
 
+	// Before paint, so a scrubbed frame never flashes the live one
+	useIsomorphicLayoutEffect(() => {
+		if (svgRef.current && ast) seek(svgRef.current, playhead);
+	}, [playhead, ast]);
+
 	if (!ast) {
 		return <div {...props} />;
 	}
@@ -239,6 +277,7 @@ function GraphicImpl({
 	return (
 		<div {...props}>
 			<svg
+				ref={svgRef}
 				width={ast.width}
 				height={ast.height}
 				xmlns="http://www.w3.org/2000/svg"

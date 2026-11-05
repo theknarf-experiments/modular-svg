@@ -67,6 +67,7 @@ declare module "react" {
 				fill?: string;
 				stroke?: string;
 				"stroke-width"?: number;
+				onClick?: React.MouseEventHandler<SVGElement>;
 				children?: React.ReactNode;
 			};
 			span: {
@@ -114,6 +115,7 @@ declare module "react" {
 				"font-family"?: string;
 				"font-style"?: string;
 				"font-weight"?: number;
+				"pointer-events"?: string;
 				dy?: string;
 				fill?: string;
 				stroke?: string;

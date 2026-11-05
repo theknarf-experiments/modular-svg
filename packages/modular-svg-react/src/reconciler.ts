@@ -271,9 +271,10 @@ const hostConfig: Reconciler.HostConfig<
 	): void {
 		// In React 19, we diff and apply changes directly in commitUpdate
 		// Extract event handlers from new props
+		// A key never changes on an instance (React remounts instead), and
+		// reading it from props trips React's dev warning, so it is not read here
 		const {
 			children,
-			key,
 			onClick,
 			onMouseEnter,
 			onMouseLeave,
@@ -285,7 +286,6 @@ const hostConfig: Reconciler.HostConfig<
 
 		// Update instance props (without event handlers)
 		instance.props = layoutProps;
-		if (key) instance.key = key as string;
 
 		// Update event handlers in global map
 		const handlers: EventHandlers = {};
