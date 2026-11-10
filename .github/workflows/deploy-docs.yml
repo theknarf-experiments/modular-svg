@@ -35,6 +35,7 @@ jobs:
         env:
           # Serve under /<repo>/ so relative asset URLs resolve on Pages
           DOCS_BASE: /${{ github.event.repository.name }}/
+          VITE_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

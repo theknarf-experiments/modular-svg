@@ -1,5 +1,32 @@
+import { execSync } from "node:child_process";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+
+/**
+ * Where this checkout came from, for the link back to the source. CI passes it
+ * in; locally it falls out of the git remote, so it is never written down in
+ * the app.
+ */
+function repoUrl(): string | undefined {
+	if (process.env.VITE_REPO_URL) return process.env.VITE_REPO_URL;
+	try {
+		const remote = execSync("git remote get-url origin", {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		const ssh = /^git@([^:]+):(.+?)(?:\.git)?$/.exec(remote);
+		if (ssh) return `https://${ssh[1]}/${ssh[2]}`;
+		return remote.replace(/\.git$/, "") || undefined;
+	} catch {
+		// No git or no remote: the link just does not render.
+		return undefined;
+	}
+}
+
+// Vite exposes VITE_-prefixed variables from the environment, so setting it
+// here makes it reachable as `import.meta.env.VITE_REPO_URL`.
+const repo = repoUrl();
+if (repo) process.env.VITE_REPO_URL = repo;
 
 export default defineConfig(() => ({
 	root: "src",
