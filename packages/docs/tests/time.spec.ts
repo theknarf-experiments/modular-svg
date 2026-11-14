@@ -1294,3 +1294,340 @@ test("the Flight path example keeps the plane on its trail", async ({
 		),
 	).toBeGreaterThan(60);
 });
+
+// --- the camera ----------------------------------------------------------------
+
+const camera = (id: string, props: N, ...targets: string[]): N => ({
+	type: "Camera",
+	id,
+	props,
+	children: targets.map(ref),
+});
+// A 340 by 170 canvas with a mark in two opposite corners
+const near = rect("near", { x: 0, y: 0 });
+const far = rect("far", { x: 300, y: 150, height: 20 });
+// Framing `far` with 10 round it shows 80 by 40 of the canvas: 4.25 times
+const ZOOM = 340 / 80;
+
+test("a camera ends on what it frames, and gets there in a straight line at an even zoom", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			near,
+			far,
+			camera("on", { at: 0.5, over: 1, padding: 10, ease: "linear" }, "far"),
+		]),
+	);
+	await seek(page, 0.25);
+	expect((await centres(page, ["far"])).far).toMatchObject({
+		x: 320,
+		y: 160,
+		width: 40,
+	});
+	// The framed mark fills the viewport but for its padding
+	await seek(page, 1.5);
+	const end = (await centres(page, ["far"])).far;
+	expect(end.x).toBeCloseTo(170, 1);
+	expect(end.y).toBeCloseTo(85, 1);
+	expect(end.width).toBeCloseTo(40 * ZOOM, 1);
+	expect(end.height).toBeCloseTo(170 - 2 * 10 * ZOOM, 1);
+
+	// Halfway the zoom is the geometric mean, and the view is on the line
+	// between the two framings
+	await seek(page, 1);
+	const mid = (await centres(page, ["far"])).far;
+	const scale = Math.sqrt(ZOOM);
+	expect(mid.width).toBeCloseTo(40 * scale, 0);
+	const q = (340 / scale - 340) / (80 - 340);
+	const view = { x: 170 + (320 - 170) * q, y: 85 + (160 - 85) * q };
+	expect(mid.x).toBeCloseTo(170 + (320 - view.x) * scale, 0);
+	expect(mid.y).toBeCloseTo(85 + (160 - view.y) * scale, 0);
+});
+
+test("a camera that follows keeps a travelling mark centred while the page plays", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			rect("mover", { x: 0, y: 0, width: 20, height: 10, fill: "#c33" }),
+			rect("up", { x: 180, y: 0 }),
+			rect("down", { x: 340, y: 180 }),
+			{
+				type: "Travel",
+				id: "trip",
+				props: { at: 0.2, over: 2.4, route: "smooth", ease: "inOut" },
+				children: [ref("mover"), ref("up"), ref("down")],
+			},
+			camera("chase", { at: 0, over: 0, padding: 40, follow: true }, "mover"),
+		]),
+	);
+	// Live, on the page's own clock: the mark's keyframes and the view's are
+	// two CSS animations, and have to stay in step
+	const { worst, places } = await page.evaluate(
+		() =>
+			new Promise<{ worst: number; places: number }>((resolve) => {
+				const svg = document.querySelector("svg") as SVGSVGElement;
+				const mover = svg.querySelector("#mover") as Element;
+				const start = performance.now();
+				let worst = 0;
+				const seen = new Set<number>();
+				const tick = () => {
+					const [m, s] = [
+						mover.getBoundingClientRect(),
+						svg.getBoundingClientRect(),
+					];
+					worst = Math.max(
+						worst,
+						Math.hypot(
+							m.x + m.width / 2 - (s.x + s.width / 2),
+							m.y + m.height / 2 - (s.y + s.height / 2),
+						),
+					);
+					const moved = getComputedStyle(
+						mover.parentElement as Element,
+					).translate;
+					seen.add(Math.round(Number.parseFloat(moved)));
+					if (performance.now() - start < 2000) requestAnimationFrame(tick);
+					else resolve({ worst, places: seen.size });
+				};
+				requestAnimationFrame(tick);
+			}),
+	);
+	expect(places).toBeGreaterThan(20);
+	expect(worst).toBeLessThan(1);
+});
+
+test("reduced motion shows the view the still frame has", async ({ page }) => {
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await page.setContent(
+		svgOf([near, far, camera("on", { at: 0.5, over: 1, padding: 10 }, "far")]),
+	);
+	const { far: shown } = await centres(page, ["far"]);
+	expect(shown.x).toBeCloseTo(170, 1);
+	expect(shown.y).toBeCloseTo(85, 1);
+	expect(shown.width).toBeCloseTo(40 * ZOOM, 1);
+});
+
+test("a motion on a camera moves the view in screen pixels, about its middle", async ({
+	page,
+}) => {
+	const on = (to: N): N => ({
+		type: "Motion",
+		id: "kick",
+		props: { at: 0, steps: [{ to, over: 1, ease: "linear" }] },
+		children: [ref("on")],
+	});
+	const framed = camera("on", { at: 0, over: 0, padding: 10 }, "far");
+	await page.setContent(svgOf([near, far, framed, on({ x: 20, y: -8 })]));
+	await seek(page, 1);
+	const pushed = (await centres(page, ["far"])).far;
+	expect(pushed.x).toBeCloseTo(190, 1);
+	expect(pushed.y).toBeCloseTo(77, 1);
+	expect(pushed.width).toBeCloseTo(40 * ZOOM, 1);
+
+	await page.setContent(svgOf([near, far, framed, on({ scale: 2 })]));
+	await seek(page, 1);
+	const punched = (await centres(page, ["far"])).far;
+	expect(punched.x).toBeCloseTo(170, 1);
+	expect(punched.y).toBeCloseTo(85, 1);
+	expect(punched.width).toBeCloseTo(80 * ZOOM, 1);
+});
+
+test("a mark still turns and scales about its own middle inside a zoomed view", async ({
+	page,
+}) => {
+	const svg = (view?: { width: number; height: number }) => {
+		const scene = buildSceneFromJson({
+			type: "Group",
+			id: "root",
+			children: [
+				near,
+				far,
+				camera("on", { at: 0, over: 0, padding: 10 }, "far"),
+				{
+					type: "Motion",
+					id: "grow",
+					props: { at: 0, steps: [{ to: { scale: 2 }, over: 1 }] },
+					children: [ref("far")],
+				},
+			],
+		});
+		return layoutToSvg(solveLayout(scene), scene.nodes, 0, { view });
+	};
+	await page.setContent(svg());
+	await seek(page, 1);
+	const grown = (await centres(page, ["far"])).far;
+	expect(grown.x).toBeCloseTo(170, 1);
+	expect(grown.y).toBeCloseTo(85, 1);
+	expect(grown.width).toBeCloseTo(80 * ZOOM, 1);
+
+	// The same in a viewport twice the size of the canvas
+	await page.setContent(svg({ width: 680, height: 340 }));
+	await seek(page, 1);
+	const doubled = (await centres(page, ["far"])).far;
+	expect(doubled.x).toBeCloseTo(340, 1);
+	expect(doubled.y).toBeCloseTo(170, 1);
+	expect(doubled.width).toBeCloseTo(160 * ZOOM, 1);
+});
+
+const mountViews = async (page: Page) => {
+	const fixture = fileURLToPath(
+		new URL("./fixtures/camera.tsx", import.meta.url),
+	);
+	await page.goto("http://localhost:5173/");
+	await page.addScriptTag({ type: "module", url: `/@fs${fixture}` });
+	await page.waitForFunction(() => "mount" in window);
+	await page.evaluate(() => (window as never as { mount: () => void }).mount());
+	await page.waitForSelector("#scrub [data-camera]");
+	return (graphic: string, id: string) =>
+		page.evaluate(
+			([within, mark]) => {
+				const svg = document.querySelector(`#${within} svg`) as SVGSVGElement;
+				const [r, origin] = [
+					(svg.querySelector(`#${mark}`) as Element).getBoundingClientRect(),
+					svg.getBoundingClientRect(),
+				];
+				return {
+					x: r.x + r.width / 2 - origin.x,
+					y: r.y + r.height / 2 - origin.y,
+					width: r.width,
+				};
+			},
+			[graphic, id],
+		);
+};
+
+test("Graphic's playhead scrubs the view", async ({ page }) => {
+	const box = await mountViews(page);
+	const hold = (t: number | undefined) =>
+		page.evaluate(
+			(time) =>
+				(window as never as { hold: (t?: number) => void }).hold(
+					time ?? undefined,
+				),
+			t,
+		);
+	await hold(0);
+	await expect
+		.poll(async () => (await box("scrub", "b")).width)
+		.toBeCloseTo(40, 0);
+	await hold(1);
+	await expect
+		.poll(async () => (await box("scrub", "b")).width)
+		.toBeCloseTo(40 * Math.sqrt(10), 0);
+	await hold(2);
+	const end = await box("scrub", "b");
+	expect(end.width).toBeCloseTo(400, 0);
+	expect(end.x).toBeCloseTo(200, 0);
+	expect(end.y).toBeCloseTo(100, 0);
+});
+
+test("Graphic's transition moves the view when what the camera frames changes", async ({
+	page,
+}) => {
+	const box = await mountViews(page);
+	const frame = (id: string | null) =>
+		page.evaluate(
+			(target) =>
+				(window as never as { frame: (id: string | null) => void }).frame(
+					target,
+				),
+			id,
+		);
+	expect((await box("focus", "b")).width).toBeCloseTo(40, 0);
+	await frame("b");
+	const seen: number[] = [];
+	for (let i = 0; i < 12; i++) {
+		await page.waitForTimeout(40);
+		seen.push((await box("focus", "b")).width);
+	}
+	// It passes through the zooms in between, and never past the target
+	expect(seen.filter((w) => w > 60 && w < 380).length).toBeGreaterThan(3);
+	expect(Math.max(...seen)).toBeLessThan(401);
+	await page.waitForTimeout(400);
+	const framed = await box("focus", "b");
+	expect(framed.width).toBeCloseTo(400, 0);
+	expect(framed.x).toBeCloseTo(200, 0);
+
+	// Back out, caught halfway and sent to the other mark instead
+	await frame(null);
+	await page.waitForTimeout(250);
+	const between = (await box("focus", "b")).width;
+	expect(between).toBeGreaterThan(45);
+	expect(between).toBeLessThan(395);
+	await frame("a");
+	await page.waitForTimeout(900);
+	const other = await box("focus", "a");
+	expect(other.width).toBeCloseTo(400, 0);
+	expect(other.x).toBeCloseTo(200, 0);
+	expect(other.y).toBeCloseTo(100, 0);
+});
+
+const exampleAt = (page: Page, mark: string) => (t: number, ids: string[]) =>
+	page.evaluate(
+		([within, time, wanted]) => {
+			const svg = [...document.querySelectorAll("main svg")].find((s) =>
+				s.querySelector(`[id='${within}']`),
+			) as SVGSVGElement;
+			for (const a of svg.getAnimations({ subtree: true })) {
+				a.pause();
+				a.currentTime = (time as number) * 1000;
+			}
+			const origin = svg.getBoundingClientRect();
+			return Object.fromEntries(
+				(wanted as string[]).map((id) => {
+					const r = (
+						svg.querySelector(`[id='${id}']`) as Element
+					).getBoundingClientRect();
+					return [
+						id,
+						{
+							x: r.x + r.width / 2 - origin.x,
+							y: r.y + r.height / 2 - origin.y,
+							width: r.width,
+						},
+					];
+				}),
+			);
+		},
+		[mark, t, ids] as const,
+	);
+
+test("the Tracking shot example stays on the parcel, then shows the whole map", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/animation/");
+	await page.locator("main svg [id='harbour']").waitFor();
+	const at = exampleAt(page, "harbour");
+	for (const t of [1.6, 2.4, 3.3, 4.2, 5.1, 6]) {
+		const { cargo } = await at(t, ["cargo"]);
+		expect(Math.hypot(cargo.x - 240, cargo.y - 135), `at ${t}s`).toBeLessThan(
+			1.5,
+		);
+	}
+	// Wide again at the last depot, with both ends of the road in view
+	const wide = await at(7, ["harbour", "depot"]);
+	expect(wide.harbour.x).toBeGreaterThan(0);
+	expect(wide.depot.x).toBeLessThan(480);
+	expect(wide.depot.x - wide.harbour.x).toBeGreaterThan(380);
+});
+
+test("the Architecture tour example visits every stage on the beat", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/animation/");
+	await page.locator("main svg [id='to-store']").waitFor({ state: "attached" });
+	const at = exampleAt(page, "to-store");
+	const beat = 60 / 48;
+	const stages = ["client", "api", "queue", "workers", "store"];
+	const wide = (await at(0.2, stages)).client.width;
+	for (const [i, id] of stages.entries()) {
+		// Settled 0.9s after its beat
+		const shown = (await at((i + 1) * beat + 0.95, [id]))[id];
+		expect(Math.hypot(shown.x - 240, shown.y - 135), id).toBeLessThan(1.5);
+		expect(shown.width, id).toBeGreaterThan(wide * 2);
+	}
+	const back = (await at(6 * beat + 1.2, stages)).client.width;
+	expect(back).toBeCloseTo(wide, 0);
+});

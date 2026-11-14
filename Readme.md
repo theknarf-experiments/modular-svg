@@ -151,6 +151,7 @@ relations (a relation spans its members), and moving one carries its contents:
 | `Rest over`, `Fermata hold` | an empty span; a span of its members plus a hold |
 | `Polyrhythm of` | `of={[3, 2]}`: three of the first beat in the time of two of the second |
 | `Modulate ease`, `Resolve ease` | a change of layout: the relations inside a `Modulate` hold from its start on; a `Resolve` releases them (see below) |
+| `Camera ease padding fit follow` | a change of view: from its start on the view frames what it refs (see Camera) |
 | `Phrase rate retrograde repeat alternate` | a clock: what it takes plays as a unit in the phrase's own time, faster or slower (`rate`, `over`, or stretched like a motion), backwards (`retrograde`), `repeat` times (`true`: until the enclosing time ends), every other pass reversed (`alternate`) |
 
 A `Phrase` is how a group gets a length: outside it is a leaf like a motion,
@@ -305,7 +306,10 @@ logs these warnings outside production builds, and the CLI prints them.
 
 In React, `Graphic` takes `transition` (tween marks from their previous solved
 geometry and color whenever state changes the solution; with a spring or an
-overshooting `ease`, geometry runs past and settles while colors ease out), `playhead` (hold every motion at a time, for
+overshooting `ease`, geometry runs past and settles while colors ease out;
+the view tweens too, from where it is to where the new scene's camera has
+it, so a camera that cuts to whatever state says is in focus pans and zooms
+there), `view` (the size of the picture, see Camera), `playhead` (hold every motion at a time, for
 scrubbing; while it holds, changes apply at once, since the tweens share the
 held clock) and `onSolve`, which hands out the solved spans of every timed ref,
 the layout boxes, warnings and a live animation clock. `useCues(solution,
@@ -321,6 +325,72 @@ const [solution, onSolve] = useSolution();
 useCues(solution, { kick: () => playKick() });
 return <Graphic onSolve={onSolve}>...</Graphic>;
 ```
+
+### Camera
+
+A `Camera` is a timed leaf, like a `Modulate`: from its start on, the view
+frames what it refs, and gets there over its span. The last camera to start
+holds the view; one that refs nothing frames the whole canvas, which is the
+pull-back, and before the first camera the view is everything.
+
+```tsx
+<camera key="onApi" over={0.8} padding={24}><ref target="api" /></camera>
+<camera key="chase" follow padding={40}><ref target="parcel" /></camera>
+<camera key="wide" over={0} />
+<sequence><ref target="onApi" /><rest over={1} /><ref target="chase" /><ref target="wide" /></sequence>
+<shake amplitude={{ x: 6 }} over={0.3}><ref target="onApi" /></shake>
+```
+
+| Prop | Meaning |
+| --- | --- |
+| `at`, `over` | as on any timed leaf; `over={0}` is a cut, and with neither it takes half a second |
+| `ease` | any ease, springs included; `inOut` by default |
+| `padding` | scene px kept round what is framed |
+| `fit` | `"contain"` shows all of it (default), `"cover"` fills the viewport and crops |
+| `follow` | also follow where motions take what is framed |
+
+What is framed is the box round every mark under the camera's children,
+strokes included; a ref to a relation (a `StackV` of refs, a `Group`) frames
+the marks it relates. The framing follows layout: on a list a `Modulate`
+reorders, the view moves with the framed mark over the `Modulate`'s span and
+ease. It does not follow motions unless told to, because an `Enter` that
+slides a framed mark in would make the camera bob and cancel the slide; with
+`follow` it keeps up with the `x`/`y` a motion gives the mark (`Travel`
+round every bend of a curved route, `Enter`, ...), though not with a
+motion's scale or rotation.
+
+Between two framings the view rect moves in a straight line, as an animated
+`viewBox` would, but the zoom is geometric, so a long push-in has an even
+pace instead of rushing at its end. Everything scales, strokes and text
+included; pass `vector-effect="non-scaling-stroke"` on a mark that should
+stay a hairline. The view is one group round every mark whose CSS
+`transform` is keyframed (sampled into straight pieces within half a pixel
+on screen), so it keeps time with the marks, loops, pauses on the
+reduced-motion still frame and follows `Graphic`'s `playhead` like
+everything else. The `<svg>` clips at the viewport; under `contain` in a
+viewport of another shape more of the scene shows, with no bars.
+
+Cameras are placed like motions (`Sequence`, `OnBeat`, `Stretch`, ...). A
+camera that starts while the one before it is still settling cuts that one
+short, which warns. A `Phrase` that takes cameras plays them in its own
+time: faster, backwards (from its last framing, handing back the view it
+found), there and back. Every pass of a repeating phrase starts from the
+view the time around it left, as lanes do. Cameras in different time take
+the view from one another (the one that started last holds it), which warns.
+
+A motion that refs a camera moves the view itself, in screen pixels and
+about the middle of the viewport: a `Shake` for an impact, a `Motion` with
+`scale` for a punch-in. It takes `x`, `y`, `scale`, `rotate`, `opacity` and
+`blur`.
+
+The size of the picture is a document option, next to `margin` and
+`animation`: `layoutToSvg(layout, nodes, margin, { view })` with
+`view: { width?, height?, aspect? }` (`Graphic`'s `view` prop, the CLI's
+`--width` and `--height`). Both sides are taken as given; one side follows
+`aspect`, or the canvas's own shape; `aspect` alone gives the smallest
+viewport of that shape that holds the canvas. The canvas is fitted into it
+and centred. A scene with a `view` or a camera gets a `viewBox`; one with
+neither is written exactly as before.
 
 ## Solver Architecture
 

@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from "react-router";
 import { ExampleSection } from "./ExampleSection";
+import { ArchitectureTourExample } from "./examples/animation/ArchitectureTourExample";
+import architectureTourExampleCode from "./examples/animation/ArchitectureTourExample.tsx?raw";
 import { BeatExample } from "./examples/animation/BeatExample";
 import beatExampleCode from "./examples/animation/BeatExample.tsx?raw";
 import { ClickRouteExample } from "./examples/animation/ClickRouteExample";
@@ -14,12 +16,16 @@ import { EasingExample } from "./examples/animation/EasingExample";
 import easingExampleCode from "./examples/animation/EasingExample.tsx?raw";
 import { FlightPathExample } from "./examples/animation/FlightPathExample";
 import flightPathExampleCode from "./examples/animation/FlightPathExample.tsx?raw";
+import { FocusChartExample } from "./examples/animation/FocusChartExample";
+import focusChartExampleCode from "./examples/animation/FocusChartExample.tsx?raw";
 import { GrooveExample } from "./examples/animation/GrooveExample";
 import grooveExampleCode from "./examples/animation/GrooveExample.tsx?raw";
 import { HandoffExample } from "./examples/animation/HandoffExample";
 import handoffExampleCode from "./examples/animation/HandoffExample.tsx?raw";
 import { HelloMotion } from "./examples/animation/HelloMotion";
 import helloMotionCode from "./examples/animation/HelloMotion.tsx?raw";
+import { ImpactExample } from "./examples/animation/ImpactExample";
+import impactExampleCode from "./examples/animation/ImpactExample.tsx?raw";
 import { JoinExample } from "./examples/animation/JoinExample";
 import joinExampleCode from "./examples/animation/JoinExample.tsx?raw";
 import { MakeRoomExample } from "./examples/animation/MakeRoomExample";
@@ -56,6 +62,8 @@ import { TempoExample } from "./examples/animation/TempoExample";
 import tempoExampleCode from "./examples/animation/TempoExample.tsx?raw";
 import { ToastExample } from "./examples/animation/ToastExample";
 import toastExampleCode from "./examples/animation/ToastExample.tsx?raw";
+import { TrackingShotExample } from "./examples/animation/TrackingShotExample";
+import trackingShotExampleCode from "./examples/animation/TrackingShotExample.tsx?raw";
 import { BakingRecipe } from "./examples/BakingRecipe";
 import bakingRecipeCode from "./examples/BakingRecipe.tsx?raw";
 import { BarChart } from "./examples/BarChart";
@@ -396,6 +404,34 @@ export const pages: Page[] = [
 					'Packets ride the Curves that join the services (route="along"), set off one beat apart by an OnBeat. Each arrival rings its service with an elastic ease, and the Phrase around it all plays the exchange twice',
 				code: signalFlowExampleCode,
 				element: <SignalFlowExample />,
+			},
+			{
+				title: "Camera: a tour of the system",
+				description:
+					"A Camera frames what it refs from its start on, and the view gets there over its span. Five cameras land on the beat, one per stage, as that stage's arrow draws and its note enters; a last one with no refs pulls back to everything. The view is one group whose transform is keyframed in CSS, so it keeps time with the marks",
+				code: architectureTourExampleCode,
+				element: <ArchitectureTourExample />,
+			},
+			{
+				title: "Camera: a tracking shot",
+				description:
+					"With follow, a camera keeps up with where motions take what it frames: the parcel rides the road (a Travel along the path) and the shot stays on it round every bend, then cuts to the whole map at the last depot. The Phrase around it plays the take twice",
+				code: trackingShotExampleCode,
+				element: <TrackingShotExample />,
+			},
+			{
+				title: "Camera: focus on a bar",
+				description:
+					"The camera as state: it cuts to the column React says is in focus, and Graphic's transition moves the view from where it was. Click a bar, and again to step back",
+				code: focusChartExampleCode,
+				element: <FocusChartExample />,
+			},
+			{
+				title: "Camera: impact",
+				description:
+					"A Shake that refs a camera shakes the view. Blocks land on the beat, each landing kicks the camera a little harder, and all the while it pushes in on the stack across the bar",
+				code: impactExampleCode,
+				element: <ImpactExample />,
 			},
 			{
 				title: "Sorting, step by step",
