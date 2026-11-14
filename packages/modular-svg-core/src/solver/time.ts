@@ -49,16 +49,20 @@ export function timeUnionOp(
 /**
  * A phrase lasts as long as what plays inside it, at `rate`, `repeat` times.
  * Members hold the phrase's own seconds; the span is in the time around it.
+ * `passes` counts how often each member plays its span (a numbered loop).
  */
 export function phraseOp(
 	members: readonly number[],
 	phrase: number,
-	opts: { rate: number; repeat: number },
+	opts: { rate: number; repeat: number; passes?: readonly number[] },
 ): LayoutOperator {
 	return writing(
 		(cur, next) => {
 			let length = 0;
-			for (const m of members) length = Math.max(length, end(cur, m));
+			members.forEach((m, i) => {
+				const played = cur[m] + cur[m + 1] * (opts.passes?.[i] ?? 1);
+				length = Math.max(length, played);
+			});
 			next[phrase + 1] = (length / opts.rate) * opts.repeat;
 		},
 		[phrase + 1],

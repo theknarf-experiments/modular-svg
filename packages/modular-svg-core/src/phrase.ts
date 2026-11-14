@@ -27,6 +27,8 @@ export type Clock = {
 };
 
 const HOLD: ResolvedEase = { kind: "steps", count: 1 };
+// Further apart than this, two times are different moments
+const ROUNDING = 1e-9;
 
 const passOf = (c: Clock): number =>
 	Number.isFinite(c.repeat) ? c.span / c.repeat : c.span;
@@ -128,11 +130,25 @@ export function retime(
 			continue;
 		}
 		const { before } = states();
+		// Mirroring rounds, so a step due where its lane last was (the pass's
+		// start, a cut, the step before) can land a hair early and sort ahead of
+		// it. It starts exactly there instead
+		const edges = new Map<string, number>();
 		for (let i = ordered.length - 1; i >= 0; i--) {
 			const s = ordered[i];
+			const lanes = new Set(
+				Object.keys(s.values).map((ch) => CHANNELS[ch as Channel].lane),
+			);
+			let start = origin + (c.length - s.start - s.over) * k;
+			for (const lane of lanes) {
+				const edge = edges.get(lane) ?? origin;
+				if (Math.abs(start - edge) <= ROUNDING) start = Math.max(start, edge);
+			}
+			const over = s.over * k;
+			for (const lane of lanes) edges.set(lane, start + over);
 			play({
-				start: origin + (c.length - s.start - s.over) * k,
-				over: s.over * k,
+				start,
+				over,
 				ease: s.over > 0 ? reverseEase(s.ease) : s.ease,
 				values: before[i],
 			});

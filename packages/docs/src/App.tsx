@@ -34,6 +34,8 @@ import { RetimeExample } from "./examples/animation/RetimeExample";
 import retimeExampleCode from "./examples/animation/RetimeExample.tsx?raw";
 import { ScrubberExample } from "./examples/animation/ScrubberExample";
 import scrubberExampleCode from "./examples/animation/ScrubberExample.tsx?raw";
+import { SortExample } from "./examples/animation/SortExample";
+import sortExampleCode from "./examples/animation/SortExample.tsx?raw";
 import { SoundExample } from "./examples/animation/SoundExample";
 import soundExampleCode from "./examples/animation/SoundExample.tsx?raw";
 import { StatusExample } from "./examples/animation/StatusExample";
@@ -340,6 +342,13 @@ export const pages: Page[] = [
 					"Each Modulate re-seats the job under the next worker, and the arrow to the log follows because it is drawn between wherever its ends are. The hops land on the beat, and the Phrase around them plays the whole hand-off there and back",
 				code: handoffExampleCode,
 				element: <HandoffExample />,
+			},
+			{
+				title: "Sorting, step by step",
+				description:
+					"Bubble sort as a list of Modulates, one per swap, each holding the row in its new order. Motions take turns lighting up the pair that trades places, and a Phrase with repeat={2} alternate plays the whole sort and then unsorts it: swaps, colours and eases mirrored",
+				code: sortExampleCode,
+				element: <SortExample />,
 			},
 		],
 	},

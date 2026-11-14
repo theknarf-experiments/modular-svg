@@ -592,6 +592,43 @@ describe("Phrase", () => {
 		expect(scene.nodes.find((n) => n.id === "aIn")?.clock).toBe("p");
 	});
 
+	it("warns when a phrase reaches a node another already took, however it gets there", () => {
+		const { scene, warnings } = solve([
+			...pair,
+			{ type: "Enter", id: "both", children: [ref("a"), ref("b")] },
+			phrase("p", {}, [ref("a")]),
+			phrase("q", { at: 2, retrograde: true }, [ref("b")]),
+		]);
+		expect(warnings.filter((w) => w.startsWith("Phrase(q) takes"))).toEqual([
+			"Phrase(q) takes both, which already plays in Phrase(p)'s time",
+		]);
+		expect(scene.nodes.find((n) => n.id === "both")?.clock).toBe("p");
+		expect(scene.nodes.find((n) => n.id === "bIn")?.clock).toBe("q");
+	});
+
+	it("is quiet about a node one phrase reaches twice", () => {
+		const { warnings } = solve([
+			...pair,
+			{ type: "Enter", id: "both", children: [ref("a"), ref("b")] },
+			phrase("p", {}, [ref("a"), ref("b")]),
+		]);
+		expect(warnings).toEqual([]);
+	});
+
+	it("is as long as every pass of a motion that loops a number of times", () => {
+		const { span, layout, warnings } = solve([
+			dot("a"),
+			phrase("p", { repeat: 2 }, [
+				motion("Enter", "in", "a", { at: 0.5, over: 1, loop: 3 }),
+			]),
+		]);
+		expect(layout.p.length).toBe(3.5);
+		expect(span("p")).toEqual([0, 7]);
+		// the motion's own span is still one pass
+		expect(layout.in.local).toEqual({ start: 0.5, duration: 1 });
+		expect(warnings).toEqual([]);
+	});
+
 	it("warns when a relation reaches across clocks, and drops it", () => {
 		const { span, warnings } = solve([
 			...pair,

@@ -71,6 +71,9 @@ export function foldPhases(
 	});
 }
 
+/** A solved phase: the layout, and the nodes it leaves anywhere but home. */
+export type Phase = { state: Float64Array; away: readonly number[] };
+
 /**
  * The solved layout after every event, by event id. A phase depends only on
  * its active modulations, so each distinct list is solved once; none active
@@ -81,40 +84,54 @@ export function solvePhases(
 	home: Float64Array,
 	clocks: readonly ClockPhases[],
 	solve: (operators: readonly LayoutOperator[]) => Float64Array,
-): Map<string, Float64Array> {
-	const solved = new Map<string, Float64Array>([["", home]]);
-	const states = new Map<string, Float64Array>();
+): Map<string, Phase> {
+	const solved = new Map<string, Phase>([["", { state: home, away: [] }]]);
+	const phases = new Map<string, Phase>();
 	for (const { events } of clocks) {
 		for (const e of events) {
 			const key = e.active.join("\n");
-			const known = solved.get(key);
-			const state = known ?? solve(phaseOperators(e.active).operators);
-			if (!known) solved.set(key, state);
-			states.set(e.id, state);
+			let phase = solved.get(key);
+			if (!phase) {
+				const state = solve(phaseOperators(e.active).operators);
+				const away: number[] = [];
+				for (let base = 0; base < home.length; base += 4)
+					for (let k = 0; k < 4; k++)
+						if (state[base + k] !== home[base + k]) {
+							away.push(base);
+							break;
+						}
+				phase = { state, away };
+				solved.set(key, phase);
+			}
+			phases.set(e.id, phase);
 		}
 	}
-	return states;
+	return phases;
 }
 
 /**
  * Per node, the box it takes after each event that moves it. Each clock is
  * followed on its own: a box is recorded when it differs from the one before
- * it in that clock.
+ * it in that clock. An event only looks at the nodes its phase puts away from
+ * home and those still shown away from it, not at the whole scene.
  */
 export function phaseMoves(
 	home: Float64Array,
 	clocks: readonly ClockPhases[],
-	states: ReadonlyMap<string, Float64Array>,
+	phases: ReadonlyMap<string, Phase>,
 ): (Record<string, LayoutBox> | undefined)[] {
 	const moves: (Record<string, LayoutBox> | undefined)[] = new Array(
 		home.length / 4,
 	).fill(undefined);
 	for (const { events } of clocks) {
 		const shown = new Float64Array(home);
+		let displaced = new Set<number>();
 		for (const e of events) {
-			const state = states.get(e.id);
-			if (!state) continue;
-			for (let base = 0; base < home.length; base += 4) {
+			const phase = phases.get(e.id);
+			if (!phase) continue;
+			const { state } = phase;
+			const still = new Set<number>();
+			for (const base of new Set([...displaced, ...phase.away])) {
 				// Back home means exactly home, not within a rounding of it
 				let moved = false;
 				for (let k = 0; k < 4; k++) {
@@ -122,17 +139,21 @@ export function phaseMoves(
 					if (state === home ? to !== from : !(Math.abs(to - from) <= MOVED))
 						moved = true;
 				}
-				if (!moved) continue;
-				shown.set(state.subarray(base, base + 4), base);
-				const record = moves[base / 4] ?? {};
-				record[e.id] = {
-					x: state[base],
-					y: state[base + 1],
-					width: state[base + 2],
-					height: state[base + 3],
-				};
-				moves[base / 4] = record;
+				if (moved) {
+					shown.set(state.subarray(base, base + 4), base);
+					const record = moves[base / 4] ?? {};
+					record[e.id] = {
+						x: state[base],
+						y: state[base + 1],
+						width: state[base + 2],
+						height: state[base + 3],
+					};
+					moves[base / 4] = record;
+				}
+				for (let k = 0; k < 4; k++)
+					if (shown[base + k] !== home[base + k]) still.add(base);
 			}
+			displaced = still;
 		}
 	}
 	return moves;

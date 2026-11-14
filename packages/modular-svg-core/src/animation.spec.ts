@@ -493,6 +493,128 @@ describe("Phrase", () => {
 		expect(body).toMatch(/50%\{translate:0px 0px\}100%\{translate:0px 0px\}$/);
 	});
 
+	it("replays a backward pass from its cut, whatever the rounding", () => {
+		for (const at of [0.1, 0.2, 0.3, 0.4, 0.7])
+			for (const over of [0.1, 0.2, 0.3, 0.6]) {
+				const { ast } = render([
+					box("a"),
+					phrase({ retrograde: true, repeat: 2 }, [
+						on("Enter", "in", "a", { at, over, ease: "linear" }),
+					]),
+				]);
+				const body = keyframesOf(ast.css)[0];
+				// both passes fade out, and the phrase ends hidden
+				expect(
+					body.match(/opacity:1;animation-timing-function:linear/g),
+				).toHaveLength(2);
+				expect(body).toMatch(/100%\{opacity:0\}$/);
+			}
+		const { ast } = render([
+			box("a"),
+			phrase({ retrograde: true, repeat: 2 }, [
+				on("Enter", "in", "a", { at: 0.1, over: 0.2, ease: "linear" }),
+			]),
+		]);
+		expect(keyframesOf(ast.css)[0]).toBe(
+			"0%{opacity:1;animation-timing-function:linear}33.333%{opacity:0;animation-timing-function:steps(1)}50%{opacity:1;animation-timing-function:linear}83.333%{opacity:0}100%{opacity:0}",
+		);
+	});
+
+	it("plays a cut after a tween backwards as the cut before it", () => {
+		const { ast } = render([
+			box("a"),
+			phrase({ retrograde: true }, [
+				on("Motion", "m", "a", {
+					at: 0.2,
+					steps: [
+						{ to: { x: 35 }, over: 0.5, ease: "linear" },
+						{ set: { x: 62 } },
+					],
+				}),
+			]),
+		]);
+		expect(keyframesOf(ast.css)[0]).toBe(
+			"0%{translate:35px 0px;animation-timing-function:linear}71.429%{translate:0px 0px}100%{translate:0px 0px}",
+		);
+	});
+
+	it("counts every pass of a numbered loop towards the phrase", () => {
+		const looped = [
+			box("a"),
+			phrase({}, [
+				on("Enter", "in", "a", { over: 1, loop: 3, ease: "linear" }),
+			]),
+		];
+		const alone = render(looped);
+		expect(alone.ast.duration).toBe(3);
+		expect(keyframesOf(alone.ast.css)[0]).toBe(
+			keyframesOf(
+				render([
+					box("a"),
+					on("Enter", "in", "a", { over: 1, loop: 3, ease: "linear" }),
+				]).ast.css,
+			)[0],
+		);
+		// and holds its last frame when the scene goes on
+		const held = render([
+			...looped,
+			{ type: "Rest", props: { at: 0, over: 6 } },
+		]);
+		expect(keyframesOf(held.ast.css)[0]).toMatch(
+			/33\.33\d+%\{opacity:0;animation-timing-function:linear\}50%\{opacity:1\}100%\{opacity:1\}$/,
+		);
+	});
+
+	const paint = (id: string, at: number, fill: string) =>
+		on("Motion", id, "a", {
+			at,
+			steps: [{ to: { fill }, over: 1, ease: "linear" }],
+		});
+
+	it("plays two motions on one replaced lane backwards as their mirror", () => {
+		const colors = [paint("m1", 0, "#ff0000"), paint("m2", 1, "#0000ff")];
+		const back = render([box("a"), phrase({ retrograde: true }, colors)]);
+		expect(keyframesOf(back.ast.css)[0]).toBe(
+			"0%{fill:#0000ff;animation-timing-function:linear}50%{fill:#ff0000;animation-timing-function:linear}100%{fill:#fff}",
+		);
+		const pong = render([
+			box("a"),
+			phrase({ repeat: 2, alternate: true }, colors),
+		]);
+		expect(keyframesOf(pong.ast.css)[0]).toBe(
+			"0%{fill:#fff;animation-timing-function:linear}25%{fill:#ff0000;animation-timing-function:linear}50%{fill:#0000ff;animation-timing-function:linear}75%{fill:#ff0000;animation-timing-function:linear}100%{fill:#fff}",
+		);
+	});
+
+	it("mirrors a replaced lane shared with a nested phrase", () => {
+		const { ast } = render([
+			box("a"),
+			phrase(
+				{ retrograde: true },
+				[
+					paint("m1", 0, "#ff0000"),
+					phrase({ at: 1 }, [paint("m2", 0, "#0000ff")], "inner"),
+				],
+				"outer",
+			),
+		]);
+		expect(keyframesOf(ast.css)[0]).toBe(
+			"0%{fill:#0000ff;animation-timing-function:linear}50%{fill:#ff0000;animation-timing-function:linear}100%{fill:#fff}",
+		);
+	});
+
+	it("still refuses two motions in a phrase moving one replaced lane at once", () => {
+		expect(() =>
+			render([
+				box("a"),
+				phrase({ retrograde: true }, [
+					paint("m1", 0, "#ff0000"),
+					paint("m2", 0.5, "#0000ff"),
+				]),
+			]),
+		).toThrow(/m1 and m2 both move fill on a/);
+	});
+
 	it("skips the motions of a phrase with nothing to play", () => {
 		const { ast } = render([
 			box("a"),
@@ -548,6 +670,14 @@ describe("layout in time", () => {
 		expect(keyframesOf(ast.css)).toEqual([
 			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:30px 0px}",
 			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:-30px 0px}",
+		]);
+	});
+
+	it("holds a change of layout that takes no time, with nothing else timed", () => {
+		const { ast } = render([row(["a", "b"]), swap({ at: 0, over: 0 })]);
+		expect(keyframesOf(ast.css)).toEqual([
+			"0%{translate:30px 0px}100%{translate:30px 0px}",
+			"0%{translate:-30px 0px}100%{translate:-30px 0px}",
 		]);
 	});
 

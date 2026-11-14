@@ -116,3 +116,47 @@ export function scaleScene(
 	}
 	return { type: "Group", id: "root", children };
 }
+
+/**
+ * A step-by-step visualisation: one stack of `n` marks that `changes`
+ * modulations reorder in turn, each resolved before the next.
+ */
+export function reorderScene(
+	n: number,
+	changes: number,
+): Record<string, unknown> {
+	const ids = Array.from({ length: n }, (_, i) => `m${i}`);
+	const children: unknown[] = [
+		{
+			type: "StackV",
+			id: "list",
+			props: { spacing: 4 },
+			children: ids.map((id) => ({
+				type: "Rect",
+				id,
+				props: { width: 24, height: 8 },
+			})),
+		},
+	];
+	for (let i = 0; i < changes; i++) {
+		const turn = 1 + (i % (n - 1));
+		children.push(
+			{
+				type: "Modulate",
+				id: `step${i}`,
+				props: { at: i, over: 0.4 },
+				children: [
+					{
+						type: "StackV",
+						props: { spacing: 4 },
+						children: [...ids.slice(turn), ...ids.slice(0, turn)].map((id) =>
+							ref(id),
+						),
+					},
+				],
+			},
+			{ type: "Resolve", id: `back${i}`, props: { at: i + 0.5, over: 0.4 } },
+		);
+	}
+	return { type: "Group", id: "root", children };
+}

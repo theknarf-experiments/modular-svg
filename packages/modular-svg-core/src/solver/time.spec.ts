@@ -446,4 +446,14 @@ describe("more musical time", () => {
 			solve([[1, 7]], [phraseOp([], 0, { rate: 1, repeat: 1 })])[0],
 		).toEqual([1, 0]);
 	});
+
+	it("counts every pass of a member that loops a number of times", () => {
+		const spans: [number, number][] = [
+			[0, 0],
+			[0.5, 1],
+			[0, 2],
+		];
+		const op = phraseOp([2, 4], 0, { rate: 1, repeat: 1, passes: [3, 1] });
+		expect(solve(spans, [op])[0]).toEqual([0, 3.5]);
+	});
 });

@@ -51,6 +51,8 @@ type TimeScene = {
 	n: number;
 	overs: number[];
 	pins: (number | undefined)[];
+	/** how many times each motion plays its span */
+	loops: number[];
 	bpm: number;
 	relations: Relation[];
 };
@@ -68,6 +70,10 @@ const timeSceneArb: fc.Arbitrary<TimeScene> = fc
 				fc.option(fc.constantFrom(0, 0.5, 2), { nil: undefined, freq: 4 }),
 				{ minLength: n, maxLength: n },
 			),
+			loops: fc.array(fc.constantFrom(1, 1, 1, 2, 3), {
+				minLength: n,
+				maxLength: n,
+			}),
 			bpm: fc.constantFrom(60, 90, 120),
 			relations: fc.array(relationArb(n), { minLength: 1, maxLength: 4 }),
 		}),
@@ -91,6 +97,7 @@ function sceneJson(s: TimeScene, k = 1): N {
 			props: {
 				over: s.overs[i] * k,
 				...(pin !== undefined ? { at: pin * k } : {}),
+				...(s.loops[i] > 1 ? { loop: s.loops[i] } : {}),
 			},
 			children: [ref(`r${i}`)],
 		});
@@ -143,13 +150,21 @@ describe("time relations (properties)", () => {
 	it("a solution without warnings satisfies every relation", () => {
 		fc.assert(
 			fc.property(timeSceneArb, (s) => {
-				const { warnings, start, length, end, layout } = solve(s);
+				const { scene, warnings, start, length, end, layout } = solve(s);
 				if (warnings.length > 0) return;
 				s.relations.forEach((r, j) => {
 					if (r.type !== "Phrase") return;
 					const p = layout[`rel${j}`];
 					expect(p.duration).toBeCloseTo((p.length ?? 0) * r.division, 3);
 					expect(p.length).toBeGreaterThan(0);
+					// every pass of a numbered loop plays inside the phrase
+					scene.nodes.forEach((n) => {
+						if (n.clock !== `rel${j}` || !n.motion) return;
+						const i = Number(n.id.slice(1));
+						expect(p.length).toBeGreaterThanOrEqual(
+							start(i) + length(i) * s.loops[i] - EPS,
+						);
+					});
 				});
 				for (const r of s.relations) {
 					const m = r.members;

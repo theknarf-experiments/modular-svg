@@ -4,6 +4,7 @@ import {
 	easeAt,
 	intrinsicDuration,
 	type MotionSpec,
+	passesOf,
 	resolveEase,
 	type SampleFn,
 	type Values,
@@ -253,19 +254,23 @@ export function buildTime(
 		.filter((t) => TIME_CLOCKS.has(t.type))
 		.sort((a, b) => base(a.rec.id) - base(b.rec.id));
 	for (const p of phraseNodes) {
-		const take = (n: NodeRecord, direct: boolean): void => {
+		// However the phrase got to it: directly, or through what it takes
+		const refused = new Set<string>();
+		const take = (n: NodeRecord): void => {
+			if (n.id === p.rec.id) return;
 			const owner = clockOf.get(n.id);
-			if (owner !== undefined || n.id === p.rec.id) {
-				if (direct && owner !== undefined && owner !== p.rec.id)
+			if (owner !== undefined) {
+				if (owner !== p.rec.id && !refused.has(n.id))
 					warnings.push(
 						`Phrase(${p.rec.id}) takes ${n.id}, which already plays in Phrase(${owner})'s time`,
 					);
+				refused.add(n.id);
 				return;
 			}
 			clockOf.set(n.id, p.rec.id);
-			for (const c of rawChildren(n)) take(c, false);
+			for (const c of rawChildren(n)) take(c);
 		};
-		for (const c of p.children) take(c, true);
+		for (const c of p.children) take(c);
 	}
 	// A relation declared outside over members of one phrase plays in it too
 	for (const t of order) {
@@ -764,7 +769,11 @@ export function buildTime(
 				phraseOp(
 					members.map((m) => base(m.id)),
 					base(rec.id),
-					{ rate, repeat: Number.isFinite(repeat) ? repeat : 1 },
+					{
+						rate,
+						repeat: Number.isFinite(repeat) ? repeat : 1,
+						passes: members.map((m) => passesOf(m.motion?.loop)),
+					},
 				),
 			);
 		nameNewOps(`span(${rec.id})`);
@@ -783,27 +792,38 @@ export function buildTime(
 	for (const t of order) {
 		if (!MODULATIONS.has(t.type)) continue;
 		const clock = clockOf.get(t.rec.id);
-		changes.set(clock, [...(changes.get(clock) ?? []), t]);
+		const list = changes.get(clock);
+		if (list) list.push(t);
+		else changes.set(clock, [t]);
 	}
 	for (const list of changes.values()) {
 		const sorted = [...list].sort((a, b) => base(a.rec.id) - base(b.rec.id));
-		sorted.forEach((t, i) => {
+		// The change before each one: by start, ties in document order. Worked
+		// out once per solution, not once per change
+		let known:
+			| { span: Parameters<TimeCheck>[0]; before: Map<string, TimeNode> }
+			| undefined;
+		const beforeIn = (span: Parameters<TimeCheck>[0]) => {
+			if (known?.span === span) return known.before;
+			const byStart = [...sorted].sort(
+				(a, b) => span(a.rec.id)[0] - span(b.rec.id)[0],
+			);
+			const before = new Map(
+				byStart.slice(1).map((t, i) => [t.rec.id, byStart[i]]),
+			);
+			known = { span, before };
+			return before;
+		};
+		for (const t of sorted) {
 			timeChecks.push((span) => {
-				// The change before this one: the latest start, ties in document order
-				let prev: TimeNode | undefined;
-				sorted.forEach((o, j) => {
-					if (o === t) return;
-					const [mine, theirs] = [span(t.rec.id)[0], span(o.rec.id)[0]];
-					if (theirs > mine || (theirs === mine && j > i)) return;
-					if (!prev || theirs >= span(prev.rec.id)[0]) prev = o;
-				});
+				const prev = beforeIn(span).get(t.rec.id);
 				if (!prev) return undefined;
 				const [start, over] = span(prev.rec.id);
 				return span(t.rec.id)[0] < start + over - TIME_EPSILON
 					? `${t.type}(${t.rec.id}) starts while ${prev.type}(${prev.rec.id}) is still settling; ${prev.rec.id} is cut short`
 					: undefined;
 			});
-		});
+		}
 	}
 
 	// A Sequence sets b's start from a's length while Legato sets a's length

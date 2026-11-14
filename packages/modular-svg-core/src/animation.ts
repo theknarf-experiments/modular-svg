@@ -8,6 +8,7 @@ import {
 	keysOf,
 	type MotionSpec,
 	moving,
+	passesOf,
 	type ResolvedEase,
 	resolveColorRefs,
 	resolveEase,
@@ -227,6 +228,8 @@ function restValue(
 	);
 }
 
+type Phrase = Clock & { id: string };
+
 type Contribution = {
 	motion: string;
 	expanded: Expanded;
@@ -247,6 +250,8 @@ const touched = (e: Expanded): Values =>
 
 const LINEAR: ResolvedEase = { kind: "linear" };
 const CUT: ResolvedEase = { kind: "steps", count: 1 };
+// Seconds given to a timeline on which nothing takes any, so it can be held
+const INSTANT = 1;
 // Linear pieces a connector's path is sampled into across one change of layout
 const SAMPLES = 16;
 // Ends that move within this of each other carry their connector along whole
@@ -301,6 +306,85 @@ const pick = (values: Values, channels: readonly Channel[]): Values =>
 		channels.filter((c) => c in values).map((c) => [c, values[c]]),
 	);
 
+/** The part of `e` on the channels `keep` lets through, if any. */
+function only(
+	e: Expanded,
+	keep: (c: Channel) => boolean,
+): Expanded | undefined {
+	const channels = (Object.keys(touched(e)) as Channel[]).filter(keep);
+	if (channels.length === 0) return undefined;
+	return {
+		initial: pick(e.initial, channels),
+		steps: e.steps
+			.filter((s) => channels.some((c) => c in s.values))
+			.map((s) => ({ ...s, values: pick(s.values, channels) })),
+	};
+}
+
+type Performed = { motion: string; expanded: Expanded };
+type ReplacedLane = {
+	channels: Channel[];
+	initial: Values;
+	segments: Step[];
+	owners: string[];
+};
+
+/**
+ * The lanes whose value each motion replaces (fill, width, d, ...), merged
+ * across the motions on one mark. Two that move a lane at once is an error.
+ */
+function replacedLanes(
+	markId: string,
+	list: readonly Performed[],
+): Map<string, ReplacedLane> {
+	const own = new Map<string, ReplacedLane>();
+	for (const { motion, expanded } of list) {
+		for (const [name, channels] of lanesOf(touched(expanded))) {
+			if (CHANNELS[channels[0]].nest) continue;
+			const entry = own.get(name) ?? {
+				channels,
+				initial: {},
+				segments: [],
+				owners: [],
+			};
+			const segments = expanded.steps
+				.filter((s) => channels.some((c) => c in s.values))
+				.map((s) => ({ ...s, values: pick(s.values, channels) }));
+			for (const a of segments) {
+				const clash = entry.segments.find(
+					(b) =>
+						a.start < b.start + b.over - 1e-9 &&
+						b.start < a.start + a.over - 1e-9,
+				);
+				if (clash)
+					throw new Error(
+						`${entry.owners.join(", ")} and ${motion} both move ${name} on ${markId} at ${num(Math.max(a.start, clash.start))}s`,
+					);
+			}
+			// The motion that moves the lane first decides where it starts
+			const first = Math.min(...segments.map((s) => s.start));
+			const earliest = Math.min(
+				Infinity,
+				...entry.segments.map((s) => s.start),
+			);
+			if (first < earliest)
+				entry.initial = {
+					...entry.initial,
+					...pick(expanded.initial, channels),
+				};
+			else
+				entry.initial = {
+					...pick(expanded.initial, channels),
+					...entry.initial,
+				};
+			entry.segments.push(...segments);
+			entry.owners.push(motion);
+			own.set(name, entry);
+		}
+	}
+	return own;
+}
+
 /**
  * Compile the solved motions and changes of layout of a scene into CSS
  * keyframes, per-mark classes and SMIL. Returns undefined when nothing
@@ -331,27 +415,26 @@ export function compileAnimation(
 		...motions.map((m) => {
 			const { start, duration } = span(m.id);
 			const loop = m.motion?.loop;
-			// Inside a phrase a loop stops where the phrase does
-			const passes =
-				typeof loop === "number" && m.clock === undefined
-					? Math.max(1, Math.floor(loop))
-					: 1;
-			return start + duration * passes;
+			// Inside a phrase a loop's passes are part of the phrase's length
+			return start + duration * (m.clock === undefined ? passesOf(loop) : 1);
 		}),
 		// Rests, bars and fermatas hold time too, so a trailing hold still plays
 		...Object.values(layout).map((b) =>
 			b.start !== undefined ? b.start + (b.duration ?? 0) : 0,
 		),
 	);
-	const period = opts.duration ?? natural;
+	// A change of layout that takes no time still holds once nothing else is
+	// timed: the timeline is then one held frame
+	const instant = natural <= 0 && phases.some((p) => p.clock === undefined);
+	const period = opts.duration ?? (instant ? INSTANT : natural);
 	if (!(period > 0)) return undefined;
 
 	const byId = new Map(nodes.map((n) => [n.id, n]));
-	// The phrases a node plays in, innermost first
-	const clocksOf = (n: NodeRecord): Clock[] => {
-		const chain: Clock[] = [];
+	// A phrase and those around it, innermost first
+	const clocksFrom = (innermost: string | undefined): Phrase[] => {
+		const chain: Phrase[] = [];
 		for (
-			let id = n.clock;
+			let id = innermost;
 			id !== undefined && chain.length < nodes.length;
 			id = byId.get(id)?.clock
 		) {
@@ -360,6 +443,7 @@ export function compileAnimation(
 			if (!box || !phrase) break;
 			const own = box.local ?? span(id);
 			chain.push({
+				id,
 				start: own.start,
 				span: own.duration,
 				length: box.length ?? 0,
@@ -368,6 +452,18 @@ export function compileAnimation(
 		}
 		return chain;
 	};
+	const clocksOf = (n: NodeRecord): Phrase[] => clocksFrom(n.clock);
+	// Each phrase plays the steps in the time of the one around it
+	const through = (
+		clocks: readonly Clock[],
+		e: Expanded,
+		rest: (c: Channel) => number | string,
+	): Expanded =>
+		clocks.reduce(
+			(inner, clock, i) =>
+				retime(inner, clock, clocks[i + 1]?.length ?? period, rest),
+			e,
+		);
 	const pastEnd = (id: string, expanded: Expanded): void => {
 		const last = Math.max(0, ...expanded.steps.map((s) => s.start + s.over));
 		if (last > period + 1e-6)
@@ -382,6 +478,41 @@ export function compileAnimation(
 		if (list) list.push(c);
 		else contributions.set(mark, [c]);
 	};
+	// Replaced lanes inside phrases, per mark and phrase, in the phrase's time
+	const phrased = new Map<string, Map<string, Performed[]>>();
+	/**
+	 * Steps on a mark, in the time of the innermost of `clocks`. Nesting lanes
+	 * compose, so each motion is retimed alone. A replaced lane is one value
+	 * that every motion in the phrase takes over from the last, so those wait
+	 * to be retimed together.
+	 */
+	const perform = (
+		mark: NodeRecord,
+		motion: string,
+		clocks: readonly Phrase[],
+		expanded: Expanded,
+		pivot: { x: number; y: number },
+	): void => {
+		if (clocks.length === 0) {
+			contribute(mark.id, { motion, expanded, pivot });
+			return;
+		}
+		const nesting = only(expanded, (c) => !!CHANNELS[c].nest);
+		if (nesting) {
+			const played = through(clocks, nesting, (c) =>
+				restValue(c, mark, layout[mark.id]),
+			);
+			pastEnd(motion, played);
+			contribute(mark.id, { motion, expanded: played, pivot });
+		}
+		const replaced = only(expanded, (c) => !CHANNELS[c].nest);
+		if (!replaced) return;
+		const byClock = phrased.get(mark.id) ?? new Map<string, Performed[]>();
+		const list = byClock.get(clocks[0].id) ?? [];
+		list.push({ motion, expanded: replaced });
+		byClock.set(clocks[0].id, list);
+		phrased.set(mark.id, byClock);
+	};
 
 	// Layout in time. Every mark a clock's modulations move follows its box in
 	// an outermost shell, so the motions on it keep their pivots
@@ -393,27 +524,16 @@ export function compileAnimation(
 		const eases = events.map((e) =>
 			resolveEase(byId.get(e.id)?.modulation?.ease),
 		);
-		const play = (e: Expanded, rest: (c: Channel) => number | string) => {
-			const played = clocks.reduce(
-				(inner, clock, i) =>
-					retime(inner, clock, clocks[i + 1]?.length ?? period, rest),
-				e,
-			);
-			pastEnd(events[events.length - 1].id, played);
-			return played;
-		};
+		const mine = new Set(events.map((e) => e.id));
 		const moved = (id: string | undefined): boolean => {
 			const moves = id === undefined ? undefined : layout[id]?.phases;
-			return moves !== undefined && events.some((e) => e.id in moves);
+			return moves !== undefined && Object.keys(moves).some((e) => mine.has(e));
 		};
 		const follow = (mark: NodeRecord, e: Expanded | undefined): void => {
 			if (!e) return;
-			const box = layout[mark.id];
-			contribute(mark.id, {
-				motion: events.find((x) => x.start === e.steps[0].start)?.id ?? "",
-				expanded: play(e, (c) => restValue(c, mark, box)),
-				pivot: { x: 0, y: 0 },
-			});
+			const by = events.find((x) => x.start === e.steps[0].start)?.id ?? "";
+			if (clocks.length === 0) pastEnd(by, e);
+			perform(mark, by, clocks, e, { x: 0, y: 0 });
 		};
 		for (const mark of nodes) {
 			const box = layout[mark.id];
@@ -490,10 +610,12 @@ export function compileAnimation(
 			});
 			const elements = morphs.get(mark.id) ?? new Map<string, Expanded[]>();
 			rest.forEach((el, k) => {
-				const played = play(
+				const played = through(
+					clocks,
 					{ initial: { d: el.d }, steps: steps[k] },
 					() => el.d,
 				);
+				pastEnd(events[events.length - 1].id, played);
 				elements.set(el.id, [...(elements.get(el.id) ?? []), played]);
 			});
 			morphs.set(mark.id, elements);
@@ -526,16 +648,47 @@ export function compileAnimation(
 			for (const mark of target.marks) {
 				const node = byId.get(mark);
 				if (!node || !layout[mark]) continue;
-				// Each phrase plays the steps in the time of the one around it
-				const played = clocks.reduce(
-					(e, clock, i) =>
-						retime(e, clock, clocks[i + 1]?.length ?? period, (channel) =>
-							restValue(channel, node, layout[mark]),
-						),
-					expanded,
-				);
-				if (clocks.length > 0) pastEnd(m.id, played);
-				contribute(mark, { motion: m.id, expanded: played, pivot });
+				perform(node, m.id, clocks, expanded, pivot);
+			}
+		}
+	}
+
+	// Innermost phrases first: each merges what plays on a lane in its time,
+	// then plays that as one into the phrase around it
+	for (const [markId, byClock] of phrased) {
+		const mark = byId.get(markId) as NodeRecord;
+		const rest = (c: Channel) => restValue(c, mark, layout[markId]);
+		const chains = new Map<string, Phrase[]>();
+		const chainOf = (id: string): Phrase[] => {
+			const chain = chains.get(id) ?? clocksFrom(id);
+			chains.set(id, chain);
+			return chain;
+		};
+		while (byClock.size > 0) {
+			const [id] = [...byClock.keys()].sort(
+				(a, b) => chainOf(b).length - chainOf(a).length,
+			);
+			const [clock, outer] = chainOf(id);
+			const lanes = [...replacedLanes(markId, byClock.get(id) ?? []).values()];
+			byClock.delete(id);
+			const motion = [...new Set(lanes.flatMap((l) => l.owners))].join(", ");
+			const expanded = retime(
+				{
+					initial: Object.assign({}, ...lanes.map((l) => l.initial)),
+					steps: lanes.flatMap((l) => l.segments),
+				},
+				clock,
+				outer?.length ?? period,
+				rest,
+			);
+			if (outer)
+				byClock.set(outer.id, [
+					...(byClock.get(outer.id) ?? []),
+					{ motion, expanded },
+				]);
+			else {
+				pastEnd(motion, expanded);
+				contribute(markId, { motion, expanded, pivot: { x: 0, y: 0 } });
 			}
 		}
 	}
@@ -611,60 +764,8 @@ export function compileAnimation(
 		}
 
 		// Replacing lanes: merged across motions on the element itself
-		const own = new Map<
-			string,
-			{
-				channels: Channel[];
-				initial: Values;
-				segments: Step[];
-				owners: string[];
-			}
-		>();
-		for (const { motion, expanded } of list) {
-			for (const [name, channels] of lanesOf(touched(expanded))) {
-				if (CHANNELS[channels[0]].nest) continue;
-				channels.forEach(check);
-				const entry = own.get(name) ?? {
-					channels,
-					initial: {},
-					segments: [],
-					owners: [],
-				};
-				const segments = expanded.steps
-					.filter((s) => channels.some((c) => c in s.values))
-					.map((s) => ({ ...s, values: pick(s.values, channels) }));
-				for (const a of segments) {
-					const clash = entry.segments.find(
-						(b) =>
-							a.start < b.start + b.over - 1e-9 &&
-							b.start < a.start + a.over - 1e-9,
-					);
-					if (clash)
-						throw new Error(
-							`${entry.owners.join(", ")} and ${motion} both move ${name} on ${markId} at ${num(Math.max(a.start, clash.start))}s`,
-						);
-				}
-				// The motion that moves the lane first decides where it starts
-				const first = Math.min(...segments.map((s) => s.start));
-				const earliest = Math.min(
-					Infinity,
-					...entry.segments.map((s) => s.start),
-				);
-				if (first < earliest)
-					entry.initial = {
-						...entry.initial,
-						...pick(expanded.initial, channels),
-					};
-				else
-					entry.initial = {
-						...pick(expanded.initial, channels),
-						...entry.initial,
-					};
-				entry.segments.push(...segments);
-				entry.owners.push(motion);
-				own.set(name, entry);
-			}
-		}
+		const own = replacedLanes(markId, list);
+		for (const { channels } of own.values()) channels.forEach(check);
 		const attrs: Record<string, string | number> = {};
 		const smils: SmilAnimate[] = [];
 		let stillD: string | undefined;

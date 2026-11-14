@@ -483,6 +483,10 @@ function assertNoOverlap(steps: readonly Step[]): void {
 	}
 }
 
+/** How many times a motion plays its span; a loop without a number counts once. */
+export const passesOf = (loop: MotionSpec["loop"]): number =>
+	typeof loop === "number" ? Math.max(1, Math.floor(loop)) : 1;
+
 /**
  * Absolute steps for a motion placed at [start, start + duration]. A looping
  * motion repeats its span until `sceneEnd` (or `loop` times); a pass that
@@ -499,7 +503,7 @@ export function expandMotion(
 	const passes =
 		spec.loop === true
 			? Math.ceil((sceneEnd - start) / duration - 1e-9)
-			: Math.max(1, Math.floor(spec.loop));
+			: passesOf(spec.loop);
 	if (!(passes <= MAX_PASSES))
 		throw new Error(
 			`A looping motion would repeat ${passes} times (${duration}s in a ${sceneEnd}s scene); the cap is ${MAX_PASSES}`,
@@ -707,9 +711,15 @@ export function keysOf(
 		} else if (keys.length === 1 && segment.start <= nudge) {
 			keys[0] = { ...last, values: next };
 		} else if (contiguous && last.t + nudge > period + 1e-9) {
-			// A cut at the very end: hold one nudge early so it still lands on the period
-			keys[keys.length - 1] = { ...last, t: last.t - nudge, ease: HOLD };
-			keys.push({ t: period, values: next, ease: NAMED.out });
+			const held = keys[keys.length - 2];
+			if (held?.ease === HOLD && last.t - held.t < nudge * 1.5) {
+				// Another cut at the very end: the key it would hold from is taken
+				keys[keys.length - 1] = { ...last, values: next };
+			} else {
+				// A cut at the very end: hold one nudge early so it still lands on the period
+				keys[keys.length - 1] = { ...last, t: last.t - nudge, ease: HOLD };
+				keys.push({ t: period, values: next, ease: NAMED.out });
+			}
 		} else {
 			keys[keys.length - 1] = { ...last, ease: HOLD };
 			keys.push({

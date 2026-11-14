@@ -170,6 +170,28 @@ describe("retime", () => {
 		]);
 	});
 
+	// 0.2 + 0.5 is not 0.7 in floats: the mirrored tween must not slip before the cut
+	it("keeps a mirrored cut ahead of the step it precedes", () => {
+		const e: Expanded = {
+			initial: { x: 0 },
+			steps: [
+				{
+					start: 0.2,
+					over: 0.5,
+					ease: resolveEase("linear"),
+					values: { x: 35 },
+				},
+				{ start: 0.7, over: 0, ease: resolveEase("hold"), values: { x: 62 } },
+			],
+		};
+		const c = { ...once, span: 1.4, length: 0.7, repeat: 2, retrograde: true };
+		const back = retime(e, c, 1.4, noRest);
+		const played = [...back.steps].sort((a, b) => a.start - b.start);
+		expect(played.map((s) => s.values.x)).toEqual([35, 0, 62, 35, 0]);
+		expect(played.every((s) => s.start >= 0)).toBe(true);
+		expect(stateAt(back, 1.4)).toEqual({ x: 0 });
+	});
+
 	it("repeats until the enclosing time ends, clipping the last pass", () => {
 		const e = retime(
 			expandMotion(enter, 0, 1, 1),
@@ -240,6 +262,70 @@ describe("retime", () => {
 				},
 			),
 			{ numRuns: 300 },
+		);
+	});
+
+	it("mirrors cuts and times that do not round (property)", () => {
+		const partArb = fc.record({
+			gap: fc.constantFrom(0, 0.1, 0.3),
+			over: fc.constantFrom(0.1, 0.2, 0.5, 0.7),
+			x: fc.integer({ min: -20, max: 20 }),
+			// a cut right after the step, to a value of its own
+			cut: fc.option(fc.integer({ min: 30, max: 60 }), { nil: undefined }),
+		});
+		fc.assert(
+			fc.property(
+				fc.array(partArb, { minLength: 1, maxLength: 5 }),
+				fc.constantFrom(0, 0.1, 0.2, 0.3, 0.4),
+				fc.constantFrom(1, 2, 3),
+				fc.double({ min: 0.01, max: 0.99, noNaN: true }),
+				(parts, lead, repeat, u) => {
+					let cursor = lead;
+					const steps: Expanded["steps"] = [];
+					for (const p of parts) {
+						cursor += p.gap;
+						steps.push({
+							start: cursor,
+							over: p.over,
+							ease: resolveEase("linear"),
+							values: { x: p.x },
+						});
+						cursor += p.over;
+						if (p.cut !== undefined)
+							steps.push({
+								start: cursor,
+								over: 0,
+								ease: resolveEase("hold"),
+								values: { x: p.cut },
+							});
+					}
+					const local: Expanded = { initial: { x: 0 }, steps };
+					const length = cursor;
+					const scene = retime(
+						local,
+						{
+							...once,
+							span: length * repeat,
+							length,
+							repeat,
+							retrograde: true,
+						},
+						length * repeat,
+						noRest,
+					);
+					const tau = u * length;
+					// at an instant something happens, before and after differ
+					const edges = steps.flatMap((s) => [s.start, s.start + s.over]);
+					fc.pre(edges.every((e) => Math.abs(length - tau - e) > 1e-6));
+					const want = Number(stateAt(local, length - tau).x);
+					for (let pass = 0; pass < repeat; pass++)
+						expect(Number(stateAt(scene, pass * length + tau).x)).toBeCloseTo(
+							want,
+							4,
+						);
+				},
+			),
+			{ numRuns: 500 },
 		);
 	});
 });

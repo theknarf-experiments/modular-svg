@@ -1240,6 +1240,25 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		return "container" in d ? `union(${d.container.id})` : descName(d);
 	};
 
+	// A phase only solves what can matter in it: home, the active modulations,
+	// and the containers of inactive ones that some relation reads. The other
+	// inactive containers draw nothing and stay where home left them, so a
+	// phase costs the same however many modulations the scene has
+	const read = new Set(descs.flatMap((d) => d.children.map((c) => c.id)));
+	const scoped = new Map<string, number[]>();
+	const always: number[] = [];
+	for (const i of all) {
+		const d = descs[i];
+		if (d.scope === undefined) {
+			always.push(i);
+			continue;
+		}
+		const list = scoped.get(d.scope);
+		if (list) list.push(i);
+		else scoped.set(d.scope, [i]);
+		if ("container" in d && read.has(d.container.id)) always.push(i);
+	}
+
 	/**
 	 * The relations that hold while `active` modulations do (later ones win,
 	 * home loses). A relation is dropped whole once a stronger one places
@@ -1250,14 +1269,23 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	): { operators: LayoutOperator[]; names: string[] } => {
 		const taken = new Set<string>();
 		const live = new Map<number, Compiled>();
-		const groups = [
-			...[...active].reverse().map((id) => modulated.get(id)),
-			home.compiled,
+		const held =
+			active.length === 0
+				? all
+				: [
+						...new Set([
+							...always,
+							...active.flatMap((id) => scoped.get(id) ?? []),
+						]),
+					].sort((a, b) => a - b);
+		const groups: Iterable<[number, Compiled | undefined]>[] = [
+			...[...active].reverse().map((id) => modulated.get(id) ?? []),
+			held.filter(isHome).map((i) => [i, home.compiled.get(i)]),
 		];
 		for (const group of groups) {
-			if (!group) continue;
 			const kept: Compiled[] = [];
 			for (const [i, c] of group) {
+				if (!c) continue;
 				const kind = descs[i].kind;
 				const yields =
 					kind === "stackV" ||
@@ -1273,7 +1301,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		}
 		const operators: LayoutOperator[] = [];
 		const names: string[] = [];
-		for (const i of all) {
+		for (const i of held) {
 			const c = live.get(i);
 			const rest = c ? undefined : restOf(i);
 			for (const op of c?.operators ?? (rest ? [rest] : [])) {
@@ -1388,28 +1416,45 @@ export function checkPhases(
 		`${byId.get(id)?.modulation?.kind === "resolve" ? "Resolve" : "Modulate"}(${id})`;
 	const out: string[] = [];
 
+	// What each event moves, in node order
+	const movedBy = new Map<string, number[]>();
+	scene.nodes.forEach((n, i) => {
+		for (const event of Object.keys(layout[n.id]?.phases ?? {})) {
+			const list = movedBy.get(event);
+			if (list) list.push(i);
+			else movedBy.set(event, [i]);
+		}
+	});
+	const homeBoxes = new Float64Array(scene.nodes.length * 4);
+	scene.nodes.forEach((n, i) => {
+		const b = layout[n.id] ?? n;
+		homeBoxes.set([b.x, b.y, b.width, b.height], i * 4);
+	});
+
 	const checked = new Set<string>([""]);
 	// The first event of each clock to move a node
 	const movers = new Map<string, string[]>();
 	for (const { events } of clocks) {
-		const shown: Record<string, LayoutBox> = { ...layout };
-		const moved = new Set<string>();
+		const shown = new Float64Array(homeBoxes);
+		const moved = new Set<number>();
 		for (const e of events) {
-			for (const n of scene.nodes) {
-				const box = layout[n.id]?.phases?.[e.id];
-				if (!box) continue;
-				shown[n.id] = box;
-				if (moved.has(n.id)) continue;
-				moved.add(n.id);
-				movers.set(n.id, [...(movers.get(n.id) ?? []), e.id]);
+			for (const i of movedBy.get(e.id) ?? []) {
+				const { id } = scene.nodes[i];
+				const box = layout[id].phases?.[e.id] as LayoutBox;
+				shown.set([box.x, box.y, box.width, box.height], i * 4);
+				if (moved.has(i)) continue;
+				moved.add(i);
+				movers.set(id, [...(movers.get(id) ?? []), e.id]);
 			}
 			const key = e.active.join("\n");
 			if (checked.has(key)) continue;
 			checked.add(key);
 			const { operators, names } = scene.phaseOperators(e.active);
-			const phase = { nodes: scene.nodes, operators, operatorNames: names };
-			for (const w of checkLayout(phase, shown))
-				out.push(`after ${nameOf(e.id)}: ${w}`);
+			const failing = unsettled(shown, operators, names, 1e-2);
+			if (failing.length > 0)
+				out.push(
+					`after ${nameOf(e.id)}: ${unsettledMessage("layout", failing)}`,
+				);
 		}
 	}
 

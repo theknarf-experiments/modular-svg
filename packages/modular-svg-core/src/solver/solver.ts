@@ -7,6 +7,7 @@ const colorHex = (colors: Float64Array, base: number): string =>
 		colors[base + 3],
 	);
 
+import { passesOf } from "../motion.ts";
 import { type Clock, imageOf } from "../phrase.ts";
 import type { LayoutOperator, NodeRecord } from "./index.ts";
 import {
@@ -199,7 +200,8 @@ export function solveLayout(
 	const lengths = new Map<string, number>();
 	scene.nodes.forEach((n, i) => {
 		if (n.clock === undefined || !timed.has(n.id)) return;
-		const end = times[i * 2] + times[i * 2 + 1];
+		// A numbered loop plays all its passes inside the phrase
+		const end = times[i * 2] + times[i * 2 + 1] * passesOf(n.motion?.loop);
 		lengths.set(n.clock, Math.max(lengths.get(n.clock) ?? 0, end));
 	});
 	const clockAt = (id: string): Clock | undefined => {

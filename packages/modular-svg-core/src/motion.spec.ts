@@ -174,4 +174,24 @@ describe("keysOf", () => {
 			[4, 2, "bezier"],
 		]);
 	});
+
+	it("lands several cuts at the very end on one last key", () => {
+		const cut = (x: number) => ({
+			start: 2,
+			over: 0,
+			ease: resolveEase("hold"),
+			values: { x },
+		});
+		const keys = keysOf(
+			{ x: 0 },
+			[
+				{ start: 1, over: 1, ease: resolveEase("linear"), values: { x: 5 } },
+				cut(7),
+				cut(9),
+			],
+			2,
+		);
+		expect(keys.map((k) => k.values.x)).toEqual([0, 0, 5, 9]);
+		expect(new Set(keys.map((k) => k.t)).size).toBe(keys.length);
+	});
 });
