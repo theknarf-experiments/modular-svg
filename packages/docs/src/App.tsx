@@ -8,6 +8,8 @@ import { CourierExample } from "./examples/animation/CourierExample";
 import courierExampleCode from "./examples/animation/CourierExample.tsx?raw";
 import { DeployFlowExample } from "./examples/animation/DeployFlowExample";
 import deployFlowExampleCode from "./examples/animation/DeployFlowExample.tsx?raw";
+import { DrumFillExample } from "./examples/animation/DrumFillExample";
+import drumFillExampleCode from "./examples/animation/DrumFillExample.tsx?raw";
 import { EasingExample } from "./examples/animation/EasingExample";
 import easingExampleCode from "./examples/animation/EasingExample.tsx?raw";
 import { GrooveExample } from "./examples/animation/GrooveExample";
@@ -318,6 +320,13 @@ export const pages: Page[] = [
 					"A Phrase is a clock: the motions inside play in its own time, and the phrase plays them as a unit. repeat + alternate runs every other pass backwards, eases and stepped jumps included, so the ball falls, bounces back up the same way, and never cuts",
 				code: pingPongExampleCode,
 				element: <PingPongExample />,
+			},
+			{
+				title: "A fill that lands on the beat",
+				description:
+					"The beat is the scene's; the fill is a Phrase played at twice the speed. Its crash waits for the toms in the phrase's own time and then lands on the scene's beat, which OnBeat reads from outside the phrase. The slider is a looping motion with alternate: one beat there, one back",
+				code: drumFillExampleCode,
+				element: <DrumFillExample />,
 			},
 			{
 				title: "Retiming a component",

@@ -839,3 +839,59 @@ test("the Selection example keeps its frame round the days it has picked", async
 	// the days themselves never move
 	expect(weekend.Mon).toEqual(home.Mon);
 });
+
+test("the Drum fill example lands its crash on the scene's beat", async ({
+	page,
+}) => {
+	const problems: string[] = [];
+	page.on("console", (m) => {
+		if (m.type() === "warning" || m.type() === "error") problems.push(m.text());
+	});
+	await page.goto("http://localhost:5173/animation/");
+	const graphic = page.locator("svg:has(#crash)");
+	await graphic.scrollIntoViewIfNeeded();
+	await graphic.evaluate((svg) => svg.setAttribute("data-fill", ""));
+	const at = async (t: number) => {
+		await graphic.evaluate((svg: SVGSVGElement, time) => {
+			for (const a of svg.getAnimations({ subtree: true })) {
+				a.pause();
+				a.currentTime = time * 1000;
+			}
+		}, t);
+		const width = async (id: string) => {
+			const box = await drawn(page, id, "svg[data-fill]");
+			return box.right - box.left;
+		};
+		const slider = await drawn(page, "slider", "svg[data-fill]");
+		return {
+			crash: await width("crash"),
+			tom2: await width("tom2"),
+			metronome: await width("metronome"),
+			slider: slider.left,
+		};
+	};
+	// the fill starts at 0.7s and plays at twice the speed: the last tom is in
+	// by 1.05s, and the crash holds off until the beat at 1.5s
+	const waiting = await at(1.2);
+	expect(waiting.tom2).toBeCloseTo(22, 0);
+	expect(waiting.crash).toBeCloseTo(32 * 0.4, 0);
+	expect((await at(1.49)).crash).toBeCloseTo(32 * 0.4, 0);
+	// on the beat the metronome is at its largest and the crash sets off
+	const onBeat = await at(1.51);
+	expect(onBeat.metronome).toBeGreaterThan(12 * 1.5);
+	expect(onBeat.crash).toBeGreaterThan(32 * 0.4 + 1);
+	expect((await at(1.99)).metronome).toBeCloseTo(12, 0);
+	// 0.6 of the phrase's seconds is 0.3 of the scene's
+	expect((await at(1.85)).crash).toBeCloseTo(32, 0);
+	// the slider goes out over one beat and comes back over the next
+	const home = (await at(0)).slider;
+	expect((await at(0.5)).slider).toBeCloseTo(home + 60, 0);
+	// the way back mirrors the way out, ease included
+	const out = (await at(0.2)).slider;
+	expect(out).toBeGreaterThan(home + 5);
+	expect(out).toBeLessThan(home + 55);
+	expect((await at(0.8)).slider).toBeCloseTo(out, 0);
+	expect((await at(1)).slider).toBeCloseTo(home, 0);
+	expect((await at(1.5)).slider).toBeCloseTo(home + 60, 0);
+	expect(problems).toEqual([]);
+});
