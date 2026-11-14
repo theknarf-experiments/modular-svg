@@ -77,7 +77,8 @@ export type MarkAnimation = {
 
 /**
  * A connector's elements as path data, drawn between the given boxes of its
- * two ends (the only entries of `ends`).
+ * two ends (the only entries of `ends`); an arc's, drawn in the box given
+ * under its own id.
  */
 export type PathsOf = (
 	mark: NodeRecord,
@@ -133,6 +134,7 @@ function declarations(lane: string, values: Values): string {
 		}
 		case "width":
 		case "height":
+		case "r":
 			return `${lane}:${num(n(lane))}px`;
 		case "d":
 			return `d:path("${String(values.d)}")`;
@@ -235,7 +237,8 @@ function restValue(
 		);
 	if (channel === "width") return box.width;
 	if (channel === "height") return box.height;
-	if (channel === "d") return mark.d ?? "";
+	if (channel === "r") return mark.r ?? box.width / 2;
+	if (channel === "d" && mark.type === "path") return mark.d ?? "";
 	throw new Error(
 		`${channel} on ${mark.id} has no starting value; give the motion a from`,
 	);
@@ -268,7 +271,11 @@ type Track = { channels: Channel[]; keys: Key[] };
 /** What holds at `at` is reached over [start, start + over]. */
 type Piece = { start: number; over: number; ease: ResolvedEase; at: number };
 
-const SIZES = ["width", "height"] as const;
+/** What a mark's element is sized by, read off its box. */
+type Sized = Partial<
+	Record<"width" | "height" | "r", (box: LayoutBox) => number>
+>;
+const BOX: Sized = { width: (b) => b.width, height: (b) => b.height };
 
 /**
  * The stretches over which any of the tracks moves, cut into pieces short
@@ -389,14 +396,14 @@ const isConnector = (n: NodeRecord): boolean =>
 
 /**
  * A mark following its box through a clock's changes of layout: x and y as
- * offsets from home, and (when `grow` is given) the element's width and height.
+ * offsets from home, and what `sized` reads off the box for the element.
  */
 function followBox(
 	home: LayoutBox,
 	boxes: readonly LayoutBox[],
 	events: readonly { start: number; over: number }[],
 	eases: readonly ResolvedEase[],
-	grow?: number,
+	sized: Sized = {},
 ): Expanded | undefined {
 	const initial: Values = {};
 	const steps: Step[] = [];
@@ -409,13 +416,13 @@ function followBox(
 			initial.x = 0;
 			initial.y = 0;
 		}
-		if (grow !== undefined && differs(box.width, prev.width)) {
-			values.width = box.width + grow;
-			initial.width = home.width + grow;
-		}
-		if (grow !== undefined && differs(box.height, prev.height)) {
-			values.height = box.height + grow;
-			initial.height = home.height + grow;
+		for (const [c, of] of Object.entries(sized) as [
+			keyof Sized,
+			Sized["r"],
+		][]) {
+			if (!of || !differs(of(box), of(prev))) continue;
+			values[c] = of(box);
+			initial[c] = of(home);
 		}
 		prev = box;
 		if (Object.keys(values).length === 0) return;
@@ -921,16 +928,64 @@ export function compileAnimation(
 		if (!isConnector(mark)) {
 			const by = changesOf(mark.id);
 			if (by.length === 0) continue;
-			const sized = mark.type === "rect" || mark.type === "image";
 			const grow = mark.type === "rect" ? (mark.strokeWidth ?? 0) : 0;
+			// A circle or arc takes its radius from the width of its box and
+			// keeps to the centre of it
+			const round = mark.type === "circle" || mark.type === "arc";
+			const r0 = mark.r ?? box.width / 2;
+			const radius = (b: LayoutBox) =>
+				Math.max(0, r0 + (b.width - box.width) / 2);
+			const sized: Sized =
+				mark.type === "rect" || mark.type === "image"
+					? {
+							width: (b) => b.width + grow,
+							height: (b) => b.height + grow,
+						}
+					: round && (mark.type === "circle" || pathsOf)
+						? { r: radius }
+						: {};
+			const centred = (b: LayoutBox): LayoutBox =>
+				round
+					? {
+							...b,
+							x: b.x + (b.width - box.width) / 2,
+							y: b.y + (b.height - box.height) / 2,
+						}
+					: b;
+			// An arc is a path: its radius becomes the path drawn at that radius,
+			// which is linear in it, so the keys stay where they are
+			const arc = (r: number | string | undefined): string =>
+				pathsOf?.(
+					{
+						...mark,
+						r: Number(r),
+						innerR: r0 > 0 ? ((mark.innerR ?? 0) * Number(r)) / r0 : 0,
+					},
+					{
+						[mark.id]: {
+							...box,
+							x: box.x + r0 - Number(r),
+							y: box.y + r0 - Number(r),
+						},
+					},
+				)[0]?.d ?? "";
+			const drawn = (e: Expanded | undefined): Expanded | undefined => {
+				if (!e || mark.type !== "arc") return e;
+				const redraw = ({ r, ...rest }: Values): Values =>
+					r === undefined ? rest : { ...rest, d: arc(r) };
+				return {
+					initial: redraw(e.initial),
+					steps: e.steps.map((s) => ({ ...s, values: redraw(s.values) })),
+				};
+			};
 			const moves = by.map((change) => ({
 				change,
 				e: followBox(
-					box,
-					boxesIn(change, box),
+					centred(box),
+					boxesIn(change, box).map(centred),
 					change.events,
 					change.eases,
-					sized ? grow : undefined,
+					sized,
 				),
 			}));
 			const resizing = moves.flatMap(({ change, e }) => {
@@ -938,7 +993,7 @@ export function compileAnimation(
 				return sizes ? [{ change, sizes }] : [];
 			});
 			if (resizing.length < 2) {
-				for (const { change, e } of moves) follow(mark, change, e);
+				for (const { change, e } of moves) follow(mark, change, drawn(e));
 				continue;
 			}
 			// Sizes from several clocks only add up in the time they share
@@ -947,12 +1002,15 @@ export function compileAnimation(
 			const tracks = resizing.flatMap(({ change, sizes }) =>
 				tracksOf(played(change, sizes)),
 			);
-			for (const side of SIZES) {
+			for (const [side, of] of Object.entries(sized) as [
+				keyof Sized,
+				Sized["r"],
+			][]) {
 				const mine = tracks.filter((t) => t.channels.includes(side));
-				if (mine.length === 0) continue;
+				if (mine.length === 0 || !of) continue;
 				contribute(mark.id, {
 					motion: resizing.map(({ change }) => change.last).join(", "),
-					expanded: sampled(mine, { [side]: box[side] + grow }),
+					expanded: drawn(sampled(mine, { [side]: of(box) })) as Expanded,
 					pivot: { x: 0, y: 0 },
 				});
 			}
@@ -1013,7 +1071,7 @@ export function compileAnimation(
 						moved[side],
 						moved.change.events,
 						moved.change.eases,
-						0,
+						BOX,
 					);
 					return e ? tracksOf(played(moved.change, e)) : [];
 				})

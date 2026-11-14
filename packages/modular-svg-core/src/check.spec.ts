@@ -120,15 +120,35 @@ describe("post-solve checks", () => {
 				modulate("m", [
 					ref("a"),
 					{ type: "Background", id: "bg", children: [ref("a")] },
-					modulate("inner", []),
+					{ type: "Background", id: "bg2", children: [ref("row"), ref("a")] },
+					{ type: "Group", id: "g", children: [ref("a")] },
 					{ type: "StackH", id: "s", children: [ref("b"), rect("new")] },
 				]),
 			]),
 		).toEqual([
 			"Modulate(m) refs a outside a relation, which changes nothing",
-			"Modulate(m): Background cannot be modulated and is ignored; only StackV, StackH, Align and Distribute can",
-			"Modulate(m): Modulate cannot be modulated and is ignored; only StackV, StackH, Align and Distribute can",
+			"Modulate(m): Background(bg) restates a around nothing; ref what it wraps after the box",
+			"Modulate(m): Background(bg2) needs a ref to the Background or Rect it restates first, then refs to what that wraps",
+			"Modulate(m): Group cannot be modulated, so it is read as if declared outside; only StackV, StackH, Align, Distribute, Background and Span can",
 			"Modulate(m) declares a Rect inside it; declare marks outside and ref them",
+		]);
+	});
+
+	it("still resolves a ref to something a Modulate could not hold", () => {
+		const warnings = check([
+			row(["a", "b"]),
+			rect("c"),
+			modulate("m", [
+				{ type: "Group", id: "g", children: [ref("a"), ref("b")] },
+			]),
+			{
+				type: "Align",
+				props: { alignment: "left" },
+				children: [ref("g"), ref("c")],
+			},
+		]);
+		expect(warnings).toEqual([
+			"Modulate(m): Group cannot be modulated, so it is read as if declared outside; only StackV, StackH, Align, Distribute, Background and Span can",
 		]);
 	});
 

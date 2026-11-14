@@ -52,7 +52,7 @@ self-contained SVG with CSS keyframes and no runtime script.
 | `Enter from`, `Exit to` | arrive from / leave to `opacity x y scale rotate blur` |
 | `Draw` | stroke a shape on |
 | `Shake amplitude`, `Wiggle amplitude seed` | damped shake; seeded looping noise |
-| `Motion from steps` | svjeez-style steps: `{to, over, ease}`, `{set}`, `{wait}`; any channel, `fill`/`stroke`/`width`/`height`/`d` included |
+| `Motion from steps` | svjeez-style steps: `{to, over, ease}`, `{set}`, `{wait}`; any channel, `fill`/`stroke`/`width`/`height`/`d` and a circle's `r` included |
 | `Sampled fn tolerance` | bake a function of time into few keyframes |
 | `Travel` | move the first child through the following refs, at even speed |
 
@@ -94,7 +94,7 @@ its number of shakes), and `over` is its whole span: `over={2} repeat={3}` is
 three passes in two seconds (it must be above 0; a phrase left with no time
 warns, since nothing in it plays).
 
-Lanes that hold one value (`fill`, `stroke`, `width`, `height`, `d`, `draw`)
+Lanes that hold one value (`fill`, `stroke`, `width`, `height`, `r`, `d`, `draw`)
 are shared by the motions on a mark. The one that moves a lane first decides
 where it starts; where a later one starts from (its `from`, or the last frame
 of a phrase played backwards) is a cut at the moment it starts. A phrase picks
@@ -102,23 +102,42 @@ a lane up where the time around it left it, so its passes repeat from there
 and a backward phrase hands back what it found.
 
 **Layout in time.** The layout relations outside any `Modulate` are *home*:
-what a static render shows. A `Modulate` is a time leaf holding layout
-relations (`StackV`, `StackH`, `Align`, `Distribute`) over refs. From its
-start on they hold instead of the home relations that placed the same things,
-and everything that ends up somewhere else gets there over the `Modulate`'s
-span (`over`, `ease`). A later `Modulate` wins where two place the same thing,
-and a `Resolve` lets the ones it refs go (all of them when it refs none), so
-what they moved returns to wherever the remaining relations put it.
+what a static render shows, solved by exactly the relations the scene would
+have without its `Modulate`s. A `Modulate` is a time leaf holding layout
+relations (`StackV`, `StackH`, `Align`, `Distribute`, `Span`, `Background`)
+over refs. From its start on they hold instead of the home relations that
+placed the same things, and everything that ends up somewhere else gets there
+over the `Modulate`'s span (`over`, `ease`). A later `Modulate` wins where two
+place the same thing, and a `Resolve` lets the ones it refs go (all of them
+when it refs none), so what they moved returns to wherever the remaining
+relations put it.
 
 ```tsx
 <modulate key="shuffle" at={1} over={0.5}>
   <stackV spacing={8}><ref target="c" /><ref target="a" /><ref target="b" /></stackV>
 </modulate>
+<modulate key="select" at={2} over={0.5}>
+  <background padding={6}><ref target="frame" /><ref target="a" /><ref target="b" /></background>
+</modulate>
 <resolve at={3} />
 ```
 
+A `Background` inside a `Modulate` draws no box of its own: it restates one
+that is already there. Its first ref is that box (a `Background` or a `Rect`),
+the rest are what the box wraps, with this `padding`, while the `Modulate`
+holds; the relation that wrapped it at home lets go. A box that still wraps
+its own content is carried by whatever places it, so a stack makes room as
+its padding grows. A box that wraps something else is placed by that alone,
+and a relation that placed it lets go. If a home stack places the box and
+what it now wraps side by side, restate that stack in the `Modulate` too
+(this warns). Anything else in a `Modulate` (a `Group`, an arrow, a color or
+time relation) cannot be modulated: it warns and is read as if it were
+declared outside.
+
 Each distinct set of active modulations is one more solve, and the browser
-tweens between them: boxes translate (rects and images also resize), and a
+tweens between them: boxes translate, rects and images also resize, a circle
+or arc takes its radius from the width of its box and keeps to the centre of
+it (text and paths keep their size), and a
 line, curve or arrow whose ends move apart is redrawn between wherever its
 ends are, so an arrow stays attached without extra markup. The redrawn path
 is written twice: as CSS keyframes on `d`, which keep time with the boxes,
@@ -127,7 +146,13 @@ on SMIL's own clock, which `Graphic` lines up after the first frame). Inside a
 `Modulate`, put what stays first: a member anchors the relation only if you
 pinned it, an earlier relation of the same `Modulate` placed it, or a home
 relation that this one does not restate did; with no anchor a stack packs
-from where its members' box already is, so a reorder happens in place.
+from where its members' box already is, so a reorder happens in place. A
+relation that restates one list and takes in a member from elsewhere anchors
+on whichever of them comes first, so the list stays when its own member
+does. Taking a member out of a container that some relation places, or
+places other things by, makes that relation let go as well: it would drag
+the member along, so what it placed stays where it was unless the
+`Modulate` restates it.
 `Modulate` and `Resolve` are placed like motions (`Sequence`, `OnBeat`, ...),
 and a `Phrase` that takes them plays the layout change faster, backwards or
 there and back. Modulations in different clocks that move the same thing add

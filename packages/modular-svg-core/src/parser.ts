@@ -67,6 +67,11 @@ export type JsonScene = {
 		operators: LayoutOperator[];
 		names: string[];
 	};
+	/**
+	 * Boxes of a Modulate's relations that nothing at home reads: each rests on
+	 * its members, written once after home is solved
+	 */
+	restOperators?: LayoutOperator[];
 };
 type AnyNode = {
 	type: string;
@@ -342,7 +347,14 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		"Arc",
 	]);
 	// What a Modulate may hold: relations that place what they ref
-	const MODULATED_TYPES = new Set(["StackV", "StackH", "Align", "Distribute"]);
+	const MODULATED_TYPES = new Set([
+		"StackV",
+		"StackH",
+		"Align",
+		"Distribute",
+		"Background",
+		"Span",
+	]);
 
 	// Props consumed by layout; everything else passes through as SVG attrs
 	const LAYOUT_PROPS = new Set([
@@ -396,7 +408,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		return attrs;
 	}
 
-	function ensureNode(n: AnyNode, path: string): NodeRecord {
+	function ensureNode(n: AnyNode, path: string, scope?: string): NodeRecord {
 		if (n.type === "Ref") {
 			const target = nodeMap.get(n.target as string);
 			if (!target) throw new Error(`Unknown ref ${n.target}`);
@@ -437,7 +449,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				height: (props.height as number | undefined) ?? 0,
 				strokeWidth: (props["stroke-width"] as number | undefined) ?? 3,
 			};
-		} else if (n.type === "Background") {
+		} else if (n.type === "Background" && scope === undefined) {
 			rec = {
 				...common,
 				type: "rect",
@@ -600,13 +612,14 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					`Modulate(${scope}) declares a ${node.type} inside it; declare marks outside and ref them`,
 				);
 			else if (!MODULATED_TYPES.has(node.type)) {
+				// Walked all the same, so a later ref to it still resolves
 				scopeWarnings.push(
-					`Modulate(${scope}): ${node.type} cannot be modulated and is ignored; only StackV, StackH, Align and Distribute can`,
+					`Modulate(${scope}): ${node.type} cannot be modulated, so it is read as if declared outside; only StackV, StackH, Align, Distribute, Background and Span can`,
 				);
-				return undefined;
+				return walk(node, path, undefined);
 			}
 		}
-		const rec = ensureNode(node, path);
+		const rec = ensureNode(node, path, scope);
 		if (node.type === "Ref") return rec;
 		if (scope !== undefined && MODULATED_TYPES.has(node.type))
 			rec.scope = scope;
@@ -679,6 +692,29 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					scope,
 				});
 				descs.push({ kind: "union", container: rec, children, scope });
+			} else if (node.type === "Background" && scope !== undefined) {
+				// Restates a box that is already there: the first ref is the box,
+				// the rest are what it wraps while the Modulate holds
+				const [box, ...content] = children;
+				const first = walked[0];
+				if (first?.child.type !== "Ref" || first.rec.type !== "rect")
+					scopeWarnings.push(
+						`Modulate(${scope}): Background(${rec.id}) needs a ref to the Background or Rect it restates first, then refs to what that wraps`,
+					);
+				else if (content.length === 0)
+					scopeWarnings.push(
+						`Modulate(${scope}): Background(${rec.id}) restates ${box.id} around nothing; ref what it wraps after the box`,
+					);
+				else
+					descs.push({
+						kind: "background",
+						box,
+						children: content,
+						props: node.props ?? {},
+						scope,
+					});
+				if (children.length > 0)
+					descs.push({ kind: "union", container: rec, children, scope });
 			} else if (node.type === "Background" && children[0]) {
 				descs.push({
 					kind: "background",
@@ -702,8 +738,9 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					kind: "span",
 					axis: (node.props?.axis as "x" | "y") ?? "x",
 					children,
+					scope,
 				});
-				descs.push({ kind: "union", container: rec, children });
+				descs.push({ kind: "union", container: rec, children, scope });
 			} else if (node.type === "DistinctColors" && children.length > 0) {
 				descs.push({
 					kind: "distinctColors",
@@ -745,19 +782,32 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 
 	walk(json as AnyNode);
 
-	// A modulated stack packs from its own box. When its members all sit in
-	// one container it joins that container's subtree, so a relation that
-	// moves the container while the stack holds carries the stack along
 	const parentOf = new Map<string, string>();
 	for (const [parent, members] of structuralChildren)
 		for (const m of members) parentOf.set(m.id, parent);
+	/** A node and the containers around it, innermost first. */
+	const lineage = (id: string): string[] => {
+		const out = [id];
+		for (
+			let p = parentOf.get(id);
+			p !== undefined && out.length <= nodes.length;
+			p = parentOf.get(p)
+		)
+			out.push(p);
+		return out;
+	};
+	// A modulated stack packs from its own box. It joins the subtree of the
+	// innermost container that holds all its members, so a relation that moves
+	// that container while the stack holds carries the stack along
 	for (const d of descs) {
 		if (d.scope === undefined || !(d.kind === "stackV" || d.kind === "stackH"))
 			continue;
-		const parents = new Set(d.children.map((c) => parentOf.get(c.id)));
-		const [parent] = parents;
-		if (parents.size === 1 && parent !== undefined)
-			structuralChildren.get(parent)?.push(d.container);
+		const [first, ...others] = d.children.map((c) => lineage(c.id).slice(1));
+		const around = others.map((l) => new Set(l));
+		const shared = first?.find((p) => around.every((l) => l.has(p)));
+		if (shared === undefined || shared === d.container.id) continue;
+		structuralChildren.get(shared)?.push(d.container);
+		parentOf.set(d.container.id, shared);
 	}
 
 	const targetWarnings: string[] = [];
@@ -863,6 +913,9 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		return i * COLOR_SLOTS * 2 + (paint === "stroke" ? COLOR_SLOTS : 0);
 	};
 
+	/** Claimed by the relation that wraps a box, so a restated one replaces it. */
+	const boxKey = (box: NodeRecord): string => `${box.id}:box`;
+
 	// Which relation each operator came from, for the post-solve check
 	const descName = (d: Desc): string => {
 		const owner =
@@ -893,13 +946,22 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		operators: LayoutOperator[];
 		/** the keys this relation places on its children */
 		claims: string[];
+		/**
+		 * for a Modulate's relation: the keys of containers it takes a member out
+		 * of. A relation over such a container would drag the member along, or
+		 * place the rest by a box that now reaches wherever the member went
+		 */
+		blocks: string[];
+		/** the keys this relation places things by or on: its children's, per axis */
+		reads: string[];
 	};
 
 	/**
 	 * Compile relations in order against a fresh ownership. With `home`, they
 	 * are a Modulate's: a child then only anchors when the author pinned it, an
 	 * earlier relation of the same Modulate placed it, or a home relation that
-	 * this one does not restate did.
+	 * this one does not restate did. Next to such a child, the members of a
+	 * restated relation anchor too, so whichever comes first stays.
 	 */
 	function compileDescs(
 		indices: readonly number[],
@@ -910,12 +972,21 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		const guide = new Set<string>();
 		const compiled = new Map<number, Compiled>();
 		let current = 0;
-		let out: Compiled = { operators: [], claims: [] };
+		let out: Compiled = { operators: [], claims: [], blocks: [], reads: [] };
 		const push = (...operators: LayoutOperator[]) =>
 			out.operators.push(...operators);
-		const own = (key: string): void => {
+		// `within`: what the relation places the key from. A container that holds
+		// the placed node but not all of those cannot be moved without a fight
+		const own = (key: string, within?: readonly string[]): void => {
 			if (!hard.has(key)) hard.set(key, current);
 			out.claims.push(key);
+			if (!home || !within) return;
+			const [id, axis] = [key.slice(0, key.lastIndexOf(":")), key.slice(-1)];
+			const inside = within.map((w) => new Set(lineage(w)));
+			for (const around of lineage(id).slice(1)) {
+				if (inside.every((l) => l.has(around))) break;
+				out.blocks.push(`${around}:${axis}`);
+			}
 		};
 		const ownSelf = (id: string): void => {
 			for (const k of ["w", "h"])
@@ -936,18 +1007,35 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		}
 
 		function anchorIndex(d: Desc, axis: "x" | "y"): number | null {
-			for (let i = 0; i < d.children.length; i++) {
-				if (positionOwned(d, d.children[i].id, axis)) return i;
-			}
-			return null;
+			const owned = d.children.map((c) => positionOwned(d, c.id, axis));
+			const first = owned.indexOf(true);
+			if (first < 0) return null;
+			if (!home) return first;
+			// Something here stays put, so a restated member may be what stays
+			const restated = d.children.findIndex(
+				(c, i) => i < first && home.hard.has(`${c.id}:${axis}`),
+			);
+			return restated < 0 ? first : restated;
 		}
+
+		const reading = (children: NodeRecord[], ...axes: ("x" | "y")[]): void => {
+			for (const c of children)
+				for (const axis of axes) out.reads.push(`${c.id}:${axis}`);
+		};
 
 		function claim(
 			children: NodeRecord[],
 			axis: "x" | "y",
 			skip: number | null,
 			relation: string,
+			from?: string,
 		): void {
+			const within =
+				from !== undefined
+					? [from]
+					: skip !== null
+						? [children[skip].id]
+						: children.map((c) => c.id);
 			for (let i = 0; i < children.length; i++) {
 				if (i === skip) continue;
 				const key = `${children[i].id}:${axis}`;
@@ -956,7 +1044,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 						`${label}${relation} conflicts with another relation over ${key}`,
 					);
 				}
-				own(key);
+				own(key, within);
 			}
 		}
 
@@ -1014,8 +1102,24 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				const extentAxis = d.kind === "stackV" ? "h" : "w";
 				const mainAnchor = anchorIndex(d, mainAxis);
 				const crossAnchor = anchorIndex(d, crossAxis);
-				claim(d.children, mainAxis, mainAnchor, d.container.id);
-				claim(d.children, crossAxis, crossAnchor, d.container.id);
+				reading(d.children, "x", "y");
+				// With no anchor the run is placed from the stack's own box
+				const from = (anchor: number | null) =>
+					anchor === null ? d.container.id : undefined;
+				claim(
+					d.children,
+					mainAxis,
+					mainAnchor,
+					d.container.id,
+					from(mainAnchor),
+				);
+				claim(
+					d.children,
+					crossAxis,
+					crossAnchor,
+					d.container.id,
+					from(crossAnchor),
+				);
 				// Defaults match Bluefish: spacing 10 only when total is also unset
 				const spacingProp = d.props.spacing as number | undefined;
 				const total = d.props.total as number | undefined;
@@ -1063,6 +1167,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			} else if (d.kind === "align") {
 				for (const { axis, alignment } of parseAlignments(d.props)) {
 					const anchor = anchorIndex(d, axis) ?? 0;
+					reading(d.children, axis);
 					claim(d.children, axis, anchor, `align(${alignment})`);
 					const children = toSubtreeChildren(d.children);
 					if (axis === "x") {
@@ -1077,6 +1182,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				const exactMode = spacing !== undefined || total !== undefined;
 				const extentAxis = d.axis === "x" ? "w" : "h";
 				const anchor = anchorIndex(d, d.axis) ?? 0;
+				reading(d.children, d.axis);
 				claim(d.children, d.axis, exactMode ? anchor : null, "distribute");
 				const extentOwned = extentOwnedOf(
 					d,
@@ -1114,26 +1220,41 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				// Fixed axes center unowned content, claiming those positions
 				if (width !== undefined) {
 					d.children.forEach((c, i) => {
-						if (!xOwned[i]) own(`${c.id}:x`);
+						if (!xOwned[i]) own(`${c.id}:x`, [d.box.id]);
 					});
 				}
 				if (height !== undefined) {
 					d.children.forEach((c, i) => {
-						if (!yOwned[i]) own(`${c.id}:y`);
+						if (!yOwned[i]) own(`${c.id}:y`, [d.box.id]);
 					});
+				}
+				if (home) {
+					// A restated box: the one that wrapped it before lets go
+					const key = boxKey(d.box);
+					if (hard.has(key))
+						warnings.push(
+							`${label}background(${d.box.id}) conflicts with another relation over ${d.box.id}`,
+						);
+					own(key);
+					// Wrapping what it does not hold, it is placed by that alone
+					const held = new Set(subtreeBases(d.box));
+					if (d.children.some((c) => !held.has(baseOf(c))))
+						for (const axis of ["x", "y"] as const)
+							claim([d.box], axis, null, `background(${d.box.id})`, d.box.id);
 				}
 				ownSelf(d.box.id);
 			} else if (d.kind === "span") {
 				const [source, ...targets] = d.children;
+				reading(d.children, d.axis);
 				for (const target of targets) {
 					const posKey = `${target.id}:${d.axis}`;
 					const extentKey = `${target.id}:${d.axis === "x" ? "w" : "h"}`;
 					if (hard.has(posKey) || hard.has(extentKey)) {
 						warnings.push(
-							`span conflicts with another relation over ${target.id}`,
+							`${label}span conflicts with another relation over ${target.id}`,
 						);
 					}
-					own(posKey);
+					own(posKey, [source.id]);
 					own(extentKey);
 					push(
 						spanOp(
@@ -1219,7 +1340,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 
 		for (const i of indices) {
 			current = i;
-			out = { operators: [], claims: [] };
+			out = { operators: [], claims: [], blocks: [], reads: [] };
 			compile(descs[i]);
 			compiled.set(i, out);
 			while (colorOpNames.length < colorOps.length)
@@ -1248,6 +1369,50 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			).compiled,
 		);
 	}
+	// A restated box that wraps something a home stack still places beside it
+	// pushes that away as it grows around it, forever
+	const beside = new Map<string, number[]>();
+	if (descs.some((d) => d.kind === "background" && d.scope !== undefined))
+		for (const i of all) {
+			const d = descs[i];
+			const packs =
+				d.kind === "stackV" || d.kind === "stackH" || d.kind === "distribute";
+			if (d.scope !== undefined || !packs) continue;
+			for (const c of d.children)
+				beside.set(c.id, [...(beside.get(c.id) ?? []), i]);
+		}
+	for (const [scope, compiled] of modulated) {
+		const claims = new Set([...compiled.values()].flatMap((c) => c.claims));
+		const blocks = new Set([...compiled.values()].flatMap((c) => c.blocks));
+		const holds = (r: number): boolean => {
+			const c = home.compiled.get(r);
+			return (
+				!c?.claims.some((k) => claims.has(k)) &&
+				!c?.reads.some((k) => blocks.has(k))
+			);
+		};
+		for (const i of compiled.keys()) {
+			const d = descs[i];
+			if (d.kind !== "background") continue;
+			const held = new Set(subtreeBases(d.box));
+			for (const member of d.children) {
+				if (held.has(baseOf(member))) continue;
+				const theirs = new Set(lineage(member.id));
+				for (const x of lineage(d.box.id)) {
+					const r = (beside.get(x) ?? []).find(
+						(r) =>
+							holds(r) &&
+							descs[r].children.some((y) => y.id !== x && theirs.has(y.id)),
+					);
+					if (r === undefined) continue;
+					warnings.push(
+						`Modulate(${scope}): background(${d.box.id}) now wraps ${member.id}, which ${descName(descs[r])} places beside ${x}; restate that relation inside the Modulate`,
+					);
+					break;
+				}
+			}
+		}
+	}
 	const rests = new Map<number, LayoutOperator | undefined>();
 	const restOf = (i: number): LayoutOperator | undefined => {
 		if (rests.has(i)) return rests.get(i);
@@ -1272,6 +1437,22 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	// inactive containers draw nothing and stay where home left them, so a
 	// phase costs the same however many modulations the scene has
 	const read = new Set(descs.flatMap((d) => d.children.map((c) => c.id)));
+	// Home solves exactly what the scene without its Modulates would: of their
+	// containers only those a home relation reads, and what those read in turn
+	const readAtHome = new Set<string>();
+	for (const d of [...descs].reverse())
+		if (
+			d.scope === undefined ||
+			("container" in d && readAtHome.has(d.container.id))
+		)
+			for (const c of d.children) readAtHome.add(c.id);
+	const atHome = (i: number): boolean => {
+		const d = descs[i];
+		return (
+			d.scope === undefined ||
+			("container" in d && readAtHome.has(d.container.id))
+		);
+	};
 	const scoped = new Map<string, number[]>();
 	const always: number[] = [];
 	for (const i of all) {
@@ -1295,10 +1476,11 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		active: readonly string[],
 	): { operators: LayoutOperator[]; names: string[] } => {
 		const taken = new Set<string>();
+		const blocked = new Set<string>();
 		const live = new Map<number, Compiled>();
 		const held =
 			active.length === 0
-				? all
+				? all.filter(atHome)
 				: [
 						...new Set([
 							...always,
@@ -1313,18 +1495,27 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			const kept: Compiled[] = [];
 			for (const [i, c] of group) {
 				if (!c) continue;
-				const kind = descs[i].kind;
+				const d = descs[i];
+				// A box yields to whatever restates it, a placement to whatever
+				// places the same thing or takes a member out of what it places
 				const yields =
-					kind === "stackV" ||
-					kind === "stackH" ||
-					kind === "align" ||
-					kind === "distribute" ||
-					kind === "span";
-				if (yields && c.claims.some((k) => taken.has(k))) continue;
+					d.kind === "background"
+						? taken.has(boxKey(d.box))
+						: (d.kind === "stackV" ||
+								d.kind === "stackH" ||
+								d.kind === "align" ||
+								d.kind === "distribute" ||
+								d.kind === "span") &&
+							(c.claims.some((k) => taken.has(k)) ||
+								(blocked.size > 0 && c.reads.some((k) => blocked.has(k))));
+				if (yields) continue;
 				live.set(i, c);
 				kept.push(c);
 			}
-			for (const c of kept) for (const k of c.claims) taken.add(k);
+			for (const c of kept) {
+				for (const k of c.claims) taken.add(k);
+				for (const k of c.blocks) blocked.add(k);
+			}
 		}
 		const operators: LayoutOperator[] = [];
 		const names: string[] = [];
@@ -1339,6 +1530,10 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		return { operators, names };
 	};
 	const { operators: ops, names: opNames } = operatorsFor([]);
+	const restOperators = all.flatMap((i) => {
+		const rest = atHome(i) ? undefined : restOf(i);
+		return rest ? [rest] : [];
+	});
 	const phaseCache = new Map<string, ReturnType<typeof operatorsFor>>();
 	const phaseOperators = (active: readonly string[]) => {
 		const key = active.join("\n");
@@ -1379,6 +1574,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		...(modulated.size > 0 || nodes.some((n) => n.modulation)
 			? { phaseOperators }
 			: {}),
+		...(restOperators.length > 0 ? { restOperators } : {}),
 	};
 }
 
@@ -1461,14 +1657,21 @@ export function checkPhases(
 	const checked = new Set<string>([""]);
 	// The first event of each clock to move a node
 	const movers = new Map<string, string[]>();
+	// What a clock shows, and the copy the check works in: both are put back
+	// to home after each clock, so a clock costs what it moves
+	const shown = new Float64Array(homeBoxes);
+	const mirror = new Float64Array(homeBoxes);
+	const show = (i: number, box: LayoutBox): void => {
+		const at = [box.x, box.y, box.width, box.height];
+		shown.set(at, i * 4);
+		mirror.set(at, i * 4);
+	};
 	for (const { events } of clocks) {
-		const shown = new Float64Array(homeBoxes);
 		const moved = new Set<number>();
 		for (const e of events) {
 			for (const i of movedBy.get(e.id) ?? []) {
 				const { id } = scene.nodes[i];
-				const box = layout[id].phases?.[e.id] as LayoutBox;
-				shown.set([box.x, box.y, box.width, box.height], i * 4);
+				show(i, layout[id].phases?.[e.id] as LayoutBox);
 				if (moved.has(i)) continue;
 				moved.add(i);
 				movers.set(id, [...(movers.get(id) ?? []), e.id]);
@@ -1477,11 +1680,22 @@ export function checkPhases(
 			if (checked.has(key)) continue;
 			checked.add(key);
 			const { operators, names } = scene.phaseOperators(e.active);
-			const failing = unsettled(shown, operators, names, 1e-2);
+			const failing = unsettled(
+				shown,
+				operators,
+				names,
+				1e-2,
+				undefined,
+				mirror,
+			);
 			if (failing.length > 0)
 				out.push(
 					`after ${nameOf(e.id)}: ${unsettledMessage("layout", failing)}`,
 				);
+		}
+		for (const i of moved) {
+			const { id } = scene.nodes[i];
+			show(i, layout[id] ?? scene.nodes[i]);
 		}
 	}
 

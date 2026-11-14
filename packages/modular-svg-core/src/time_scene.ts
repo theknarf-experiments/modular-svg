@@ -888,6 +888,8 @@ const earliestCheck =
  * Relations that a solved state does not satisfy: apply each operator once
  * more and report those that would still move something. Catches every
  * kind of relation, including over-constraints the parse-time checks miss.
+ * `mirror` is a copy of `values` to work in (and a copy again on return), for
+ * a caller that checks many states that differ in a few places.
  */
 export function unsettled(
 	values: Float64Array,
@@ -895,9 +897,10 @@ export function unsettled(
 	names: readonly string[],
 	tolerance: number,
 	angles?: AngleSlots,
+	mirror?: Float64Array,
 ): string[] {
 	// next mirrors values; each operator's declared writes are checked and reset
-	const next = new Float64Array(values);
+	const next = mirror ?? new Float64Array(values);
 	const failing = new Set<string>();
 	operators.forEach((op, i) => {
 		op(values, next);

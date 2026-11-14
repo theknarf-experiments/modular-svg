@@ -559,11 +559,13 @@ export function layoutToAst(
 	const offset = vec(-min.x + margin, -min.y + margin);
 	const pathsOf: PathsOf = (mark, ends) => {
 		const drawn =
-			mark.type === "arrow"
-				? buildArrow(mark.id, mark, ends, offset)
-				: mark.type === "curve"
-					? [buildCurve(mark.id, mark, ends, offset)]
-					: [buildLine(mark.id, mark, ends, offset)];
+			mark.type === "arc"
+				? [buildArc(mark.id, ends[mark.id], mark, offset)]
+				: mark.type === "arrow"
+					? buildArrow(mark.id, mark, ends, offset)
+					: mark.type === "curve"
+						? [buildCurve(mark.id, mark, ends, offset)]
+						: [buildLine(mark.id, mark, ends, offset)];
 		return (drawn ?? []).flatMap((el) => {
 			const path = el && asPath(el);
 			return path?.id !== undefined ? [{ id: path.id, d: path.d }] : [];

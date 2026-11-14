@@ -63,6 +63,11 @@ declare module "react" {
 				spacing?: number;
 				children?: React.ReactNode;
 			};
+			/**
+			 * a box round its children. Inside a `modulate` it draws nothing of
+			 * its own: its first ref is the box it restates, the rest are what
+			 * that box wraps (with this `padding`) while the modulate holds
+			 */
 			background: {
 				key?: React.Key;
 				padding?: number;
@@ -283,7 +288,10 @@ declare module "react" {
 			 * a change of layout: from its start on, the relations inside hold
 			 * instead of the home ones that placed the same things, and what moves
 			 * gets there over its span. Put what stays first. A stack given both
-			 * `spacing` and `total` also resizes what the stack it restates sized
+			 * `spacing` and `total` also resizes what the stack it restates sized.
+			 * Holds `stackV`, `stackH`, `align`, `distribute`, `span` and
+			 * `background`; a `background` in here restates a box that is already
+			 * there: its first ref is the box, the rest are what it wraps
 			 */
 			modulate: Timed & { ease?: Ease };
 			/** lets the modulations it refs go (all of them when it refs none) */

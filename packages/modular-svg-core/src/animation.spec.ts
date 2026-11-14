@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import type { AnimationOptions } from "./animation.ts";
 import { serializeToSvg } from "./output.ts";
-import { buildSceneFromJson } from "./parser.ts";
+import { buildSceneFromJson, checkSolution } from "./parser.ts";
 import { solveLayout } from "./solver/index.ts";
 import { layoutToAst } from "./svg_ast.ts";
 
@@ -1164,6 +1164,10 @@ describe("layout in time", () => {
 		});
 		const bg = solveLayout(built).bg;
 		const [m, n] = [bg.phases?.m ?? bg, bg.phases?.n ?? bg];
+		// a defined result with a warning, not a clash of lanes
+		expect(checkSolution(built, solveLayout(built))).toContain(
+			"Modulate(m) and Modulate(n) play in different time and both move bg; their moves add up",
+		);
 		const { ast } = render(scene);
 		for (const side of ["width", "height"] as const) {
 			const frames = keyframesOf(ast.css).find((f) =>
@@ -1183,6 +1187,107 @@ describe("layout in time", () => {
 				2,
 			);
 		}
+	});
+
+	const fitted = (mark: N, extra: N[] = []) => [
+		{
+			type: "StackV",
+			id: "col",
+			props: { alignment: "left", spacing: 10 },
+			children: [mark, box("wide", { width: 50, "stroke-width": 0 })],
+		},
+		modulate("fit", [rel("Span", ["wide", String(mark.id)], { axis: "x" })], {
+			over: 1,
+			ease: "linear",
+		}),
+		...extra,
+	];
+
+	it("grows a circle with its box: r tweens and the centre follows", () => {
+		const { ast, svg } = render(
+			fitted({ type: "Circle", id: "dot", props: { r: 10, fill: "#fff" } }),
+		);
+		expect(keyframesOf(ast.css)).toEqual([
+			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:15px 0px}",
+			"0%{r:10px;animation-timing-function:linear}100%{r:25px}",
+		]);
+		expect(svg).toMatch(/<circle id="dot"[^>]+class="ms\w+-a ms\w+-c\d"/);
+	});
+
+	it("lets a Motion animate a circle's r, and nothing else's", () => {
+		const dot = { type: "Circle", id: "dot", props: { r: 10, fill: "#fff" } };
+		const grow = (target: string) =>
+			on("Motion", "grow", target, {
+				steps: [{ to: { r: 4 }, over: 1, ease: "linear" }],
+			});
+		expect(render([dot, grow("dot")]).ast.css).toContain(
+			"0%{r:10px;animation-timing-function:linear}100%{r:4px}",
+		);
+		expect(() => render([box("a"), grow("a")])).toThrow(
+			/A rect \(a\) cannot animate r/,
+		);
+	});
+
+	it("grows an arc with its box by redrawing its path", () => {
+		const { ast, svg } = render(
+			fitted({
+				type: "Arc",
+				id: "pie",
+				props: { r: 10, innerR: 4, startAngle: 0, endAngle: 90, fill: "#fff" },
+			}),
+			{ stillAt: 1 },
+		);
+		const frames = keyframesOf(ast.css).find((f) => f.startsWith("0%{d:"));
+		// the wedge from 12 to 3 o'clock, at radius 10 then 25 about one centre
+		expect(frames).toBe(
+			'0%{d:path("M 10,6 L 10,0 A 10,10 0 0 1 20,10 L 14,10 A 4,4 0 0 0 10,6 Z");animation-timing-function:linear}' +
+				'100%{d:path("M 10,0 L 10,-15 A 25,25 0 0 1 35,10 L 20,10 A 10,10 0 0 0 10,0 Z")}',
+		);
+		expect(keyframesOf(ast.css)).toContain(
+			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:15px 0px}",
+		);
+		expect(svg).toMatch(/<path id="pie"[^>]*><animate attributeName="d"/);
+		// reduced motion shows it grown
+		expect(svg).toMatch(/<path id="pie-still" d="M 10,0 L 10,-15 /);
+	});
+
+	it("adds up the radius modulations in two clocks give one circle", () => {
+		const scene = fitted(
+			{ type: "Circle", id: "dot", props: { r: 10, fill: "#fff" } },
+			[
+				box("wider", { width: 80, x: 200, y: 0, "stroke-width": 0 }),
+				{
+					type: "Phrase",
+					id: "ph",
+					props: { at: 0.5 },
+					children: [
+						modulate("more", [rel("Span", ["wider", "dot"], { axis: "x" })], {
+							at: 0,
+							over: 1,
+							ease: "linear",
+						}),
+					],
+				},
+			],
+		);
+		const { ast } = render(scene);
+		const frames = keyframesOf(ast.css).find((f) => f.startsWith("0%{r:"));
+		const radii = [
+			...(frames ?? "").matchAll(/([\d.]+)%\{r:(-?[\d.]+)px/g),
+		].map((f) => [Number(f[1]), Number(f[2])]);
+		const at = (percent: number) =>
+			radii.find(([t]) => Math.abs(t - percent) < 0.01)?.[1];
+		expect(at(0)).toBe(10);
+		// 15 from fit, 30 from more
+		expect(at(100)).toBeCloseTo(55, 2);
+		const built = buildSceneFromJson({
+			type: "Group",
+			id: "root",
+			children: scene,
+		});
+		expect(checkSolution(built, solveLayout(built))).toContain(
+			"Modulate(fit) and Modulate(more) play in different time and both move dot; their moves add up",
+		);
 	});
 
 	it("moves a redrawn connector on the CSS clock too, where the browser can", () => {

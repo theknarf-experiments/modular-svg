@@ -15,6 +15,7 @@ import {
 	type LayoutBox,
 	type PhaseOperators,
 	phaseMoves,
+	solvePhase,
 	solvePhases,
 } from "./phases.ts";
 
@@ -35,6 +36,8 @@ export type Scene = {
 	timedIds?: string[];
 	/** the layout relations that hold while the given Modulates are active */
 	phaseOperators?: PhaseOperators;
+	/** boxes no home relation reads: written once from the solved home */
+	restOperators?: LayoutOperator[];
 };
 
 export type LayoutResult = Record<
@@ -98,17 +101,22 @@ export const slotDiff = (
 export const COLOR_SLOTS = 4;
 export const COLOR_ANGLES: AngleSlots = { stride: COLOR_SLOTS, offset: 2 };
 
-/** Damped fixed-point iteration: each operator pulls the state part of the way to its target. */
+/**
+ * Damped fixed-point iteration: each operator pulls the state part of the way
+ * to its target. `mirror` is a copy of `values` to work in, for a caller that
+ * solves many times over one state; it is a copy again on return.
+ */
 export function relax(
 	values: Float64Array,
 	operators: readonly LayoutOperator[],
 	{ maxIter, epsilon, damping, angles }: RelaxOptions,
+	mirror?: Float64Array,
 ): void {
 	if (operators.length === 0) return;
 	// next mirrors values between operators; an operator that declares its
 	// writes only has those slots copied back and checked (linear per sweep),
 	// one that does not gets the full scan
-	const next = new Float64Array(values);
+	const next = mirror ?? new Float64Array(values);
 	let residual = Infinity;
 	const settle = (i: number): void => {
 		const diff = slotDiff(values[i], next[i], i, angles);
@@ -190,6 +198,7 @@ export function solveLayout(
 		damping: opts?.damping ?? 0.5,
 	};
 	relax(cur, operators, relaxOpts);
+	for (const rest of scene.restOperators ?? []) rest(cur, cur);
 	const colors = solveColors(scene, relaxOpts);
 	const times = solveTime(scene, { damping: relaxOpts.damping });
 	const timed = new Set(scene.timedIds ?? []);
@@ -249,17 +258,18 @@ export function solveLayout(
 					: undefined;
 			})
 		: [];
+	const phased = (phaseOperators: PhaseOperators) => {
+		// Every phase is solved from home on the one state, then put back
+		const [state, mirror] = [new Float64Array(cur), new Float64Array(cur)];
+		return solvePhases(phaseOperators, clocks, (phase) =>
+			solvePhase(phase, cur, state, mirror, (values, next) =>
+				relax(values, phase, relaxOpts, next),
+			),
+		);
+	};
 	const moves =
 		scene.phaseOperators && clocks.length > 0
-			? phaseMoves(
-					cur,
-					clocks,
-					solvePhases(scene.phaseOperators, cur, clocks, (phase) => {
-						const state = new Float64Array(cur);
-						relax(state, phase, relaxOpts);
-						return state;
-					}),
-				)
+			? phaseMoves(cur, clocks, phased(scene.phaseOperators))
 			: undefined;
 
 	const result: LayoutResult = {};

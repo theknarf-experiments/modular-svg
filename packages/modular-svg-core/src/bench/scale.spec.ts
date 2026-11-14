@@ -61,3 +61,21 @@ it("stays linear in the number of modulations", () => {
 	expect(many / few).toBeLessThan(7);
 	expect(many).toBeLessThan(3000);
 });
+
+// A phase is solved, compared with home and checked on the slots its
+// relations write. Each of those used to copy the whole state, whose size
+// grows with the changes themselves: four times as many took nearly eight
+// times as long to solve and check.
+it("solves and checks a change of layout without passing over the scene", () => {
+	const run = (changes: number): number => {
+		const scene = buildSceneFromJson(reorderScene(10, changes));
+		const t0 = performance.now();
+		const layout = solveLayout(scene);
+		expect(checkSolution(scene, layout)).toEqual([]);
+		return performance.now() - t0;
+	};
+	const best = (changes: number) =>
+		Math.min(run(changes), run(changes), run(changes));
+	run(50);
+	expect(best(2400) / best(600)).toBeLessThan(6);
+});

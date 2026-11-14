@@ -78,7 +78,8 @@ export type Channel =
 	| "fill"
 	| "stroke"
 	| "width"
-	| "height";
+	| "height"
+	| "r";
 
 export type Values = Partial<Record<Channel, number | string>>;
 
@@ -125,7 +126,8 @@ export const CHANNELS: Record<Channel, ChannelSpec> = {
 		range: [0, 1],
 		marks: GEOMETRY,
 	},
-	d: { lane: "d", nest: false, marks: ["path"] },
+	// An arc's path is drawn from its box, so a motion on one must give a `from`
+	d: { lane: "d", nest: false, marks: ["path", "arc"] },
 	fill: { lane: "fill", nest: false },
 	stroke: { lane: "stroke", nest: false },
 	width: {
@@ -140,6 +142,7 @@ export const CHANNELS: Record<Channel, ChannelSpec> = {
 		range: [0, Infinity],
 		marks: ["rect", "image"],
 	},
+	r: { lane: "r", nest: false, range: [0, Infinity], marks: ["circle"] },
 };
 
 export const isChannel = (name: string): name is Channel =>

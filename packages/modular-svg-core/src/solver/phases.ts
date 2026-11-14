@@ -71,8 +71,11 @@ export function foldPhases(
 	});
 }
 
-/** A solved phase: the layout, and the nodes it leaves anywhere but home. */
-export type Phase = { state: Float64Array; away: readonly number[] };
+/**
+ * A solved phase: the boxes it leaves anywhere but home, by slot base. Only
+ * those are kept, so a phase costs what it moves, not the size of the scene.
+ */
+export type Phase = ReadonlyMap<number, Float64Array>;
 
 /**
  * The solved layout after every event, by event id. A phase depends only on
@@ -81,32 +84,55 @@ export type Phase = { state: Float64Array; away: readonly number[] };
  */
 export function solvePhases(
 	phaseOperators: PhaseOperators,
-	home: Float64Array,
 	clocks: readonly ClockPhases[],
-	solve: (operators: readonly LayoutOperator[]) => Float64Array,
+	solve: (operators: readonly LayoutOperator[]) => Phase,
 ): Map<string, Phase> {
-	const solved = new Map<string, Phase>([["", { state: home, away: [] }]]);
+	const solved = new Map<string, Phase>([["", new Map()]]);
 	const phases = new Map<string, Phase>();
 	for (const { events } of clocks) {
 		for (const e of events) {
 			const key = e.active.join("\n");
 			let phase = solved.get(key);
 			if (!phase) {
-				const state = solve(phaseOperators(e.active).operators);
-				const away: number[] = [];
-				for (let base = 0; base < home.length; base += 4)
-					for (let k = 0; k < 4; k++)
-						if (state[base + k] !== home[base + k]) {
-							away.push(base);
-							break;
-						}
-				phase = { state, away };
+				phase = solve(phaseOperators(e.active).operators);
 				solved.set(key, phase);
 			}
 			phases.set(e.id, phase);
 		}
 	}
 	return phases;
+}
+
+/**
+ * Solve one phase on `state`, which holds home on entry and again on return
+ * (as does `mirror`, relax's copy of it): only the slots the phase's
+ * relations write are compared and put back, never the whole scene.
+ */
+export function solvePhase(
+	operators: readonly LayoutOperator[],
+	home: Float64Array,
+	state: Float64Array,
+	mirror: Float64Array,
+	relax: (state: Float64Array, mirror: Float64Array) => void,
+): Phase {
+	relax(state, mirror);
+	const away = new Map<number, Float64Array>();
+	const visit = (each: (slot: number) => void): void => {
+		if (operators.some((op) => !op.writes))
+			for (let i = 0; i < home.length; i++) each(i);
+		else for (const op of operators) for (const i of op.writes ?? []) each(i);
+	};
+	visit((i) => {
+		const base = i - (i % 4);
+		if (state[i] !== home[i] && !away.has(base))
+			away.set(base, state.slice(base, base + 4));
+	});
+	visit((i) => {
+		state[i] = home[i];
+		mirror[i] = home[i];
+	});
+	// In slot order, whatever order the relations wrote them in
+	return new Map([...away].sort(([a], [b]) => a - b));
 }
 
 /**
@@ -124,36 +150,25 @@ export function phaseMoves(
 		home.length / 4,
 	).fill(undefined);
 	for (const { events } of clocks) {
-		const shown = new Float64Array(home);
-		let displaced = new Set<number>();
+		// What the clock shows away from home
+		const shown = new Map<number, Float64Array>();
 		for (const e of events) {
 			const phase = phases.get(e.id);
 			if (!phase) continue;
-			const { state } = phase;
-			const still = new Set<number>();
-			for (const base of new Set([...displaced, ...phase.away])) {
+			for (const base of new Set([...shown.keys(), ...phase.keys()])) {
+				const at = home.subarray(base, base + 4);
+				const [to, from] = [phase.get(base) ?? at, shown.get(base) ?? at];
 				// Back home means exactly home, not within a rounding of it
-				let moved = false;
-				for (let k = 0; k < 4; k++) {
-					const [to, from] = [state[base + k], shown[base + k]];
-					if (state === home ? to !== from : !(Math.abs(to - from) <= MOVED))
-						moved = true;
-				}
-				if (moved) {
-					shown.set(state.subarray(base, base + 4), base);
-					const record = moves[base / 4] ?? {};
-					record[e.id] = {
-						x: state[base],
-						y: state[base + 1],
-						width: state[base + 2],
-						height: state[base + 3],
-					};
-					moves[base / 4] = record;
-				}
-				for (let k = 0; k < 4; k++)
-					if (shown[base + k] !== home[base + k]) still.add(base);
+				const moved = to.some((v, k) =>
+					phase.size === 0 ? v !== from[k] : !(Math.abs(v - from[k]) <= MOVED),
+				);
+				if (!moved) continue;
+				if (to.every((v, k) => v === at[k])) shown.delete(base);
+				else shown.set(base, to);
+				const record = moves[base / 4] ?? {};
+				record[e.id] = { x: to[0], y: to[1], width: to[2], height: to[3] };
+				moves[base / 4] = record;
 			}
-			displaced = still;
 		}
 	}
 	return moves;

@@ -36,6 +36,8 @@ import { RetimeExample } from "./examples/animation/RetimeExample";
 import retimeExampleCode from "./examples/animation/RetimeExample.tsx?raw";
 import { ScrubberExample } from "./examples/animation/ScrubberExample";
 import scrubberExampleCode from "./examples/animation/ScrubberExample.tsx?raw";
+import { SelectionExample } from "./examples/animation/SelectionExample";
+import selectionExampleCode from "./examples/animation/SelectionExample.tsx?raw";
 import { SortExample } from "./examples/animation/SortExample";
 import sortExampleCode from "./examples/animation/SortExample.tsx?raw";
 import { SoundExample } from "./examples/animation/SoundExample";
@@ -337,6 +339,13 @@ export const pages: Page[] = [
 					"Home is the finished list. A Modulate at 0 stacks it without the new row, and a Resolve releases that as the row enters: its neighbours part, the card around them grows, and the row fades into the gap",
 				code: makeRoomExampleCode,
 				element: <MakeRoomExample />,
+			},
+			{
+				title: "A frame that takes in more",
+				description:
+					"A Background inside a Modulate restates a box that is already there: its first ref is the box, the rest are what it wraps for as long as the Modulate holds. The frame stretches over three days, moves on with more padding, and Resolve returns it to Monday; its width, height and position tween between the solved layouts",
+				code: selectionExampleCode,
+				element: <SelectionExample />,
 			},
 			{
 				title: "Handing off, arrow attached",

@@ -655,3 +655,187 @@ test("the Courier example keeps both arrows on the parcel", async ({
 	expect(new Set(seen).size).toBeGreaterThan(5);
 	expect(seen[0]).toBe(seen.at(-1));
 });
+
+// --- what a Modulate may hold besides stacks ---------------------------------
+
+/** The box an element is drawn in, in the svg's own pixels. */
+const drawn = (page: Page, id: string, within = "svg") =>
+	page.evaluate(
+		([wanted, root]) => {
+			const svg = document.querySelector(root) as SVGSVGElement;
+			const origin = svg.getBoundingClientRect();
+			const r = (
+				svg.querySelector(`[id="${wanted}"]`) as Element
+			).getBoundingClientRect();
+			return {
+				left: r.left - origin.x,
+				top: r.top - origin.y,
+				right: r.right - origin.x,
+				bottom: r.bottom - origin.y,
+			};
+		},
+		[id, within],
+	);
+
+test("a Background in a Modulate rewraps its box around other members", async ({
+	page,
+}) => {
+	const wrap = (id: string, children: N[], padding: number): N => ({
+		type: "Background",
+		id,
+		props: { padding, "stroke-width": 0, fill: "none" },
+		children,
+	});
+	await page.setContent(
+		svgOf([
+			{
+				type: "StackH",
+				id: "row",
+				props: { spacing: 10 },
+				children: ["a", "b", "c"].map((id) => rect(id)),
+			},
+			wrap("frame", [ref("a")], 4),
+			{
+				type: "Modulate",
+				id: "wider",
+				props: { at: 1, over: 1, ease: "linear" },
+				children: [wrap("w", [ref("frame"), ref("b"), ref("c")], 6)],
+			},
+			{
+				type: "Resolve",
+				id: "back",
+				props: { at: 3, over: 1, ease: "linear" },
+			},
+		]),
+	);
+	const frameAt = async (t: number) => {
+		await seek(page, t);
+		return drawn(page, "frame");
+	};
+	const [a, b, c] = [
+		await drawn(page, "a"),
+		await drawn(page, "b"),
+		await drawn(page, "c"),
+	];
+	const home = await frameAt(0.5);
+	expect(home.left).toBeCloseTo(a.left - 4, 1);
+	expect(home.right).toBeCloseTo(a.right + 4, 1);
+	const held = await frameAt(2.5);
+	expect(held.left).toBeCloseTo(b.left - 6, 1);
+	expect(held.right).toBeCloseTo(c.right + 6, 1);
+	expect(held.top).toBeCloseTo(b.top - 6, 1);
+	expect(held.bottom).toBeCloseTo(b.bottom + 6, 1);
+	// halfway there, every side is halfway
+	const mid = await frameAt(1.5);
+	expect(mid.left).toBeCloseTo((home.left + held.left) / 2, 1);
+	expect(mid.right).toBeCloseTo((home.right + held.right) / 2, 1);
+	expect(mid.top).toBeCloseTo((home.top + held.top) / 2, 1);
+	expect(await frameAt(4)).toEqual(home);
+});
+
+test("a circle and an arc grow with the box a Modulate gives them", async ({
+	page,
+}) => {
+	const fit = (id: string): N => ({
+		type: "Modulate",
+		id: "fit",
+		props: { at: 1, over: 1, ease: "linear" },
+		children: [
+			{ type: "Span", props: { axis: "x" }, children: [ref("wide"), ref(id)] },
+		],
+	});
+	const column = (mark: N): N => ({
+		type: "StackV",
+		id: "col",
+		props: { alignment: "left", spacing: 40 },
+		children: [mark, rect("wide", { width: 60 })],
+	});
+	const sides = async (id: string, t: number) => {
+		await seek(page, t);
+		return drawn(page, id);
+	};
+
+	await page.setContent(
+		svgOf([
+			column({
+				type: "Circle",
+				id: "dot",
+				props: { r: 10, fill: "#888", "stroke-width": 0 },
+			}),
+			fit("dot"),
+		]),
+	);
+	const wide = await drawn(page, "wide");
+	const small = await sides("dot", 0.5);
+	expect(small.right - small.left).toBeCloseTo(20, 1);
+	const half = await sides("dot", 1.5);
+	expect(half.right - half.left).toBeCloseTo(40, 1);
+	const grown = await sides("dot", 2.5);
+	// as wide as the box it spans, on the centre of that box
+	expect(grown.left).toBeCloseTo(wide.left, 1);
+	expect(grown.right).toBeCloseTo(wide.right, 1);
+	expect((grown.top + grown.bottom) / 2).toBeCloseTo(
+		(small.top + small.bottom) / 2,
+		1,
+	);
+
+	await page.setContent(
+		svgOf([
+			column({
+				type: "Arc",
+				id: "pie",
+				props: { r: 10, startAngle: 0, endAngle: 360, fill: "#888" },
+			}),
+			fit("pie"),
+		]),
+	);
+	const ring = await sides("pie", 2.5);
+	expect(ring.left).toBeCloseTo(wide.left, 0);
+	expect(ring.right).toBeCloseTo(wide.right, 0);
+	const between = await sides("pie", 1.5);
+	expect(between.right - between.left).toBeCloseTo(40, 0);
+});
+
+test("the Selection example keeps its frame round the days it has picked", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/animation/");
+	const graphic = page.locator("svg:has(#pick)");
+	await graphic.scrollIntoViewIfNeeded();
+	await graphic.evaluate((svg) => svg.setAttribute("data-selection", ""));
+	const at = async (t: number) => {
+		await graphic.evaluate((svg: SVGSVGElement, time) => {
+			for (const a of svg.getAnimations({ subtree: true })) {
+				a.pause();
+				a.currentTime = time * 1000;
+			}
+		}, t);
+		const box = (id: string) => drawn(page, id, "svg[data-selection]");
+		return {
+			pick: await box("pick"),
+			Mon: await box("Mon"),
+			Wed: await box("Wed"),
+			Thu: await box("Thu"),
+			Fri: await box("Fri"),
+		};
+	};
+	// the frame's stroke is 2.5 wide and the days' 1, both drawn on the edge
+	const gap = (padding: number) => padding + 1.25 - 0.5;
+	const home = await at(0.3);
+	expect(home.pick.left).toBeCloseTo(home.Mon.left - gap(4), 1);
+	expect(home.pick.right).toBeCloseTo(home.Mon.right + gap(4), 1);
+	const three = await at(1.5);
+	expect(three.pick.left).toBeCloseTo(three.Mon.left - gap(4), 1);
+	expect(three.pick.right).toBeCloseTo(three.Wed.right + gap(4), 1);
+	const weekend = await at(2.8);
+	expect(weekend.pick.left).toBeCloseTo(weekend.Thu.left - gap(9), 1);
+	expect(weekend.pick.right).toBeCloseTo(weekend.Fri.right + gap(9), 1);
+	expect(weekend.pick.top).toBeCloseTo(weekend.Fri.top - gap(9), 1);
+	// on its way from one to the other it is still one box, somewhere between
+	const moving = await at(2.15);
+	expect(moving.pick.left).toBeGreaterThan(three.pick.left + 5);
+	expect(moving.pick.left).toBeLessThan(weekend.pick.left - 5);
+	expect((await at(4.2)).pick).toEqual(home.pick);
+	// the days themselves never move
+	expect(weekend.Mon).toEqual(home.Mon);
+});
