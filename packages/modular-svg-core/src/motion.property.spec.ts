@@ -416,14 +416,19 @@ describe("cues inside phrases (properties)", () => {
 					: inOuter;
 				const moves = played.steps.filter((s) => s.over > 0);
 				const once = { ...solution, loop: false };
-				const micro = (t: number) => Math.round(t * 1e6);
-				const ascending = (ts: number[]) => ts.map(micro).sort((x, y) => x - y);
+				const ascending = (ts: number[]) => [...ts].sort((x, y) => x - y);
 				const at = (key: string) =>
 					ascending(cuesBetween(once, [key], -1, 1e3).map((c) => c.at));
-				expect(at("a")).toEqual(ascending(moves.map((s) => s.start)));
-				expect(at("a:end")).toEqual(
-					ascending(moves.map((s) => s.start + s.over)),
-				);
+				// Within a microsecond; rounding to one would split times that
+				// fall on half of it
+				const same = (got: number[], want: number[]) => {
+					expect(got).toHaveLength(want.length);
+					got.forEach((t, i) => {
+						expect(Math.abs(t - want[i])).toBeLessThan(1e-6);
+					});
+				};
+				same(at("a"), ascending(moves.map((s) => s.start)));
+				same(at("a:end"), ascending(moves.map((s) => s.start + s.over)));
 			}),
 		);
 	});

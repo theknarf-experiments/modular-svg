@@ -132,9 +132,17 @@ export function retime(
 				ease: HOLD,
 				values: back ? states().last : states().first,
 			});
+		// Rounding can leave a step a hair past the pass, where it would sort
+		// into the next one; it ends with the pass instead
+		const end = c.start + (j + 1) * pass;
+		const within = (start: number, over: number) => {
+			const past = start + over - end;
+			if (!(past > 0 && past <= ROUNDING)) return { start, over };
+			return over > past ? { start, over: over - past } : { start: end, over };
+		};
 		if (!back) {
 			for (const s of ordered)
-				play({ ...s, start: origin + s.start * k, over: s.over * k });
+				play({ ...s, ...within(origin + s.start * k, s.over * k) });
 			continue;
 		}
 		const { before } = states();
@@ -152,11 +160,10 @@ export function retime(
 				const edge = edges.get(lane) ?? origin;
 				if (Math.abs(start - edge) <= ROUNDING) start = Math.max(start, edge);
 			}
-			const over = s.over * k;
-			for (const lane of lanes) edges.set(lane, start + over);
+			const fitted = within(start, s.over * k);
+			for (const lane of lanes) edges.set(lane, fitted.start + fitted.over);
 			play({
-				start,
-				over,
+				...fitted,
 				ease: s.over > 0 ? reverseEase(s.ease) : s.ease,
 				values: before[i],
 			});

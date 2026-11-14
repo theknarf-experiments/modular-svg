@@ -835,7 +835,9 @@ export function buildTime(
 			if (!isBeat(a) || !isBeat(b))
 				warnings.push(`${name}: both members must be Beats`);
 			const of = (props.of as [number, number] | undefined) ?? [3, 2];
-			ops.push(polyrhythmOp(seen(a), base(b.id), of));
+			// A ramping beat has no grid to shift along
+			const within = clockOf.get(a.id) !== own && !tempoOf(a);
+			ops.push(polyrhythmOp(seen(a), base(b.id), of, within));
 		} else if (t.type === "Resolve") {
 			for (const c of t.children)
 				if (typeOf(c) !== "Modulate")

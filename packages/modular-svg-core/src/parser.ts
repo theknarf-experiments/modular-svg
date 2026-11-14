@@ -1259,11 +1259,27 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					}
 					own(posKey, [source.id]);
 					own(extentKey);
+					// A Modulate resizes a circle or arc, which is drawn round: its
+					// other side follows unless a Span of this Modulate gives that too
+					const other = d.axis === "x" ? "y" : "x";
+					const round =
+						!!home &&
+						(target.type === "circle" || target.type === "arc") &&
+						!indices.some((i) => {
+							const s = descs[i];
+							return (
+								s.kind === "span" &&
+								s.axis === other &&
+								s.children.slice(1).includes(target)
+							);
+						});
+					if (round) own(`${target.id}:${d.axis === "x" ? "h" : "w"}`);
 					push(
 						spanOp(
 							baseOf(source),
 							{ base: baseOf(target), subtree: subtreeBases(target) },
 							d.axis === "x",
+							round,
 						),
 					);
 				}
@@ -1473,7 +1489,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	/**
 	 * The relations that hold while `active` modulations do (later ones win,
 	 * home loses). A relation is dropped whole once a stronger one places
-	 * something it placed; what it no longer places stays where it was.
+	 * something it placed, or a container it reached into; what it no longer
+	 * places stays where it was.
 	 */
 	const operatorsFor = (
 		active: readonly string[],
@@ -1500,7 +1517,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				if (!c) continue;
 				const d = descs[i];
 				// A box yields to whatever restates it, a placement to whatever
-				// places the same thing or takes a member out of what it places
+				// places the same thing, takes a member out of what it places, or
+				// places a container it took a member out of itself
 				const yields =
 					d.kind === "background"
 						? taken.has(boxKey(d.box))
@@ -1510,6 +1528,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 								d.kind === "distribute" ||
 								d.kind === "span") &&
 							(c.claims.some((k) => taken.has(k)) ||
+								c.blocks.some((k) => taken.has(k)) ||
 								(blocked.size > 0 && c.reads.some((k) => blocked.has(k))));
 				if (yields) continue;
 				live.set(i, c);

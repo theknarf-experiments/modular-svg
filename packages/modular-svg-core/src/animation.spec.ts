@@ -1256,14 +1256,16 @@ describe("layout in time", () => {
 		...extra,
 	];
 
-	it("grows a circle with its box: r tweens and the centre follows", () => {
+	it("grows a circle with its box: r tweens and it stays inside the box", () => {
 		const { ast, svg } = render(
 			fitted({ type: "Circle", id: "dot", props: { r: 10, fill: "#fff" } }),
 		);
 		expect(keyframesOf(ast.css)).toEqual([
-			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:15px 0px}",
+			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:15px 15px}",
 			"0%{r:10px;animation-timing-function:linear}100%{r:25px}",
 		]);
+		// round in its box, so the canvas holds all of it
+		expect(ast.height).toBeCloseTo(50, 3);
 		expect(svg).toMatch(/<circle id="dot"[^>]+class="ms\w+-a ms\w+-c\d"/);
 	});
 
@@ -1297,8 +1299,9 @@ describe("layout in time", () => {
 				'100%{d:path("M 10,0 L 10,-15 A 25,25 0 0 1 35,10 L 20,10 A 10,10 0 0 0 10,0 Z")}',
 		);
 		expect(keyframesOf(ast.css)).toContain(
-			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:15px 0px}",
+			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:15px 15px}",
 		);
+		expect(ast.height).toBeCloseTo(50, 3);
 		expect(svg).toMatch(/<path id="pie"[^>]*><animate attributeName="d"/);
 		// reduced motion shows it grown
 		expect(svg).toMatch(/<path id="pie-still" d="M 10,0 L 10,-15 /);
@@ -1559,6 +1562,39 @@ describe("connectors follow motions", () => {
 	it("redraws a connector between where a motion has its end", () => {
 		const { ast } = render(scene([slide("go", ["job"])]));
 		expect(ends(valuesOf(ast.children))).toEqual([drawn(), drawn(100)]);
+	});
+
+	describe("when the schedule starts before the scene (which warns)", () => {
+		const early = (at: number, over: number, y: number): N[] => [
+			box("a", { x: 0, y: 0 }),
+			box("b", { x: 100, y: 0 }),
+			{ type: "Arrow", id: "k", children: [ref("a"), ref("b")] },
+			on("Enter", "e1", "a", { over, from: { y, opacity: 0 } }),
+			on("Enter", "e2", "b", { over, from: { y, opacity: 0 } }),
+			on("Enter", "d", "k", { at }),
+			{ type: "Sequence", children: [ref("e1"), ref("e2"), ref("d")] },
+		];
+
+		it("still renders, with every keyframe inside the timeline", () => {
+			const { ast } = render(early(0.2, 0.5, 10));
+			expect(ast.duration).toBeCloseTo(0.7);
+			expect(ast.css).not.toMatch(/[{}]-[\d.]+%/);
+		});
+
+		it("renders wherever the scene's start cuts the motions", () => {
+			fc.assert(
+				fc.property(
+					fc.integer({ min: 0, max: 12 }),
+					fc.integer({ min: 1, max: 8 }),
+					fc.integer({ min: -30, max: 30 }),
+					(at, over, y) => {
+						const { ast } = render(early(at / 10, over / 10, y));
+						expect(ast.css).not.toMatch(/[{}]-[\d.]+%/);
+					},
+				),
+				{ numRuns: 60 },
+			);
+		});
 	});
 
 	it("draws a slide that keeps the path straight in time with two keys", () => {

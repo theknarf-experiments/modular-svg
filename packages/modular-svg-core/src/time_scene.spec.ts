@@ -943,6 +943,39 @@ describe("reading across clocks", () => {
 		expect(layout.triplet.local?.duration).toBeCloseTo(3, 6);
 	});
 
+	it("starts a polyrhythm's beat on a shared downbeat inside the phrase", () => {
+		for (const at of [0, 0.25, 1, 2.6]) {
+			const { span, layout, warnings } = solve([
+				dot("a"),
+				{ type: "Beat", id: "beat", props: { bpm: 120 } },
+				phrase("p", { at, rate: 2 }, [
+					{ type: "Beat", id: "mine" },
+					motion("Enter", "hit", "a", { over: 0.2 }),
+					{
+						type: "Polyrhythm",
+						id: "poly",
+						props: { of: [3, 2] },
+						children: [ref("beat"), ref("mine")],
+					},
+					onBeat("land", "mine", "hit"),
+				]),
+			]);
+			expect(warnings).toEqual([]);
+			const start = span("mine")[0] as number;
+			// every third beat of the scene's is a downbeat of both
+			expect(start).toBeGreaterThanOrEqual(at - 1e-6);
+			expect(start).toBeLessThan(at + 1.5);
+			expect(start / 1.5 - Math.round(start / 1.5)).toBeCloseTo(0, 6);
+			expect(layout.mine.local?.duration).toBeCloseTo(1.5, 6);
+			// the grid runs both ways from there: hit takes its first beat in the phrase
+			const hit = span("hit")[0] as number;
+			expect(hit).toBeGreaterThanOrEqual(at - 1e-6);
+			expect(hit).toBeLessThan(at + 0.75);
+			const beats = (hit - start) / 0.75;
+			expect(beats - Math.round(beats)).toBeCloseTo(0, 6);
+		}
+	});
+
 	it("keeps inside a span, and after one, of the time around", () => {
 		const { layout, span, warnings } = solve([
 			dot("a"),

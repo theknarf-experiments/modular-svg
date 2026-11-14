@@ -63,8 +63,8 @@ solved color, so motions can animate to colors that `DistinctColors`,
 Eases: `linear in out inOut pop hold steps(n)` or bezier points. `loop` repeats a
 motion's span until the scene ends (or `n` times). A looping motion is a
 one-motion `Phrase` (below), so both repeat alike: every pass starts over from
-where the motion began (its `from`; without one, where the mark rests), and
-`alternate` runs every other pass backwards, with no cut at the turn.
+where the motion began (its `from`; a channel that names none, where the mark
+rests), and `alternate` runs every other pass backwards, with no cut at the turn.
 
 **Time relations** ref motions, marks (a mark spans its motions) or other
 relations (a relation spans its members), and moving one carries its contents:
@@ -95,7 +95,9 @@ in its own time, so to place a phrase's content from outside, relate the
 `Phrase`. What a relation only reads may play in a time around it: the beat
 of an `OnBeat`, `Bar` or `Polyrhythm`, the source of a `Stretch`, the span a
 `During` keeps to and what an `After` waits for. So a phrase's content can
-land on a beat of the scene, seen through every phrase in between:
+land on a beat of the scene, seen through every phrase in between (a
+`Polyrhythm` starts its own beat on the first downbeat the two share inside
+the phrase):
 
 ```tsx
 <beat key="beat" bpm={120} />
@@ -125,7 +127,9 @@ warns, since nothing in it plays).
 Lanes that hold one value (`fill`, `stroke`, `width`, `height`, `r`, `d`, `draw`)
 are shared by the motions on a mark. The one that moves a lane first decides
 where it starts; where a later one starts from (its `from`, or the last frame
-of a phrase played backwards) is a cut at the moment it starts. A phrase picks
+of a phrase played backwards) is a cut at the moment it starts; a backward
+phrase that is the first to move a lane shows that last frame from the start
+of the scene. A phrase picks
 a lane up where the time around it left it, so its passes repeat from there
 and a backward phrase hands back what it found.
 
@@ -165,12 +169,14 @@ declared outside.
 Each distinct set of active modulations is one more solve, and the browser
 tweens between them: boxes translate, rects and images also resize, a circle
 or arc takes its radius from the width of its box and keeps to the centre of
-it (text and paths keep their size), and a
+it (a `Span` that gives it one side gives it the other too, so it stays round
+inside its box; text and paths keep their size), and a
 line, curve or arrow whose ends move apart is redrawn between wherever its
 ends are, so an arrow stays attached without extra markup. The redrawn path
 is written twice: as CSS keyframes on `d`, which keep time with the boxes,
 and as SMIL for browsers that do not animate `d` in CSS (there the path runs
-on SMIL's own clock, which `Graphic` lines up after the first frame). Inside a
+on SMIL's own clock, which `Graphic` sets to that of the scene's CSS
+animations whenever no `transition` tween is running on it). Inside a
 `Modulate`, put what stays first: a member anchors the relation only if you
 pinned it, an earlier relation of the same `Modulate` placed it, or a home
 relation that this one does not restate did; with no anchor a stack packs
@@ -180,7 +186,9 @@ on whichever of them comes first, so the list stays when its own member
 does. Taking a member out of a container that some relation places, or
 places other things by, makes that relation let go as well: it would drag
 the member along, so what it placed stays where it was unless the
-`Modulate` restates it.
+`Modulate` restates it. Between two `Modulate`s the later one wins the same
+way: while it places a container, an earlier relation that took a member out
+of that container lets go, and the member is back where the container has it.
 `Modulate` and `Resolve` are placed like motions (`Sequence`, `OnBeat`, ...),
 and a `Phrase` that takes them plays the layout change faster, backwards or
 there and back. Modulations in different clocks that move the same thing add

@@ -344,6 +344,25 @@ describe("a looping motion (properties)", () => {
 		{ minLength: 1, maxLength: 5 },
 	);
 
+	it("keeps a backward pass inside its time when mirroring rounds past the end", () => {
+		// 2.9166… + 0.0833… is a hair past 3, where the next pass starts
+		const spec: MotionSpec = {
+			kind: "motion",
+			steps: [
+				{ set: { x: 0 } },
+				{ to: { x: -1 }, over: 0.25, ease: "linear" },
+				{ to: { x: 0 }, over: 1, ease: "linear" },
+				{ wait: 0.25 },
+			],
+			loop: true,
+			alternate: true,
+		};
+		const all = expandMotion(spec, 2, 0.5, 3.5);
+		for (const s of all.steps.filter((s) => s.start < 3))
+			expect(s.start + s.over).toBeLessThanOrEqual(3);
+		expect(Number(stateAt(all, 3.0685, { x: 0 }).x)).toBeCloseTo(-0.822, 3);
+	});
+
 	it("starts every pass from rest, and mirrors every other one when it alternates", () => {
 		fc.assert(
 			fc.property(

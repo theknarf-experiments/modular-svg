@@ -346,6 +346,46 @@ describe("phases", () => {
 		expect(layout.a.phases?.back).toEqual(home(layout, "a"));
 	});
 
+	describe("a circle a Modulate spans on one axis", () => {
+		const dotted = (inside: N[]): N[] => [
+			{
+				type: "StackV",
+				id: "col",
+				props: { alignment: "left", spacing: 40 },
+				children: [
+					{ type: "Circle", id: "dot", props: { r: 10 } },
+					rect("wide", { width: 60 }),
+				],
+			},
+			modulate("fit", inside),
+		];
+		const span = (axis: string, source = "wide"): N =>
+			rel("Span", `s${axis}`, [source, "dot"], { axis });
+
+		it("stays round, so its box holds what is drawn", () => {
+			const { scene, layout } = solve(dotted([span("x")]));
+			expect(scene.warnings).toEqual([]);
+			expect(checkSolution(scene, layout)).toEqual([]);
+			const dot = boxAfter(layout, "dot", "fit");
+			expect(dot).toEqual(near({ x: 0, y: 0, width: 60, height: 60 }));
+			// The Span took dot from the stack, which lets go: wide stays
+			expect(boxAfter(layout, "wide", "fit")).toEqual(home(layout, "wide"));
+		});
+
+		it("takes each side from its own Span when both are given", () => {
+			const { scene, layout } = solve([
+				rect("tall", { x: 200, y: 0, width: 5, height: 30 }),
+				...dotted([span("x"), span("y", "tall")]),
+			]);
+			expect(scene.warnings).toEqual([]);
+			const dot = boxAfter(layout, "dot", "fit");
+			expect([dot.width, dot.height]).toEqual([
+				expect.closeTo(60, 3),
+				expect.closeTo(30, 3),
+			]);
+		});
+	});
+
 	const columns = (): N => ({
 		type: "StackH",
 		id: "row",
@@ -369,6 +409,62 @@ describe("phases", () => {
 		expect(c.y).toBeCloseTo(layout.a.y + 12, 3);
 		for (const id of ["a", "b", "d", "e", "f", "colA", "colC"])
 			expect(layout[id].phases).toBeUndefined();
+	});
+
+	describe("a stack over two rows, and another Modulate that flips the rows", () => {
+		const rows = (first: N, second: N): N[] => [
+			{
+				type: "StackV",
+				id: "col",
+				children: [
+					{
+						type: "StackH",
+						id: "r1",
+						children: [rect("a"), rect("b"), rect("c")],
+					},
+					{
+						type: "StackH",
+						id: "r2",
+						children: [rect("d"), rect("e"), rect("f")],
+					},
+				],
+			},
+			first,
+			second,
+		];
+		const across = (at: number): N =>
+			modulate("m0", [rel("StackH", "o", ["a", "f"], { spacing: 12 })], { at });
+		const flip = (at: number): N =>
+			modulate("m1", [rel("StackV", "v", ["r2", "r1"], { spacing: 50 })], {
+				at,
+			});
+
+		const gaps = (layout: LayoutResult, last: string) => {
+			const at = (id: string) => boxAfter(layout, id, last);
+			return {
+				beside: at("f").x - (at("a").x + at("a").width),
+				below: at("r1").y - (at("r2").y + at("r2").height),
+				inRow: at("f").y - at("d").y,
+			};
+		};
+
+		// f cannot sit beside a while its row is 50 above a's: the later one holds
+		it("lets the stack go while a later flip holds, and f is back in its row", () => {
+			const { scene, layout } = solve(rows(across(0.6), flip(1.4)));
+			expect(scene.warnings).toEqual([]);
+			expect(checkSolution(scene, layout)).toEqual([]);
+			expect(gaps(layout, "m0").beside).toBeCloseTo(12, 2);
+			expect(gaps(layout, "m1").below).toBeCloseTo(50, 2);
+			expect(gaps(layout, "m1").inRow).toBeCloseTo(0, 2);
+		});
+
+		it("lets the flip go while a later stack holds", () => {
+			const { scene, layout } = solve(rows(flip(0.6), across(1.4)));
+			expect(scene.warnings).toEqual([]);
+			expect(checkSolution(scene, layout)).toEqual([]);
+			expect(gaps(layout, "m1").below).toBeCloseTo(50, 2);
+			expect(gaps(layout, "m0").beside).toBeCloseTo(12, 2);
+		});
 	});
 
 	it("moves a member from one list into another, which stays where it is", () => {

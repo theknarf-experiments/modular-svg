@@ -771,13 +771,16 @@ test("a circle and an arc grow with the box a Modulate gives them", async ({
 	const half = await sides("dot", 1.5);
 	expect(half.right - half.left).toBeCloseTo(40, 1);
 	const grown = await sides("dot", 2.5);
-	// as wide as the box it spans, on the centre of that box
+	// as wide as the box it spans, and round: all of it is on the canvas
 	expect(grown.left).toBeCloseTo(wide.left, 1);
 	expect(grown.right).toBeCloseTo(wide.right, 1);
-	expect((grown.top + grown.bottom) / 2).toBeCloseTo(
-		(small.top + small.bottom) / 2,
-		1,
-	);
+	expect(grown.top).toBeCloseTo(small.top, 1);
+	expect(grown.bottom - grown.top).toBeCloseTo(60, 1);
+	const canvas = await page.evaluate(() => {
+		const svg = document.querySelector("svg") as SVGSVGElement;
+		return svg.getBoundingClientRect().height;
+	});
+	expect(grown.bottom).toBeLessThanOrEqual(canvas + 0.01);
 
 	await page.setContent(
 		svgOf([
@@ -792,6 +795,8 @@ test("a circle and an arc grow with the box a Modulate gives them", async ({
 	const ring = await sides("pie", 2.5);
 	expect(ring.left).toBeCloseTo(wide.left, 0);
 	expect(ring.right).toBeCloseTo(wide.right, 0);
+	expect(ring.top).toBeGreaterThanOrEqual(-0.5);
+	expect(ring.bottom - ring.top).toBeCloseTo(60, 0);
 	const between = await sides("pie", 1.5);
 	expect(between.right - between.left).toBeCloseTo(40, 0);
 });

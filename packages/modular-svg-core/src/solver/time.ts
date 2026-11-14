@@ -429,15 +429,26 @@ export function beatLengthOp(
 	);
 }
 
-/** `of[0]` beats of the first take as long as `of[1]` of the second, from one downbeat. */
+/**
+ * `of[0]` beats of the first take as long as `of[1]` of the second, from one
+ * downbeat. With `within`, the first is read from a time around the second's,
+ * where its downbeat can lie before that time begins: the second then starts
+ * on the first downbeat they share inside it, which is the same grid.
+ */
 export function polyrhythmOp(
 	a: number,
 	b: number,
 	of: readonly [number, number],
+	within = false,
 ): LayoutOperator {
 	return writing(
 		(cur, next) => {
-			next[b] = cur[a];
+			const cycle = cur[a + 1] * of[0];
+			const late =
+				within && cur[a] < 0 && cycle > 0
+					? Math.ceil(-cur[a] / cycle - 1e-9) * cycle
+					: 0;
+			next[b] = cur[a] + late;
 			next[b + 1] = (cur[a + 1] * of[0]) / of[1];
 		},
 		slots([b], 2),

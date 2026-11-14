@@ -592,9 +592,12 @@ export function spanOp(
 	sourceBase: number,
 	target: SubtreeChild,
 	horizontal: boolean,
+	/** the target is as long on the other axis too (a circle stays round) */
+	round = false,
 ): LayoutOperator {
 	const slot = (horizontal ? 0 : 1) as 0 | 1;
 	const extentSlot = horizontal ? 2 : 3;
+	const otherSlot = horizontal ? 3 : 2;
 	return writing(
 		(cur, next) => {
 			moveSubtree(
@@ -605,6 +608,7 @@ export function spanOp(
 				cur[sourceBase + slot] - cur[target.base + slot],
 			);
 			next[target.base + extentSlot] = cur[sourceBase + extentSlot];
+			if (round) next[target.base + otherSlot] = cur[sourceBase + extentSlot];
 		},
 		slots(target.subtree, 4),
 	);

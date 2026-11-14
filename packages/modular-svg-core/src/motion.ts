@@ -716,7 +716,10 @@ export function keysOf(
 		const next = { ...current, ...segment.values };
 		const last = keys[keys.length - 1];
 		const contiguous = segment.start < last.t + nudge;
-		if (segment.over >= nudge) {
+		if (keys.length === 1 && segment.start + segment.over <= 1e-9) {
+			// Over before the scene starts (which warns): the scene opens after it
+			keys[0] = { ...last, values: next };
+		} else if (segment.over >= nudge) {
 			if (contiguous) keys[keys.length - 1] = { ...last, ease: segment.ease };
 			else keys.push({ t: segment.start, values: current, ease: segment.ease });
 			keys.push({
