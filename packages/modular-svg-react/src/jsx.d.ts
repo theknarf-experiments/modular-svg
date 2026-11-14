@@ -14,7 +14,16 @@ type Timed = {
 	over?: number;
 	children?: React.ReactNode;
 };
-type Motion = Timed & { ease?: Ease; loop?: boolean | number };
+type Motion = Timed & {
+	ease?: Ease;
+	/**
+	 * repeat the span: true until the time around it ends, or a count. Every
+	 * pass starts over from where the motion began (its `from`, else rest)
+	 */
+	loop?: boolean | number;
+	/** with loop: every other pass runs backwards, with no cut at the turn */
+	alternate?: boolean;
+};
 
 declare module "react" {
 	namespace JSX {
@@ -272,7 +281,8 @@ declare module "react" {
 			/**
 			 * a clock: what it takes plays in the phrase's own time, as a unit that
 			 * can be stretched, reversed and repeated. `over` is the whole span
-			 * and must be above 0
+			 * and must be above 0. Relations inside may read what plays around the
+			 * phrase (an `onBeat` its beat) while the phrase's speed is its `rate`
 			 */
 			phrase: Timed & {
 				/** speed, when nothing else sets the span */
@@ -294,7 +304,10 @@ declare module "react" {
 			 * there: its first ref is the box, the rest are what it wraps
 			 */
 			modulate: Timed & { ease?: Ease };
-			/** lets the modulations it refs go (all of them when it refs none) */
+			/**
+			 * lets the modulations it refs go (all of them when it refs none), in
+			 * the time it plays in: a phrase's `modulate` is released in the phrase
+			 */
 			resolve: Timed & { ease?: Ease };
 			/** an empty span: a silence to sequence */
 			rest: { key?: React.Key; over?: number; at?: number };

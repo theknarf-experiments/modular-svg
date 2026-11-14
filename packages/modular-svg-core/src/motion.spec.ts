@@ -6,6 +6,7 @@ import {
 	type MotionSpec,
 	resolveEase,
 } from "./motion.ts";
+import { reverseEase } from "./phrase.ts";
 
 describe("motion expansion", () => {
 	it("places an enter over its solved span", () => {
@@ -70,6 +71,41 @@ describe("motion expansion", () => {
 		]);
 	});
 
+	it("starts every pass of a loop from rest when the motion has no from", () => {
+		const { steps } = expandMotion(
+			{
+				kind: "motion",
+				steps: [{ to: { x: 10, scale: 2 }, over: 1 }],
+				loop: 2,
+			},
+			0,
+			1,
+			5,
+		);
+		expect(steps.map((s) => [s.start, s.over, s.values])).toEqual([
+			[0, 1, { x: 10, scale: 2 }],
+			[1, 0, { x: 0, scale: 1 }],
+			[1, 1, { x: 10, scale: 2 }],
+		]);
+	});
+
+	it("plays every other pass of an alternating loop backwards, with no cut at the turn", () => {
+		const spec: MotionSpec = {
+			kind: "motion",
+			steps: [{ to: { x: 10 }, over: 1, ease: "in" }],
+			loop: true,
+			alternate: true,
+		};
+		const { initial, steps } = expandMotion(spec, 1, 1, 3.5);
+		expect(initial).toEqual({});
+		expect(steps.map((s) => [s.start, s.over, s.values.x])).toEqual([
+			[1, 1, 10],
+			[2, 1, 0],
+			[3, 0.5, 10],
+		]);
+		expect(steps[1].ease).toEqual(reverseEase(resolveEase("in")));
+	});
+
 	it("keeps a cut that lands exactly on the scene end in the last pass of a loop", () => {
 		const spec: MotionSpec = {
 			kind: "motion",
@@ -80,7 +116,8 @@ describe("motion expansion", () => {
 		expect(steps.map((s) => [s.start, s.over, s.values.x])).toEqual([
 			[0, 1, 10],
 			[1, 0, 0],
-			[1, 0, undefined],
+			// the pass starts over from rest
+			[1, 0, 0],
 			[1, 1, 10],
 			[2, 0, 0],
 		]);

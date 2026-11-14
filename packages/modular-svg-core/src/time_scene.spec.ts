@@ -652,6 +652,14 @@ describe("Phrase", () => {
 		]);
 	});
 
+	it("warns about a motion that alternates without a loop", () => {
+		const { warnings } = solve([
+			dot("a"),
+			motion("Enter", "aIn", "a", { alternate: true }),
+		]);
+		expect(warnings).toEqual(["Enter(aIn): alternate needs loop"]);
+	});
+
 	it("warns about props that cannot apply", () => {
 		const w = (props: Record<string, unknown>) =>
 			solve([...pair, phrase("p", props)]).warnings;

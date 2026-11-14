@@ -61,7 +61,10 @@ solved color, so motions can animate to colors that `DistinctColors`,
 `SameColor` and the other color relations picked.
 
 Eases: `linear in out inOut pop hold steps(n)` or bezier points. `loop` repeats a
-motion's span until the scene ends (or `n` times).
+motion's span until the scene ends (or `n` times). A looping motion is a
+one-motion `Phrase` (below), so both repeat alike: every pass starts over from
+where the motion began (its `from`; without one, where the mark rests), and
+`alternate` runs every other pass backwards, with no cut at the turn.
 
 **Time relations** ref motions, marks (a mark spans its motions) or other
 relations (a relation spans its members), and moving one carries its contents:

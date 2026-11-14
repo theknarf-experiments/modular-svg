@@ -5,6 +5,7 @@ import {
 	expandMotion,
 	type Key,
 	keysOf,
+	loopClock,
 	type MotionSpec,
 	moving,
 	passesOf,
@@ -687,7 +688,29 @@ export function compileAnimation(
 		}
 		return chain;
 	};
-	const clocksOf = (n: NodeRecord): Phrase[] => clocksFrom(n.clock);
+	// A looping motion is a phrase of its own, inside the one it plays in
+	const loops = new Map<
+		string,
+		{ clock: Phrase; around: string | undefined }
+	>();
+	const loopOf = (m: NodeRecord): Phrase | undefined => {
+		const id = `loop(${m.id})`;
+		const known = loops.get(id);
+		if (known) return known.clock;
+		const { start, duration } = layout[m.id].local ?? span(m.id);
+		const clock = m.motion && loopClock(m.motion, start, duration);
+		if (!clock) return undefined;
+		loops.set(id, { clock: { ...clock, id }, around: m.clock });
+		return { ...clock, id };
+	};
+	const clocksOf = (n: NodeRecord): Phrase[] => {
+		const loop = n.motion && loopOf(n);
+		return loop ? [loop, ...clocksFrom(n.clock)] : clocksFrom(n.clock);
+	};
+	const chainOf = (id: string): Phrase[] => {
+		const loop = loops.get(id);
+		return loop ? [loop.clock, ...clocksFrom(loop.around)] : clocksFrom(id);
+	};
 	// Each phrase plays the steps in the time of the one around it
 	const through = (
 		clocks: readonly Clock[],
@@ -831,18 +854,23 @@ export function compileAnimation(
 		if (expansions.has(m.id)) return expansions.get(m.id);
 		const clocks = clocksOf(m);
 		const { start, duration } = layout[m.id].local ?? span(m.id);
+		// One pass; a loop's passes are played by its clock, from the pass's start
+		const looping = clocks[0]?.cut === true;
 		const found = clocks.some((c) => !(c.length > 0 && c.span > 0))
 			? undefined
 			: {
 					clocks,
 					expanded: expandMotion(
-						resolveColorRefs(resolveTravel(m, layout), (id, paint) => {
-							const node = byId.get(id);
-							if (!node) return undefined;
-							const which = paint ?? defaultPaint(node);
-							return layout[id]?.[which] ?? node[which];
-						}),
-						start,
+						{
+							...resolveColorRefs(resolveTravel(m, layout), (id, paint) => {
+								const node = byId.get(id);
+								if (!node) return undefined;
+								const which = paint ?? defaultPaint(node);
+								return layout[id]?.[which] ?? node[which];
+							}),
+							loop: undefined,
+						},
+						looping ? 0 : start,
 						duration,
 						clocks[0]?.length ?? period,
 					),
@@ -1181,7 +1209,7 @@ export function compileAnimation(
 		const inside = new Map<string | undefined, Phrase[]>();
 		const known = new Set<string>();
 		for (const id of byClock.keys())
-			clocksFrom(id).forEach((clock, i, chain) => {
+			chainOf(id).forEach((clock, i, chain) => {
 				if (known.has(clock.id)) return;
 				known.add(clock.id);
 				const outer = chain[i + 1]?.id;

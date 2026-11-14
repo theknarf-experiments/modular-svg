@@ -24,6 +24,8 @@ export type Clock = {
 	repeat: number;
 	alternate: boolean;
 	retrograde: boolean;
+	/** passes stop where the time around ends, however many there are (a looping motion) */
+	cut?: boolean;
 };
 
 const HOLD: ResolvedEase = { kind: "steps", count: 1 };
@@ -57,14 +59,15 @@ export function reverseEase(e: ResolvedEase): ResolvedEase {
 /**
  * Steps in a phrase's own time, as they play in the time around it: every
  * pass, forwards or backwards. `rest` gives a channel's value when nothing
- * has set it, which a backward pass needs to know where it ends. Passes that
+ * has set it, which a pass needs to know where it begins and a backward one
+ * where it ends (a channel it has no value for is left as it is). Passes that
  * repeat forever stop at `until`.
  */
 export function retime(
 	e: Expanded,
 	c: Clock,
 	until: number,
-	rest: (channel: Channel) => number | string,
+	rest: (channel: Channel) => number | string | undefined,
 ): Expanded {
 	const pass = passOf(c);
 	if (!(pass > 0) || !(c.length > 0)) return { initial: e.initial, steps: [] };
@@ -74,7 +77,7 @@ export function retime(
 		: c.repeat;
 	if (!(passes <= MAX_PASSES))
 		throw new Error(
-			`A phrase would repeat ${passes} times (${pass}s a pass until ${until}s); the cap is ${MAX_PASSES}`,
+			`A ${c.cut ? "looping motion" : "phrase"} would repeat ${passes} times (${pass}s a pass until ${until}s); the cap is ${MAX_PASSES}`,
 		);
 	const k = pass / c.length;
 	const ordered = [...e.steps].sort((a, b) => a.start - b.start);
@@ -90,15 +93,16 @@ export function retime(
 			]),
 		] as Channel[];
 		const first: Values = Object.fromEntries(
-			channels.map((ch) => [
-				ch,
-				e.initial[ch] ?? CHANNELS[ch].identity ?? rest(ch),
-			]),
+			channels
+				.map((ch) => [ch, e.initial[ch] ?? CHANNELS[ch].identity ?? rest(ch)])
+				.filter(([, value]) => value !== undefined),
 		);
 		let state = first;
 		const before = ordered.map((s) => {
 			const was = Object.fromEntries(
-				Object.keys(s.values).map((ch) => [ch, state[ch as Channel]]),
+				Object.keys(s.values)
+					.map((ch) => [ch, state[ch as Channel]])
+					.filter(([, value]) => value !== undefined),
 			);
 			state = { ...state, ...s.values };
 			return was;
@@ -109,9 +113,13 @@ export function retime(
 
 	const steps: Step[] = [];
 	const play = (s: Step): void => {
-		if (!forever) steps.push(s);
-		else if (s.start < until - 1e-9)
-			steps.push({ ...s, over: Math.min(s.over, until - s.start) });
+		if (!forever && !c.cut) steps.push(s);
+		// A cut on the last instant still lands; a transition has no room
+		else if (s.over > 0 ? s.start < until - 1e-9 : s.start <= until + 1e-9)
+			steps.push({
+				...s,
+				over: Math.max(0, Math.min(s.over, until - s.start)),
+			});
 	};
 	for (let j = 0; j < passes; j++) {
 		const origin = c.start + j * pass;

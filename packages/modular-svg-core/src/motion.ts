@@ -2,6 +2,8 @@
 // svjeez's motion/recipes/keys, except that a motion never knows its absolute
 // time: the time solver places it, and expandMotion turns it into steps.
 
+import { type Clock, retime } from "./phrase.ts";
+
 export type Ease =
 	| "linear"
 	| "in"
@@ -192,6 +194,8 @@ export type MotionSpec = (
 ) & {
 	/** repeat the motion's span: true until the scene ends, or a count */
 	loop?: boolean | number;
+	/** every other pass of the loop runs backwards */
+	alternate?: boolean;
 };
 
 /** A transition at absolute scene time. Zero `over` is a cut. */
@@ -491,45 +495,46 @@ export const passesOf = (loop: MotionSpec["loop"]): number =>
 	typeof loop === "number" ? Math.max(1, Math.floor(loop)) : 1;
 
 /**
+ * A looping motion is a phrase of its own: one pass in the phrase's time,
+ * repeated until the time around it ends (or `loop` times) and cut there.
+ * Undefined when the motion does not loop.
+ */
+export function loopClock(
+	spec: MotionSpec,
+	start: number,
+	duration: number,
+): Clock | undefined {
+	if (!spec.loop || !(duration > 0)) return undefined;
+	const passes = spec.loop === true ? Infinity : passesOf(spec.loop);
+	return {
+		start,
+		span: spec.loop === true ? duration : duration * passes,
+		length: duration,
+		repeat: passes,
+		alternate: spec.alternate === true,
+		retrograde: false,
+		cut: true,
+	};
+}
+
+/**
  * Absolute steps for a motion placed at [start, start + duration]. A looping
- * motion repeats its span until `sceneEnd` (or `loop` times); a pass that
- * crosses the scene end is cut there.
+ * motion repeats its span until `sceneEnd` (or `loop` times), each pass
+ * starting over from where the motion began: its `from`, else a channel's
+ * identity, else what `rest` says the mark has. A pass that crosses the scene
+ * end is cut there.
  */
 export function expandMotion(
 	spec: MotionSpec,
 	start: number,
 	duration: number,
 	sceneEnd: number,
+	rest: (channel: Channel) => number | string | undefined = () => undefined,
 ): Expanded {
-	const first = onePass(spec, start, duration);
-	if (!spec.loop || !(duration > 0)) return first;
-	const passes =
-		spec.loop === true
-			? Math.ceil((sceneEnd - start) / duration - 1e-9)
-			: passesOf(spec.loop);
-	if (!(passes <= MAX_PASSES))
-		throw new Error(
-			`A looping motion would repeat ${passes} times (${duration}s in a ${sceneEnd}s scene); the cap is ${MAX_PASSES}`,
-		);
-	const steps: Step[] = [];
-	for (let p = 0; p < passes; p++) {
-		const offset = p * duration;
-		// Each pass returns to the initial values with a cut at its start
-		if (p > 0)
-			steps.push({
-				start: start + offset,
-				over: 0,
-				ease: HOLD,
-				values: first.initial,
-			});
-		for (const s of first.steps) {
-			const at = s.start + offset;
-			// A cut on the scene's last instant still lands; a transition has no room
-			if (s.over > 0 ? at >= sceneEnd - 1e-9 : at > sceneEnd + 1e-9) continue;
-			steps.push({ ...s, start: at, over: Math.min(s.over, sceneEnd - at) });
-		}
-	}
-	return { initial: first.initial, steps };
+	const clock = loopClock(spec, start, duration);
+	return clock
+		? retime(onePass(spec, 0, duration), clock, sceneEnd, rest)
+		: onePass(spec, start, duration);
 }
 
 // --- sampled ---------------------------------------------------------------

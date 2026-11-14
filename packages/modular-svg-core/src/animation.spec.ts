@@ -360,6 +360,59 @@ describe("Phrase", () => {
 		expect(back.svg).toBe(exit.svg);
 	});
 
+	it("plays a looping motion as the phrase that repeats it", () => {
+		const motions: Record<string, unknown>[] = [
+			{ steps: [{ to: { x: 30 }, over: 0.5, ease: "in" }] },
+			{ steps: [{ to: { fill: "#f00", y: 4 }, over: 0.5 }] },
+			{
+				from: { fill: "#00f" },
+				steps: [{ to: { fill: "#f00" }, over: 0.25 }, { wait: 0.25 }],
+			},
+		];
+		const loops: [unknown, Record<string, unknown>][] = [
+			[3, { repeat: 3 }],
+			[true, { repeat: true }],
+		];
+		for (const props of motions)
+			for (const [loop, repeat] of loops)
+				for (const alternate of [false, true]) {
+					const before = on("Enter", "in", "a", { over: 0.3 });
+					const looped = render(
+						[
+							box("a"),
+							before,
+							on("Motion", "m", "a", { at: 0.4, ...props, loop, alternate }),
+						],
+						{ duration: 2.2 },
+					);
+					const phrased = render(
+						[
+							box("a"),
+							before,
+							phrase({ at: 0.4, ...repeat, alternate }, [
+								on("Motion", "m", "a", props),
+							]),
+						],
+						{ duration: 2.2 },
+					);
+					expect(looped.ast.css).toBe(phrased.ast.css);
+					expect(looped.svg).toBe(phrased.svg);
+				}
+	});
+
+	it("starts each pass of a loop from where the mark rests", () => {
+		const { ast } = render([
+			box("a", { fill: "#0f0" }),
+			on("Motion", "m", "a", {
+				steps: [{ to: { fill: "#f00" }, over: 0.5, ease: "linear" }],
+				loop: 2,
+			}),
+		]);
+		expect(ast.css).toContain(
+			"0%{fill:#0f0;animation-timing-function:linear}50%{fill:#f00;animation-timing-function:steps(1)}50.001%{fill:#0f0;animation-timing-function:linear}100%{fill:#f00}",
+		);
+	});
+
 	it("reverses the ease with the motion", () => {
 		const { ast } = render([
 			box("a"),

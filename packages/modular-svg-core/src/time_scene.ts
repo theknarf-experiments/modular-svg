@@ -99,6 +99,11 @@ type Props = Record<string, unknown>;
 
 /** Motion spec from a node's props. */
 export function motionSpecOf(type: string, props: Props): MotionSpec {
+	const spec = kindOf(type, props);
+	return props.alternate === true ? { ...spec, alternate: true } : spec;
+}
+
+function kindOf(type: string, props: Props): MotionSpec {
 	const loop = props.loop as boolean | number | undefined;
 	const ease = props.ease as Ease | undefined;
 	const values = (k: string) => props[k] as Values | undefined;
@@ -585,6 +590,8 @@ export function buildTime(
 		const members = t.children.filter((c) => timed.has(c.id));
 		const name = `${t.type}(${rec.id})`;
 		const own = clockOf.get(rec.id);
+		if (rec.motion?.alternate && !rec.motion.loop)
+			warnings.push(`${name}: alternate needs loop`);
 		const seen = (m: NodeRecord): number => seenFrom(own, m);
 
 		if (TIME_TYPES.has(t.type) && !TIME_CLOCKS.has(t.type)) {

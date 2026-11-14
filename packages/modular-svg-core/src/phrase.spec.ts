@@ -329,3 +329,49 @@ describe("retime", () => {
 		);
 	});
 });
+
+describe("a looping motion (properties)", () => {
+	const stepsArb = fc.array(
+		fc.oneof(
+			fc.record({
+				to: fc.record({ x: fc.integer({ min: -9, max: 9 }) }),
+				over: fc.constantFrom(0.25, 0.5, 1),
+				ease: fc.constantFrom("linear" as const, "in" as const, "out" as const),
+			}),
+			fc.record({ wait: fc.constantFrom(0.25, 0.5) }),
+			fc.record({ set: fc.record({ x: fc.integer({ min: -9, max: 9 }) }) }),
+		),
+		{ minLength: 1, maxLength: 5 },
+	);
+
+	it("starts every pass from rest, and mirrors every other one when it alternates", () => {
+		fc.assert(
+			fc.property(
+				stepsArb,
+				fc.integer({ min: 2, max: 4 }),
+				fc.constantFrom(0.5, 1, 3),
+				fc.boolean(),
+				fc.boolean(),
+				(steps, passes, duration, counted, alternate) => {
+					const spec: MotionSpec = { kind: "motion", steps };
+					const one = expandMotion(spec, 0, duration, duration);
+					const all = expandMotion(
+						{ ...spec, loop: counted ? passes : true, alternate },
+						2,
+						duration,
+						2 + duration * passes,
+					);
+					for (let j = 0; j < passes; j++)
+						for (const u of [0.137, 0.482, 0.618, 0.901]) {
+							const back = alternate && j % 2 === 1;
+							const there = stateAt(one, (back ? 1 - u : u) * duration, {
+								x: 0,
+							});
+							const here = stateAt(all, 2 + (j + u) * duration, { x: 0 });
+							expect(Number(here.x)).toBeCloseTo(Number(there.x), 4);
+						}
+				},
+			),
+		);
+	});
+});
