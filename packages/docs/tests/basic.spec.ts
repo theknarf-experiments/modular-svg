@@ -184,7 +184,7 @@ test("the packet diagram sizes fields by bits and fills rests", async ({
 	await page.goto("http://localhost:5173/packet/");
 	await page.waitForTimeout(1500);
 
-	const tcp = page.locator("svg").first();
+	const tcp = page.locator("main svg").first();
 	// bounding boxes include the 1px stroke on each side
 	const inner = (b: { width: number }) => b.width - 2;
 	// Offset (4 bits) is a quarter the width of Source Port (16 bits)
@@ -216,7 +216,7 @@ test("the git graph renders lanes, edges, and the merge", async ({ page }) => {
 
 	// color constraints: each branch lane gets a distinct fill (no colors
 	// are hardcoded in the example), and a commit dot inherits its branch's
-	const svg = page.locator("svg").first();
+	const svg = page.locator("main svg").first();
 	const laneFill = async (branch: string) =>
 		svg.locator(`rect[id="lane-${branch}"]`).getAttribute("fill");
 	const [main, develop, feature] = await Promise.all([
@@ -237,7 +237,7 @@ test("the bpmn diagram lays out lanes, columns and flow routes", async ({
 }) => {
 	await page.goto("http://localhost:5173/bpmn/");
 	await page.waitForTimeout(1500);
-	const pool = page.locator("svg").first();
+	const pool = page.locator("main svg").first();
 
 	// a title rail plus one per lane, and an arrowhead on every flow
 	await expect(pool.locator('rect[id^="rail-"]')).toHaveCount(3);
@@ -272,7 +272,7 @@ test("the bpmn diagram lays out lanes, columns and flow routes", async ({
 	await expect(pool.locator('path[id="flow5-tick"]')).toHaveCount(1);
 
 	// the second diagram drops the pool chrome but keeps the two rows
-	const bare = page.locator("svg").nth(1);
+	const bare = page.locator("main svg").nth(1);
 	await expect(bare.locator('rect[id="pool"]')).toHaveCount(0);
 	const unit = await bare.locator('rect[id="slot-unit"]').boundingBox();
 	const lint = await bare.locator('rect[id="slot-lint"]').boundingBox();
