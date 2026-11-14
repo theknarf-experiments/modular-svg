@@ -1,13 +1,18 @@
 import {
 	clampEase,
+	cssEase,
 	type Ease,
 	easeAt,
 	mixNumbers,
+	mixViews,
 	overshoots,
 	resolveEase,
+	type Stage,
 	type SvgDocument,
 	type SvgElement,
 	stopsOf,
+	type View,
+	viewTransform,
 } from "@modular-svg/core";
 
 export type TransitionOptions = {
@@ -227,4 +232,48 @@ export function exiting(
 		]);
 	}
 	return { elements, fades };
+}
+
+/** An ease as a CSS easing function, for tweens the browser runs (default `out`). */
+export const cssEasing = (ease: Ease | undefined): string =>
+	cssEase(resolveEase(ease ?? "out"));
+
+// Frames a view tween is written in: the zoom between them is geometric
+const VIEW_FRAMES = 12;
+
+const viewOf = (transform: string, stage: Stage): View | undefined => {
+	if (transform === "none")
+		return { x: 0, y: 0, width: stage.width, height: stage.height };
+	const m = /^matrix\(([^)]+)\)$/.exec(transform);
+	const [a, b, c, d, e, f] = (m?.[1] ?? "").split(",").map(Number);
+	// Only a uniform scale and a translate is a view
+	if (!(a > 0) || a !== d || b !== 0 || c !== 0) return undefined;
+	return {
+		x: -e / a,
+		y: -f / a,
+		width: stage.width / a,
+		height: stage.height / a,
+	};
+};
+
+/**
+ * Keyframes that take the camera group from one computed `transform` to
+ * another the way a camera moves: the view rect in a straight line, the zoom
+ * at an even pace. Transforms that are not a view are tweened as they are.
+ */
+export function viewFrames(
+	from: string,
+	to: string,
+	size: { width: number; height: number },
+): { transform: string }[] {
+	const stage = { home: size, ...size };
+	const [a, b] = [viewOf(from, stage), viewOf(to, stage)];
+	if (!a || !b) return [{ transform: from }, { transform: to }];
+	return Array.from({ length: VIEW_FRAMES + 1 }, (_, i) => {
+		const { x, y, scale } = viewTransform(
+			mixViews(a, b, i / VIEW_FRAMES),
+			stage,
+		);
+		return { transform: `translate(${x}px, ${y}px) scale(${scale})` };
+	});
 }

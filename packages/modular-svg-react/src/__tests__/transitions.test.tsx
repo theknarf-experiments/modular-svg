@@ -3,10 +3,12 @@ import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Graphic } from "../Graphic";
 import {
+	cssEasing,
 	diffTransitions,
 	exiting,
 	type Transition,
 	tweenAttributes,
+	viewFrames,
 } from "../transitions";
 
 const doc = (children: SvgDocument["children"]): SvgDocument => ({
@@ -305,5 +307,76 @@ describe("Graphic leaving marks", () => {
 			() => expect(container.querySelector("circle#b")).toBeNull(),
 			{ timeout: 1000 },
 		);
+	});
+});
+
+describe("the view", () => {
+	const size = { width: 400, height: 200 };
+
+	it("tweens between two camera transforms with a geometric zoom", () => {
+		const frames = viewFrames("none", "matrix(4, 0, 0, 4, -1200, -600)", size);
+		expect(frames).toHaveLength(13);
+		expect(frames[0].transform).toBe("translate(0px, 0px) scale(1)");
+		expect(frames[12].transform).toBe("translate(-1200px, -600px) scale(4)");
+		// Halfway the zoom is the geometric mean, not the average
+		expect(frames[6].transform).toMatch(/scale\(2(\.0+\d*)?\)$/);
+	});
+
+	it("leaves a transform that is not a view as it is", () => {
+		const turned = "matrix(0, 1, -1, 0, 0, 0)";
+		expect(viewFrames("none", turned, size)).toEqual([
+			{ transform: "none" },
+			{ transform: turned },
+		]);
+	});
+
+	it("spells an ease as a CSS easing", () => {
+		expect(cssEasing(undefined)).toBe("cubic-bezier(0.23,1,0.32,1)");
+		expect(cssEasing("linear")).toBe("linear");
+		expect(cssEasing("spring")).toMatch(/^linear\(0,/);
+	});
+});
+
+describe("Graphic view", () => {
+	it("fits the canvas into the view and puts every mark in the camera's group", async () => {
+		const { container } = render(
+			<Graphic view={{ width: 300 }}>
+				<rect key="a" width={100} height={50} stroke-width={0} />
+			</Graphic>,
+		);
+		await waitFor(() => expect(container.querySelector("rect#a")).toBeTruthy());
+		const svg = container.querySelector("svg");
+		expect(svg?.getAttribute("viewBox")).toBe("0 0 300 150");
+		expect(svg?.getAttribute("width")).toBe("300");
+		const group = container.querySelector("g[data-camera]");
+		expect(group?.getAttribute("transform")).toBe("translate(0,0) scale(3)");
+		expect(group?.querySelector("rect#a")).toBeTruthy();
+	});
+
+	it("keeps a leaving mark inside the view, and makes no room on a fixed stage", async () => {
+		const scene = (both: boolean) => (
+			<Graphic
+				view={{ width: 200, height: 100 }}
+				transition={{ duration: 0.1 }}
+			>
+				<stackH>
+					<circle key="a" r={5} />
+					{both && <circle key="b" r={5} />}
+				</stackH>
+				<camera key="look" at={0} over={0}>
+					<ref target="a" />
+				</camera>
+			</Graphic>
+		);
+		const { container, rerender } = render(scene(true));
+		await waitFor(() =>
+			expect(container.querySelector("circle#b")).toBeTruthy(),
+		);
+		rerender(scene(false));
+		await waitFor(() =>
+			expect(container.querySelector("circle#b animate")).toBeTruthy(),
+		);
+		expect(container.querySelector("g[data-camera] circle#b")).toBeTruthy();
+		expect(container.querySelector("svg")?.getAttribute("width")).toBe("200");
 	});
 });

@@ -317,6 +317,22 @@ declare module "react" {
 			 * the time it plays in: a phrase's `modulate` is released in the phrase
 			 */
 			resolve: Timed & { ease?: Ease };
+			/**
+			 * the view: from its start on it frames what it refs (all of the
+			 * canvas when it refs nothing) and gets there over its span; the last
+			 * camera to start holds the view. A motion that refs a camera
+			 * (`shake`) moves the view itself
+			 */
+			camera: Timed & {
+				/** default "inOut" */
+				ease?: Ease;
+				/** scene px kept round what is framed */
+				padding?: number;
+				/** show all of it (default), or fill the viewport and crop */
+				fit?: "contain" | "cover";
+				/** also follow where motions (`travel`, `enter`, ...) take what is framed */
+				follow?: boolean;
+			};
 			/** an empty span: a silence to sequence */
 			rest: { key?: React.Key; over?: number; at?: number };
 			/** spans its members plus a hold */
