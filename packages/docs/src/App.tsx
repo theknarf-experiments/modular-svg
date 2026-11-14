@@ -10,10 +10,14 @@ import { EasingExample } from "./examples/animation/EasingExample";
 import easingExampleCode from "./examples/animation/EasingExample.tsx?raw";
 import { GrooveExample } from "./examples/animation/GrooveExample";
 import grooveExampleCode from "./examples/animation/GrooveExample.tsx?raw";
+import { HandoffExample } from "./examples/animation/HandoffExample";
+import handoffExampleCode from "./examples/animation/HandoffExample.tsx?raw";
 import { HelloMotion } from "./examples/animation/HelloMotion";
 import helloMotionCode from "./examples/animation/HelloMotion.tsx?raw";
 import { JoinExample } from "./examples/animation/JoinExample";
 import joinExampleCode from "./examples/animation/JoinExample.tsx?raw";
+import { MakeRoomExample } from "./examples/animation/MakeRoomExample";
+import makeRoomExampleCode from "./examples/animation/MakeRoomExample.tsx?raw";
 import { OrbitExample } from "./examples/animation/OrbitExample";
 import orbitExampleCode from "./examples/animation/OrbitExample.tsx?raw";
 import { PaletteExample } from "./examples/animation/PaletteExample";
@@ -24,6 +28,8 @@ import { PingPongExample } from "./examples/animation/PingPongExample";
 import pingPongExampleCode from "./examples/animation/PingPongExample.tsx?raw";
 import { PolyrhythmExample } from "./examples/animation/PolyrhythmExample";
 import polyrhythmExampleCode from "./examples/animation/PolyrhythmExample.tsx?raw";
+import { ReorderExample } from "./examples/animation/ReorderExample";
+import reorderExampleCode from "./examples/animation/ReorderExample.tsx?raw";
 import { RetimeExample } from "./examples/animation/RetimeExample";
 import retimeExampleCode from "./examples/animation/RetimeExample.tsx?raw";
 import { ScrubberExample } from "./examples/animation/ScrubberExample";
@@ -313,6 +319,27 @@ export const pages: Page[] = [
 					"Reveal is a component with a timeline of its own. A Phrase around it and a rest plays the whole thing there, holds, and back again (repeat={2} alternate), and Stretch beats fits all of that into eight beats without touching the component",
 				code: retimeExampleCode,
 				element: <RetimeExample />,
+			},
+			{
+				title: "Reordering a list",
+				description:
+					"Layout takes part in time. A Modulate holds layout relations from its start on: its stack places the rows instead of the board's, each row slides to its new slot, and Resolve sends them home. Every distinct set of active modulations is solved once and the browser tweens between them",
+				code: reorderExampleCode,
+				element: <ReorderExample />,
+			},
+			{
+				title: "Making room",
+				description:
+					"Home is the finished list. A Modulate at 0 stacks it without the new row, and a Resolve releases that as the row enters: its neighbours part, the card around them grows, and the row fades into the gap",
+				code: makeRoomExampleCode,
+				element: <MakeRoomExample />,
+			},
+			{
+				title: "Handing off, arrow attached",
+				description:
+					"Each Modulate re-seats the job under the next worker, and the arrow to the log follows because it is drawn between wherever its ends are. The hops land on the beat, and the Phrase around them plays the whole hand-off there and back",
+				code: handoffExampleCode,
+				element: <HandoffExample />,
 			},
 		],
 	},

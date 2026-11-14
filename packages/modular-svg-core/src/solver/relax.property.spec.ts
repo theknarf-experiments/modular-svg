@@ -37,6 +37,8 @@ const sceneArb = fc.integer({ min: 2, max: 7 }).chain((n) =>
 					"Before",
 					"Legato",
 					"Phrase",
+					"Modulate",
+					"Resolve",
 				),
 				members: fc.uniqueArray(fc.integer({ min: 0, max: n - 1 }), {
 					minLength: 2,
@@ -81,6 +83,18 @@ function json(s: S) {
 		);
 		const members = r.members.map((i) => (time ? ref(`m${i}`) : ref(`r${i}`)));
 		if (r.type === "Darken") members[1] = ref(`r${r.members[1]}`, "stroke");
+		if (r.type === "Modulate" || r.type === "Resolve") {
+			children.push({
+				type: r.type,
+				id: `rel${j}`,
+				props: { at: j / 4 },
+				children:
+					r.type === "Modulate"
+						? [{ type: "StackH", props: { spacing: 7 }, children: members }]
+						: [],
+			});
+			return;
+		}
 		children.push({
 			type: r.type,
 			id: `rel${j}`,
@@ -105,6 +119,17 @@ describe("declared writes (properties)", () => {
 					operators: withoutWrites(scene.operators),
 					colorOperators: withoutWrites(scene.colorOperators),
 					timeOperators: withoutWrites(scene.timeOperators),
+					...(scene.phaseOperators
+						? {
+								phaseOperators: (active: readonly string[]) => {
+									const phase = scene.phaseOperators?.(active);
+									return {
+										operators: withoutWrites(phase?.operators ?? []),
+										names: phase?.names ?? [],
+									};
+								},
+							}
+						: {}),
 				};
 				const fast = solveLayout(scene);
 				const full = solveLayout(slow);

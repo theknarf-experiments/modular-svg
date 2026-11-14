@@ -16,6 +16,21 @@ it("parses, solves, checks and compiles 2000 marks within budget", () => {
 	expect(performance.now() - t0).toBeLessThan(3000);
 });
 
+it("stays within budget when four modulations move the marks about", () => {
+	const t0 = performance.now();
+	const scene = buildSceneFromJson(scaleScene(2000, { modulations: true }));
+	const layout = solveLayout(scene);
+	expect(checkSolution(scene, layout)).toEqual([]);
+	expect(Object.keys(layout.m0.phases ?? {})).toEqual([
+		"flip",
+		"reverse0",
+		"rotate0",
+		"settle",
+	]);
+	layoutToAst(layout, scene.nodes, 0, { animation: { loop: true } });
+	expect(performance.now() - t0).toBeLessThan(3000);
+});
+
 it("stays within budget when every row plays in a phrase of its own", () => {
 	const t0 = performance.now();
 	const scene = buildSceneFromJson(scaleScene(2000, { phrases: true }));

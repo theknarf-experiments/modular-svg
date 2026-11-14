@@ -274,6 +274,14 @@ declare module "react" {
 				/** every other pass runs the other way */
 				alternate?: boolean;
 			};
+			/**
+			 * a change of layout: from its start on, the relations inside hold
+			 * instead of the home ones that placed the same things, and what moves
+			 * gets there over its span. Put what stays first
+			 */
+			modulate: Timed & { ease?: Ease };
+			/** lets the modulations it refs go (all of them when it refs none) */
+			resolve: Timed & { ease?: Ease };
 			/** an empty span: a silence to sequence */
 			rest: { key?: React.Key; over?: number; at?: number };
 			/** spans its members plus a hold */

@@ -97,4 +97,42 @@ describe("Graphic animation", () => {
 		expect(warn).not.toHaveBeenCalled();
 		warn.mockRestore();
 	});
+
+	it("moves a modulated mark and redraws the arrow attached to it", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const { container } = render(
+			<Graphic>
+				<stackH key="row" spacing={30}>
+					<rect key="a" width={20} height={20} />
+					<rect key="b" width={20} height={20} />
+				</stackH>
+				<rect key="job" width={8} height={8} y={60} />
+				<align alignment="centerX">
+					<ref target="a" />
+					<ref target="job" />
+				</align>
+				<arrow key="wire">
+					<ref target="a" />
+					<ref target="job" />
+				</arrow>
+				<modulate key="hop" over={1}>
+					<align alignment="centerX">
+						<ref target="b" />
+						<ref target="job" />
+					</align>
+				</modulate>
+			</Graphic>,
+		);
+		await waitFor(() => expect(container.querySelector("style")).toBeTruthy());
+		expect(container.querySelector("#job")?.parentElement?.tagName).toBe("g");
+		expect(
+			container
+				.querySelector("path#wire animate")
+				?.getAttribute("attributeName"),
+		).toBe("d");
+		expect(container.querySelector("path#wire-head animate")).toBeTruthy();
+		expect(container.querySelector("line#wire")).toBeNull();
+		expect(warn).not.toHaveBeenCalled();
+		warn.mockRestore();
+	});
 });

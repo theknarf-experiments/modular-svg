@@ -82,6 +82,7 @@ relations (a relation spans its members), and moving one carries its contents:
 | `Bar beats count` | a span on bar lines lasting `count` bars, to sequence sections or fit things into |
 | `Rest over`, `Fermata hold` | an empty span; a span of its members plus a hold |
 | `Polyrhythm of` | `of={[3, 2]}`: three of the first beat in the time of two of the second |
+| `Modulate ease`, `Resolve ease` | a change of layout: the relations inside a `Modulate` hold from its start on; a `Resolve` releases them (see below) |
 | `Phrase rate retrograde repeat alternate` | a clock: what it takes plays as a unit in the phrase's own time, faster or slower (`rate`, `over`, or stretched like a motion), backwards (`retrograde`), `repeat` times (`true`: until the enclosing time ends), every other pass reversed (`alternate`) |
 
 A `Phrase` is how a group gets a length: outside it is a leaf like a motion,
@@ -91,6 +92,36 @@ in the same time, so to place a phrase's content from outside, relate the
 `Phrase`. Stretching a phrase changes its tape speed (a `Shake` inside keeps
 its number of shakes), and `over` is its whole span: `over={2} repeat={3}` is
 three passes in two seconds.
+
+**Layout in time.** The layout relations outside any `Modulate` are *home*:
+what a static render shows. A `Modulate` is a time leaf holding layout
+relations (`StackV`, `StackH`, `Align`, `Distribute`) over refs. From its
+start on they hold instead of the home relations that placed the same things,
+and everything that ends up somewhere else gets there over the `Modulate`'s
+span (`over`, `ease`). A later `Modulate` wins where two place the same thing,
+and a `Resolve` lets the ones it refs go (all of them when it refs none), so
+what they moved returns to wherever the remaining relations put it.
+
+```tsx
+<modulate key="shuffle" at={1} over={0.5}>
+  <stackV spacing={8}><ref target="c" /><ref target="a" /><ref target="b" /></stackV>
+</modulate>
+<resolve at={3} />
+```
+
+Each distinct set of active modulations is one more solve, and the browser
+tweens between them: boxes translate (rects and images also resize), and a
+line, curve or arrow whose ends move apart is redrawn between wherever its
+ends are, so an arrow stays attached without extra markup. Inside a
+`Modulate`, put what stays first: a member anchors the relation only if you
+pinned it, an earlier relation of the same `Modulate` placed it, or a home
+relation that this one does not restate did; with no anchor a stack packs
+from where its members' box already is, so a reorder happens in place.
+`Modulate` and `Resolve` are placed like motions (`Sequence`, `OnBeat`, ...),
+and a `Phrase` that takes them plays the layout change faster, backwards or
+there and back. Frames between two layouts are interpolated, not solved, so
+boxes that swap places pass through each other; and motions still aim at home
+positions, so a `Travel` towards something a modulation moves warns.
 
 A `Sequence` and a `Legato` over the same pair are circular (each sets the
 other's input), which warns: place legato members with `Stagger`, `OnBeat` or `At`.

@@ -119,6 +119,8 @@ export function diffTransitions(
 			}
 			if (name === "d" && shapeOf(String(from)) !== shapeOf(String(to)))
 				continue;
+			// The timeline is already moving this path; a frozen tween would override it
+			if (name === "d" && el.type === "path" && el.animate?.length) continue;
 			if (
 				name === "points" &&
 				String(from).split(/\s+/).length !== String(to).split(/\s+/).length

@@ -1,4 +1,5 @@
 import { parseRgba, rgbToOklch } from "./color.ts";
+import type { Ease } from "./motion.ts";
 import type {
 	AlignmentX,
 	AlignmentY,
@@ -22,6 +23,7 @@ import {
 	stackV,
 	unionOp,
 } from "./solver/operators.ts";
+import { foldPhases, type LayoutBox } from "./solver/phases.ts";
 import { COLOR_ANGLES, COLOR_SLOTS, solveColors } from "./solver/solver.ts";
 import {
 	buildTime,
@@ -57,6 +59,14 @@ export type JsonScene = {
 	timeChecks: TimeCheck[];
 	/** Ownership conflicts detected at parse time (over-constrained scenes) */
 	warnings: string[];
+	/**
+	 * The layout relations that hold while these Modulates are active (in the
+	 * order they started; later wins). Only present when the scene modulates
+	 */
+	phaseOperators?: (active: readonly string[]) => {
+		operators: LayoutOperator[];
+		names: string[];
+	};
 };
 type AnyNode = {
 	type: string;
@@ -238,7 +248,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	const structuralChildren = new Map<string, NodeRecord[]>();
 	// Every walked node in post-order, with all children, for the time domain
 	const timeNodes: TimeNode[] = [];
-	type Desc =
+	type Desc = (
 		| {
 				kind: "stackV" | "stackH";
 				container: NodeRecord;
@@ -283,8 +293,13 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				props: Record<string, unknown>;
 		  }
 		| { kind: "line"; line: NodeRecord; children: NodeRecord[] }
-		| { kind: "union"; container: NodeRecord; children: NodeRecord[] };
+		| { kind: "union"; container: NodeRecord; children: NodeRecord[] }
+	) & {
+		/** the Modulate this relation belongs to; absent for the home layout */
+		scope?: string;
+	};
 	const descs: Desc[] = [];
+	const scopeWarnings: string[] = [];
 
 	function generateId(node: AnyNode, path: string): string {
 		// Prefer 'key' over 'id' over auto-generated
@@ -317,6 +332,17 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		usedIds.add(id);
 		return id;
 	}
+
+	const MARK_TYPES = new Set([
+		"Rect",
+		"Circle",
+		"Text",
+		"Image",
+		"Path",
+		"Arc",
+	]);
+	// What a Modulate may hold: relations that place what they ref
+	const MODULATED_TYPES = new Set(["StackV", "StackH", "Align", "Distribute"]);
 
 	// Props consumed by layout; everything else passes through as SVG attrs
 	const LAYOUT_PROPS = new Set([
@@ -562,14 +588,41 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		return rec;
 	}
 
-	function walk(node: AnyNode, path = "0"): NodeRecord {
+	// `scope` is the Modulate being walked: its relations hold only while it does
+	function walk(
+		node: AnyNode,
+		path = "0",
+		scope?: string,
+	): NodeRecord | undefined {
+		if (scope !== undefined && node.type !== "Ref") {
+			if (MARK_TYPES.has(node.type))
+				scopeWarnings.push(
+					`Modulate(${scope}) declares a ${node.type} inside it; declare marks outside and ref them`,
+				);
+			else if (!MODULATED_TYPES.has(node.type)) {
+				scopeWarnings.push(
+					`Modulate(${scope}): ${node.type} cannot be modulated and is ignored; only StackV, StackH, Align and Distribute can`,
+				);
+				return undefined;
+			}
+		}
 		const rec = ensureNode(node, path);
 		if (node.type === "Ref") return rec;
-		const allChildren = (node.children ?? []).map((child, i) =>
-			walk(child, `${path}.${i}`),
-		);
-		const allStructural = (node.children ?? [])
-			.map((child, i) => ({ child, rec: allChildren[i] }))
+		if (scope !== undefined && MODULATED_TYPES.has(node.type))
+			rec.scope = scope;
+		const modulate = node.type === "Modulate";
+		const walked = (node.children ?? []).flatMap((child, i) => {
+			if (modulate && child.type === "Ref") {
+				scopeWarnings.push(
+					`Modulate(${rec.id}) refs ${child.target} outside a relation, which changes nothing`,
+				);
+				return [];
+			}
+			const r = walk(child, `${path}.${i}`, modulate ? rec.id : scope);
+			return r ? [{ child, rec: r }] : [];
+		});
+		const allChildren = walked.map((w) => w.rec);
+		const allStructural = walked
 			.filter(({ child }) => child.type !== "Ref")
 			.map(({ rec: r }) => r);
 		timeNodes.push({
@@ -587,7 +640,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		const paints = allChildren
 			.map((r, i) => ({
 				r,
-				paint: node.children?.[i]?.paint ?? defaultPaint(r),
+				paint: walked[i].child.paint ?? defaultPaint(r),
 			}))
 			.filter(({ r }) => spatial(r))
 			.map(({ paint }) => paint);
@@ -602,14 +655,16 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					container: rec,
 					children,
 					props: node.props ?? {},
+					scope,
 				});
 			} else if (node.type === "Align") {
 				descs.push({
 					kind: "align",
 					children,
 					props: node.props ?? {},
+					scope,
 				});
-				descs.push({ kind: "union", container: rec, children });
+				descs.push({ kind: "union", container: rec, children, scope });
 			} else if (node.type === "Distribute") {
 				// Bluefish uses direction horizontal/vertical; axis x/y also works
 				const raw =
@@ -621,8 +676,9 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					axis: raw === "y" || raw === "vertical" ? "y" : "x",
 					children,
 					props: node.props ?? {},
+					scope,
 				});
-				descs.push({ kind: "union", container: rec, children });
+				descs.push({ kind: "union", container: rec, children, scope });
 			} else if (node.type === "Background" && children[0]) {
 				descs.push({
 					kind: "background",
@@ -689,6 +745,21 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 
 	walk(json as AnyNode);
 
+	// A modulated stack packs from its own box. When its members all sit in
+	// one container it joins that container's subtree, so a relation that
+	// moves the container while the stack holds carries the stack along
+	const parentOf = new Map<string, string>();
+	for (const [parent, members] of structuralChildren)
+		for (const m of members) parentOf.set(m.id, parent);
+	for (const d of descs) {
+		if (d.scope === undefined || !(d.kind === "stackV" || d.kind === "stackH"))
+			continue;
+		const parents = new Set(d.children.map((c) => parentOf.get(c.id)));
+		const [parent] = parents;
+		if (parents.size === 1 && parent !== undefined)
+			structuralChildren.get(parent)?.push(d.container);
+	}
+
 	const targetWarnings: string[] = [];
 	// A motion animates the marks under each target (a container's descendants)
 	const marksUnder = (rec: NodeRecord, seen = new Set<string>()): string[] => {
@@ -706,6 +777,12 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		];
 	};
 	for (const t of timeNodes) {
+		if (t.type === "Modulate" || t.type === "Resolve")
+			t.rec.modulation = {
+				kind: t.type === "Modulate" ? "modulate" : "resolve",
+				releases: t.type === "Resolve" ? t.children.map((c) => c.id) : [],
+				...(t.props.ease !== undefined ? { ease: t.props.ease as Ease } : {}),
+			};
 		if (t.rec.type !== "motion") continue;
 		// Travel moves its first child through the rest, which stay put
 		const travel = t.rec.motion?.kind === "travel";
@@ -748,85 +825,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		return children.map((c) => ({ base: baseOf(c), subtree: subtreeBases(c) }));
 	}
 
-	// Ownership: axes positioned by a relation (hard) or user props (soft).
-	// The first owned child of a relation becomes its anchor and is never
-	// moved; writing an already hard-owned axis is an over-constraint.
-	// Containers, background boxes, and lines get GUIDE ownership: their
-	// derived positions make them anchor-eligible (Bluefish's fixed-element
-	// and group-as-guide behavior) without triggering conflicts.
-	const hardOwned = new Set<string>();
-	const guideOwned = new Set<string>();
 	const warnings: string[] = [];
-
-	function positionOwned(id: string, axis: "x" | "y"): boolean {
-		const key = `${id}:${axis}`;
-		return hardOwned.has(key) || userOwned.has(key) || guideOwned.has(key);
-	}
-
-	function markGuide(id: string): void {
-		guideOwned.add(`${id}:x`);
-		guideOwned.add(`${id}:y`);
-	}
-
-	function anchorIndex(children: NodeRecord[], axis: "x" | "y"): number | null {
-		for (let i = 0; i < children.length; i++) {
-			if (positionOwned(children[i].id, axis)) return i;
-		}
-		return null;
-	}
-
-	function claim(
-		children: NodeRecord[],
-		axis: "x" | "y",
-		skip: number | null,
-		relation: string,
-	): void {
-		for (let i = 0; i < children.length; i++) {
-			if (i === skip) continue;
-			const key = `${children[i].id}:${axis}`;
-			if (hardOwned.has(key)) {
-				warnings.push(
-					`${relation} conflicts with another relation over ${key}`,
-				);
-			}
-			hardOwned.add(key);
-		}
-	}
-
-	function extentOwnedOf(children: NodeRecord[], axis: "w" | "h"): boolean[] {
-		return children.map((c) => {
-			const key = `${c.id}:${axis}`;
-			return hardOwned.has(key) || userOwned.has(key);
-		});
-	}
-
-	// Handle the Bluefish sizing modes' ownership effects: in total+spacing
-	// mode unowned extents get assigned (and become owned); the other exact
-	// modes require every extent to be owned already.
-	function claimExtents(
-		relation: string,
-		children: NodeRecord[],
-		axis: "w" | "h",
-		spacing: number | undefined,
-		total: number | undefined,
-		extentOwned: boolean[],
-	): void {
-		if (spacing !== undefined && total !== undefined) {
-			children.forEach((c, i) => {
-				if (!extentOwned[i]) hardOwned.add(`${c.id}:${axis}`);
-			});
-		} else if (spacing !== undefined || total !== undefined) {
-			children.forEach((c, i) => {
-				if (!extentOwned[i]) {
-					warnings.push(
-						`${relation}: ${axis === "w" ? "width" : "height"} of ${c.id} is not owned`,
-					);
-				}
-			});
-		}
-	}
-
-	const ops: LayoutOperator[] = [];
 	const colorOps: LayoutOperator[] = [];
 	// Solved paints to emit, as "id:fill" / "id:stroke"
 	const coloredPaints = new Set<string>();
@@ -860,7 +859,6 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	};
 
 	// Which relation each operator came from, for the post-solve check
-	const opNames: string[] = [];
 	const descName = (d: Desc): string => {
 		const owner =
 			"container" in d
@@ -875,217 +873,426 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			: `${d.kind}(${d.children.map((c) => c.id).join(", ")})`;
 	};
 
-	const colorOpNames: string[] = [];
-	for (const d of descs) {
-		descLoop(d);
-		while (opNames.length < ops.length) opNames.push(descName(d));
-		while (colorOpNames.length < colorOps.length)
-			colorOpNames.push(descName(d));
-	}
+	// Ownership: axes positioned by a relation (hard) or user props (soft).
+	// The first owned child of a relation becomes its anchor and is never
+	// moved; writing an already hard-owned axis is an over-constraint.
+	// Containers, background boxes, and lines get GUIDE ownership: their
+	// derived positions make them anchor-eligible (Bluefish's fixed-element
+	// and group-as-guide behavior) without triggering conflicts.
+	type Ownership = {
+		/** each hard-owned key and the desc that claimed it first */
+		hard: Map<string, number>;
+		guide: Set<string>;
+	};
+	type Compiled = {
+		operators: LayoutOperator[];
+		/** the keys this relation places on its children */
+		claims: string[];
+	};
 
-	function descLoop(d: Desc): void {
-		if (d.kind === "stackV" || d.kind === "stackH") {
-			const mainAxis = d.kind === "stackV" ? "y" : "x";
-			const crossAxis = d.kind === "stackV" ? "x" : "y";
-			const extentAxis = d.kind === "stackV" ? "h" : "w";
-			const mainAnchor = anchorIndex(d.children, mainAxis);
-			const crossAnchor = anchorIndex(d.children, crossAxis);
-			claim(d.children, mainAxis, mainAnchor, d.container.id);
-			claim(d.children, crossAxis, crossAnchor, d.container.id);
-			// Defaults match Bluefish: spacing 10 only when total is also unset
-			const spacingProp = d.props.spacing as number | undefined;
-			const total = d.props.total as number | undefined;
-			const spacing =
-				spacingProp === undefined && total === undefined ? 10 : spacingProp;
-			const extentOwned = extentOwnedOf(d.children, extentAxis);
-			claimExtents(
-				d.container.id,
-				d.children,
-				extentAxis,
-				spacing,
-				total,
-				extentOwned,
-			);
-			hardOwned.add(`${d.container.id}:w`);
-			hardOwned.add(`${d.container.id}:h`);
-			markGuide(d.container.id);
-			const children = toSubtreeChildren(d.children);
-			const containerIdx = baseOf(d.container);
-			if (d.kind === "stackV") {
-				ops.push(
-					stackV(children, containerIdx, {
-						spacing,
-						total,
-						alignment: (d.props.alignment as AlignmentX) ?? "centerX",
-						mainAnchor,
-						crossAnchor,
-						extentOwned,
-					}),
-				);
-			} else {
-				ops.push(
-					stackH(children, containerIdx, {
-						spacing,
-						total,
-						alignment: (d.props.alignment as AlignmentY) ?? "centerY",
-						mainAnchor,
-						crossAnchor,
-						extentOwned,
-					}),
-				);
+	/**
+	 * Compile relations in order against a fresh ownership. With `home`, they
+	 * are a Modulate's: a child then only anchors when the author pinned it, an
+	 * earlier relation of the same Modulate placed it, or a home relation that
+	 * this one does not restate did.
+	 */
+	function compileDescs(
+		indices: readonly number[],
+		home?: Ownership,
+		label = "",
+	): { compiled: Map<number, Compiled>; ownership: Ownership } {
+		const hard = new Map<string, number>();
+		const guide = new Set<string>();
+		const compiled = new Map<number, Compiled>();
+		let current = 0;
+		let out: Compiled = { operators: [], claims: [] };
+		const push = (...operators: LayoutOperator[]) =>
+			out.operators.push(...operators);
+		const own = (key: string): void => {
+			if (!hard.has(key)) hard.set(key, current);
+			out.claims.push(key);
+		};
+		const ownSelf = (id: string): void => {
+			for (const k of ["w", "h"])
+				if (!hard.has(`${id}:${k}`)) hard.set(`${id}:${k}`, current);
+			guide.add(`${id}:x`);
+			guide.add(`${id}:y`);
+		};
+
+		function positionOwned(d: Desc, id: string, axis: "x" | "y"): boolean {
+			const key = `${id}:${axis}`;
+			if (hard.has(key) || userOwned.has(key)) return true;
+			if (!home) return guide.has(key);
+			const owner = home.hard.get(key);
+			if (owner === undefined) return false;
+			// A home relation over several of these children is being restated
+			const theirs = new Set(descs[owner].children.map((c) => c.id));
+			return d.children.filter((c) => theirs.has(c.id)).length === 1;
+		}
+
+		function anchorIndex(d: Desc, axis: "x" | "y"): number | null {
+			for (let i = 0; i < d.children.length; i++) {
+				if (positionOwned(d, d.children[i].id, axis)) return i;
 			}
-		} else if (d.kind === "align") {
-			for (const { axis, alignment } of parseAlignments(d.props)) {
-				const anchor = anchorIndex(d.children, axis) ?? 0;
-				claim(d.children, axis, anchor, `align(${alignment})`);
-				const children = toSubtreeChildren(d.children);
-				if (axis === "x") {
-					ops.push(alignX(children, alignment as AlignmentX, anchor));
-				} else {
-					ops.push(alignY(children, alignment as AlignmentY, anchor));
-				}
-			}
-		} else if (d.kind === "distribute") {
-			const spacing = d.props.spacing as number | undefined;
-			const total = d.props.total as number | undefined;
-			const exactMode = spacing !== undefined || total !== undefined;
-			const extentAxis = d.axis === "x" ? "w" : "h";
-			const anchor = anchorIndex(d.children, d.axis) ?? 0;
-			claim(d.children, d.axis, exactMode ? anchor : null, "distribute");
-			const extentOwned = extentOwnedOf(d.children, extentAxis);
-			claimExtents(
-				"distribute",
-				d.children,
-				extentAxis,
-				spacing,
-				total,
-				extentOwned,
-			);
-			const children = toSubtreeChildren(d.children);
-			const opts = { spacing, total, anchor, extentOwned };
-			if (d.axis === "x") ops.push(distributeX(children, opts));
-			else ops.push(distributeY(children, opts));
-		} else if (d.kind === "background") {
-			// Default padding matches Bluefish
-			const padding = (d.props.padding as number) ?? 10;
-			const width = d.props.width as number | undefined;
-			const height = d.props.height as number | undefined;
-			const xOwned = d.children.map((c) => positionOwned(c.id, "x"));
-			const yOwned = d.children.map((c) => positionOwned(c.id, "y"));
-			ops.push(
-				backgroundOp(toSubtreeChildren(d.children), baseOf(d.box), {
-					padding,
-					width,
-					height,
-					xOwned,
-					yOwned,
-				}),
-			);
-			// Fixed axes center unowned content, claiming those positions
-			if (width !== undefined) {
-				d.children.forEach((c, i) => {
-					if (!xOwned[i]) hardOwned.add(`${c.id}:x`);
-				});
-			}
-			if (height !== undefined) {
-				d.children.forEach((c, i) => {
-					if (!yOwned[i]) hardOwned.add(`${c.id}:y`);
-				});
-			}
-			hardOwned.add(`${d.box.id}:w`);
-			hardOwned.add(`${d.box.id}:h`);
-			markGuide(d.box.id);
-		} else if (d.kind === "span") {
-			const [source, ...targets] = d.children;
-			for (const target of targets) {
-				const posKey = `${target.id}:${d.axis}`;
-				const extentKey = `${target.id}:${d.axis === "x" ? "w" : "h"}`;
-				if (hardOwned.has(posKey) || hardOwned.has(extentKey)) {
+			return null;
+		}
+
+		function claim(
+			children: NodeRecord[],
+			axis: "x" | "y",
+			skip: number | null,
+			relation: string,
+		): void {
+			for (let i = 0; i < children.length; i++) {
+				if (i === skip) continue;
+				const key = `${children[i].id}:${axis}`;
+				if (hard.has(key)) {
 					warnings.push(
-						`span conflicts with another relation over ${target.id}`,
+						`${label}${relation} conflicts with another relation over ${key}`,
 					);
 				}
-				hardOwned.add(posKey);
-				hardOwned.add(extentKey);
-				ops.push(
-					spanOp(
-						baseOf(source),
-						{ base: baseOf(target), subtree: subtreeBases(target) },
-						d.axis === "x",
+				own(key);
+			}
+		}
+
+		function extentOwnedOf(children: NodeRecord[], axis: "w" | "h"): boolean[] {
+			return children.map((c) => {
+				const key = `${c.id}:${axis}`;
+				return hard.has(key) || userOwned.has(key) || !!home?.hard.has(key);
+			});
+		}
+
+		// Handle the Bluefish sizing modes' ownership effects: in total+spacing
+		// mode unowned extents get assigned (and become owned); the other exact
+		// modes require every extent to be owned already.
+		function claimExtents(
+			relation: string,
+			children: NodeRecord[],
+			axis: "w" | "h",
+			spacing: number | undefined,
+			total: number | undefined,
+			extentOwned: boolean[],
+		): void {
+			if (spacing !== undefined && total !== undefined) {
+				children.forEach((c, i) => {
+					if (!extentOwned[i]) own(`${c.id}:${axis}`);
+				});
+			} else if (spacing !== undefined || total !== undefined) {
+				children.forEach((c, i) => {
+					if (!extentOwned[i]) {
+						warnings.push(
+							`${label}${relation}: ${axis === "w" ? "width" : "height"} of ${c.id} is not owned`,
+						);
+					}
+				});
+			}
+		}
+
+		function compile(d: Desc): void {
+			if (d.kind === "stackV" || d.kind === "stackH") {
+				const mainAxis = d.kind === "stackV" ? "y" : "x";
+				const crossAxis = d.kind === "stackV" ? "x" : "y";
+				const extentAxis = d.kind === "stackV" ? "h" : "w";
+				const mainAnchor = anchorIndex(d, mainAxis);
+				const crossAnchor = anchorIndex(d, crossAxis);
+				claim(d.children, mainAxis, mainAnchor, d.container.id);
+				claim(d.children, crossAxis, crossAnchor, d.container.id);
+				// Defaults match Bluefish: spacing 10 only when total is also unset
+				const spacingProp = d.props.spacing as number | undefined;
+				const total = d.props.total as number | undefined;
+				const spacing =
+					spacingProp === undefined && total === undefined ? 10 : spacingProp;
+				const extentOwned = extentOwnedOf(d.children, extentAxis);
+				claimExtents(
+					d.container.id,
+					d.children,
+					extentAxis,
+					spacing,
+					total,
+					extentOwned,
+				);
+				ownSelf(d.container.id);
+				const children = toSubtreeChildren(d.children);
+				const containerIdx = baseOf(d.container);
+				if (d.kind === "stackV") {
+					push(
+						stackV(children, containerIdx, {
+							spacing,
+							total,
+							alignment: (d.props.alignment as AlignmentX) ?? "centerX",
+							mainAnchor,
+							crossAnchor,
+							extentOwned,
+						}),
+					);
+				} else {
+					push(
+						stackH(children, containerIdx, {
+							spacing,
+							total,
+							alignment: (d.props.alignment as AlignmentY) ?? "centerY",
+							mainAnchor,
+							crossAnchor,
+							extentOwned,
+						}),
+					);
+				}
+			} else if (d.kind === "align") {
+				for (const { axis, alignment } of parseAlignments(d.props)) {
+					const anchor = anchorIndex(d, axis) ?? 0;
+					claim(d.children, axis, anchor, `align(${alignment})`);
+					const children = toSubtreeChildren(d.children);
+					if (axis === "x") {
+						push(alignX(children, alignment as AlignmentX, anchor));
+					} else {
+						push(alignY(children, alignment as AlignmentY, anchor));
+					}
+				}
+			} else if (d.kind === "distribute") {
+				const spacing = d.props.spacing as number | undefined;
+				const total = d.props.total as number | undefined;
+				const exactMode = spacing !== undefined || total !== undefined;
+				const extentAxis = d.axis === "x" ? "w" : "h";
+				const anchor = anchorIndex(d, d.axis) ?? 0;
+				claim(d.children, d.axis, exactMode ? anchor : null, "distribute");
+				const extentOwned = extentOwnedOf(d.children, extentAxis);
+				claimExtents(
+					"distribute",
+					d.children,
+					extentAxis,
+					spacing,
+					total,
+					extentOwned,
+				);
+				const children = toSubtreeChildren(d.children);
+				const opts = { spacing, total, anchor, extentOwned };
+				if (d.axis === "x") push(distributeX(children, opts));
+				else push(distributeY(children, opts));
+			} else if (d.kind === "background") {
+				// Default padding matches Bluefish
+				const padding = (d.props.padding as number) ?? 10;
+				const width = d.props.width as number | undefined;
+				const height = d.props.height as number | undefined;
+				const xOwned = d.children.map((c) => positionOwned(d, c.id, "x"));
+				const yOwned = d.children.map((c) => positionOwned(d, c.id, "y"));
+				push(
+					backgroundOp(toSubtreeChildren(d.children), baseOf(d.box), {
+						padding,
+						width,
+						height,
+						xOwned,
+						yOwned,
+					}),
+				);
+				// Fixed axes center unowned content, claiming those positions
+				if (width !== undefined) {
+					d.children.forEach((c, i) => {
+						if (!xOwned[i]) own(`${c.id}:x`);
+					});
+				}
+				if (height !== undefined) {
+					d.children.forEach((c, i) => {
+						if (!yOwned[i]) own(`${c.id}:y`);
+					});
+				}
+				ownSelf(d.box.id);
+			} else if (d.kind === "span") {
+				const [source, ...targets] = d.children;
+				for (const target of targets) {
+					const posKey = `${target.id}:${d.axis}`;
+					const extentKey = `${target.id}:${d.axis === "x" ? "w" : "h"}`;
+					if (hard.has(posKey) || hard.has(extentKey)) {
+						warnings.push(
+							`span conflicts with another relation over ${target.id}`,
+						);
+					}
+					own(posKey);
+					own(extentKey);
+					push(
+						spanOp(
+							baseOf(source),
+							{ base: baseOf(target), subtree: subtreeBases(target) },
+							d.axis === "x",
+						),
+					);
+				}
+			} else if (d.kind === "line") {
+				push(
+					lineOp(
+						baseOf(d.children[0]),
+						baseOf(d.children[1]),
+						baseOf(d.line),
+						d.line.source,
+						d.line.target,
 					),
 				);
+				ownSelf(d.line.id);
+			} else if (d.kind === "distinctColors") {
+				const keys = d.children.map((c, i) => `${c.id}:${d.paints[i]}`);
+				const owned = keys.map((k) => colorOwned.get(k) ?? false);
+				// `saturation` predates OKLCH; it scales to a comparable chroma
+				const saturation = d.props.saturation as number | undefined;
+				colorOps.push(
+					distinctColorsOp(
+						d.children.map((c, i) => colorBase(c, d.paints[i])),
+						{
+							lightness: (d.props.lightness as number) ?? 0.7,
+							chroma:
+								(d.props.chroma as number | undefined) ??
+								(saturation !== undefined ? saturation * 0.25 : 0.14),
+							startHue: (d.props.startHue as number) ?? 30,
+							pinned: keys.map((k, i) =>
+								owned[i] ? pinnedHue.get(k) : undefined,
+							),
+							owned,
+						},
+					),
+				);
+				keys.forEach((k, i) => {
+					if (!owned[i]) coloredPaints.add(k);
+				});
+			} else if (d.kind === "sameColor" || d.kind === "shade") {
+				const [source, ...targets] = d.children;
+				const [sourcePaint, ...targetPaints] = d.paints;
+				const targetBases = targets.map((t, i) =>
+					colorBase(t, targetPaints[i]),
+				);
+				colorOps.push(
+					d.kind === "sameColor"
+						? sameColorOp(colorBase(source, sourcePaint), targetBases)
+						: shadeColorOp(
+								colorBase(source, sourcePaint),
+								targetBases,
+								d.delta,
+							),
+				);
+				targets.forEach((t, i) => {
+					coloredPaints.add(`${t.id}:${targetPaints[i]}`);
+				});
+			} else if (d.kind === "contrast") {
+				const [fg, bg] = d.children;
+				colorOps.push(
+					contrastOp(
+						colorBase(fg, d.paints[0]),
+						colorBase(bg, d.paints[1]),
+						(d.props.ratio as number) ?? 4.5,
+					),
+				);
+				coloredPaints.add(`${fg.id}:${d.paints[0]}`);
+			} else if (d.kind === "union") {
+				push(
+					unionOp(
+						d.children.map((c) => baseOf(c)),
+						baseOf(d.container),
+					),
+				);
+				ownSelf(d.container.id);
 			}
-		} else if (d.kind === "line") {
-			ops.push(
-				lineOp(
-					baseOf(d.children[0]),
-					baseOf(d.children[1]),
-					baseOf(d.line),
-					d.line.source,
-					d.line.target,
-				),
-			);
-			hardOwned.add(`${d.line.id}:w`);
-			hardOwned.add(`${d.line.id}:h`);
-			markGuide(d.line.id);
-		} else if (d.kind === "distinctColors") {
-			const keys = d.children.map((c, i) => `${c.id}:${d.paints[i]}`);
-			const owned = keys.map((k) => colorOwned.get(k) ?? false);
-			// `saturation` predates OKLCH; it scales to a comparable chroma
-			const saturation = d.props.saturation as number | undefined;
-			colorOps.push(
-				distinctColorsOp(
-					d.children.map((c, i) => colorBase(c, d.paints[i])),
-					{
-						lightness: (d.props.lightness as number) ?? 0.7,
-						chroma:
-							(d.props.chroma as number | undefined) ??
-							(saturation !== undefined ? saturation * 0.25 : 0.14),
-						startHue: (d.props.startHue as number) ?? 30,
-						pinned: keys.map((k, i) =>
-							owned[i] ? pinnedHue.get(k) : undefined,
-						),
-						owned,
-					},
-				),
-			);
-			keys.forEach((k, i) => {
-				if (!owned[i]) coloredPaints.add(k);
-			});
-		} else if (d.kind === "sameColor" || d.kind === "shade") {
-			const [source, ...targets] = d.children;
-			const [sourcePaint, ...targetPaints] = d.paints;
-			const targetBases = targets.map((t, i) => colorBase(t, targetPaints[i]));
-			colorOps.push(
-				d.kind === "sameColor"
-					? sameColorOp(colorBase(source, sourcePaint), targetBases)
-					: shadeColorOp(colorBase(source, sourcePaint), targetBases, d.delta),
-			);
-			targets.forEach((t, i) => {
-				coloredPaints.add(`${t.id}:${targetPaints[i]}`);
-			});
-		} else if (d.kind === "contrast") {
-			const [fg, bg] = d.children;
-			colorOps.push(
-				contrastOp(
-					colorBase(fg, d.paints[0]),
-					colorBase(bg, d.paints[1]),
-					(d.props.ratio as number) ?? 4.5,
-				),
-			);
-			coloredPaints.add(`${fg.id}:${d.paints[0]}`);
-		} else if (d.kind === "union") {
-			ops.push(
-				unionOp(
-					d.children.map((c) => baseOf(c)),
-					baseOf(d.container),
-				),
-			);
-			hardOwned.add(`${d.container.id}:w`);
-			hardOwned.add(`${d.container.id}:h`);
-			markGuide(d.container.id);
 		}
+
+		for (const i of indices) {
+			current = i;
+			out = { operators: [], claims: [] };
+			compile(descs[i]);
+			compiled.set(i, out);
+			while (colorOpNames.length < colorOps.length)
+				colorOpNames.push(descName(descs[i]));
+		}
+		return { compiled, ownership: { hard, guide } };
 	}
+
+	// Home is every relation outside a Modulate. A relation inside one holds
+	// only while its Modulate does; until then its container rests on its members
+	const colorOpNames: string[] = [];
+	const all = descs.map((_, i) => i);
+	const isHome = (i: number) =>
+		descs[i].scope === undefined || descs[i].kind === "union";
+	const home = compileDescs(all.filter(isHome));
+	const modulated = new Map<string, Map<number, Compiled>>();
+	for (const i of all) {
+		const scope = descs[i].scope;
+		if (isHome(i) || scope === undefined || modulated.has(scope)) continue;
+		modulated.set(
+			scope,
+			compileDescs(
+				all.filter((j) => !isHome(j) && descs[j].scope === scope),
+				home.ownership,
+				`Modulate(${scope}): `,
+			).compiled,
+		);
+	}
+	const rests = new Map<number, LayoutOperator | undefined>();
+	const restOf = (i: number): LayoutOperator | undefined => {
+		if (rests.has(i)) return rests.get(i);
+		const d = descs[i];
+		const op =
+			"container" in d
+				? unionOp(
+						d.children.map((c) => baseOf(c)),
+						baseOf(d.container),
+					)
+				: undefined;
+		rests.set(i, op);
+		return op;
+	};
+	const restName = (i: number): string => {
+		const d = descs[i];
+		return "container" in d ? `union(${d.container.id})` : descName(d);
+	};
+
+	/**
+	 * The relations that hold while `active` modulations do (later ones win,
+	 * home loses). A relation is dropped whole once a stronger one places
+	 * something it placed; what it no longer places stays where it was.
+	 */
+	const operatorsFor = (
+		active: readonly string[],
+	): { operators: LayoutOperator[]; names: string[] } => {
+		const taken = new Set<string>();
+		const live = new Map<number, Compiled>();
+		const groups = [
+			...[...active].reverse().map((id) => modulated.get(id)),
+			home.compiled,
+		];
+		for (const group of groups) {
+			if (!group) continue;
+			const kept: Compiled[] = [];
+			for (const [i, c] of group) {
+				const kind = descs[i].kind;
+				const yields =
+					kind === "stackV" ||
+					kind === "stackH" ||
+					kind === "align" ||
+					kind === "distribute" ||
+					kind === "span";
+				if (yields && c.claims.some((k) => taken.has(k))) continue;
+				live.set(i, c);
+				kept.push(c);
+			}
+			for (const c of kept) for (const k of c.claims) taken.add(k);
+		}
+		const operators: LayoutOperator[] = [];
+		const names: string[] = [];
+		for (const i of all) {
+			const c = live.get(i);
+			const rest = c ? undefined : restOf(i);
+			for (const op of c?.operators ?? (rest ? [rest] : [])) {
+				operators.push(op);
+				names.push(c ? descName(descs[i]) : restName(i));
+			}
+		}
+		return { operators, names };
+	};
+	const { operators: ops, names: opNames } = operatorsFor([]);
+	const phaseCache = new Map<string, ReturnType<typeof operatorsFor>>();
+	const phaseOperators = (active: readonly string[]) => {
+		const key = active.join("\n");
+		const known = phaseCache.get(key);
+		if (known) return known;
+		const built = operatorsFor(active);
+		phaseCache.set(key, built);
+		return built;
+	};
 
 	const time = buildTime(nodes, timeNodes);
 	for (const n of nodes) {
@@ -1108,7 +1315,15 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		timeSeed: time.timeSeed,
 		timedIds: time.timedIds,
 		timeChecks: time.timeChecks,
-		warnings: [...warnings, ...targetWarnings, ...time.warnings],
+		warnings: [
+			...warnings,
+			...scopeWarnings,
+			...targetWarnings,
+			...time.warnings,
+		],
+		...(modulated.size > 0 || nodes.some((n) => n.modulation)
+			? { phaseOperators }
+			: {}),
 	};
 }
 
@@ -1152,13 +1367,84 @@ export function checkColor(scene: JsonScene): string[] {
 	return names.length > 0 ? [unsettledMessage("colors", names)] : [];
 }
 
+/**
+ * Problems with the layout in time: a phase whose relations do not hold, a
+ * Travel aimed at something a modulation moves, and marks that modulations
+ * in different time both move.
+ */
+export function checkPhases(
+	scene: JsonScene,
+	layout: Parameters<typeof checkTime>[1] &
+		Record<string, LayoutBox & { phases?: Record<string, LayoutBox> }>,
+): string[] {
+	if (!scene.phaseOperators) return [];
+	const clocks = foldPhases(scene.nodes, (id) => {
+		const b = layout[id];
+		if (b?.start === undefined) return undefined;
+		return b.local ?? { start: b.start, duration: b.duration ?? 0 };
+	});
+	const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+	const nameOf = (id: string) =>
+		`${byId.get(id)?.modulation?.kind === "resolve" ? "Resolve" : "Modulate"}(${id})`;
+	const out: string[] = [];
+
+	const checked = new Set<string>([""]);
+	// The first event of each clock to move a node
+	const movers = new Map<string, string[]>();
+	for (const { events } of clocks) {
+		const shown: Record<string, LayoutBox> = { ...layout };
+		const moved = new Set<string>();
+		for (const e of events) {
+			for (const n of scene.nodes) {
+				const box = layout[n.id]?.phases?.[e.id];
+				if (!box) continue;
+				shown[n.id] = box;
+				if (moved.has(n.id)) continue;
+				moved.add(n.id);
+				movers.set(n.id, [...(movers.get(n.id) ?? []), e.id]);
+			}
+			const key = e.active.join("\n");
+			if (checked.has(key)) continue;
+			checked.add(key);
+			const { operators, names } = scene.phaseOperators(e.active);
+			const phase = { nodes: scene.nodes, operators, operatorNames: names };
+			for (const w of checkLayout(phase, shown))
+				out.push(`after ${nameOf(e.id)}: ${w}`);
+		}
+	}
+
+	for (const n of scene.nodes) {
+		if (n.motion?.kind !== "travel") continue;
+		const aims = [...(n.targets ?? []).map((t) => t.id), ...n.motion.via];
+		const moving = aims.find((id) => movers.has(id));
+		if (moving !== undefined)
+			out.push(
+				`Travel(${n.id}) aims at ${moving}'s home position, which ${nameOf(movers.get(moving)?.[0] ?? "")} moves`,
+			);
+	}
+
+	const pairs = new Set<string>();
+	for (const [id, [a, b]] of movers) {
+		const type = byId.get(id)?.type;
+		if (b === undefined || !type || type === "motion" || type === "timing")
+			continue;
+		if (pairs.has(`${a}\n${b}`)) continue;
+		pairs.add(`${a}\n${b}`);
+		out.push(
+			`${nameOf(a)} and ${nameOf(b)} play in different time and both move ${id}; their moves add up`,
+		);
+	}
+	return out;
+}
+
 /** Everything wrong with a solution: unsatisfied layout, color and time relations, schedule checks. */
 export function checkSolution(
 	scene: JsonScene,
-	layout: Parameters<typeof checkLayout>[1] & Parameters<typeof checkTime>[1],
+	layout: Parameters<typeof checkLayout>[1] & Parameters<typeof checkPhases>[1],
 ): string[] {
 	return [
 		...checkLayout(scene, layout),
+		...checkPhases(scene, layout),
 		...checkColor(scene),
 		...checkTime(scene, layout),
 	];

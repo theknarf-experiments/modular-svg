@@ -1,5 +1,5 @@
 import { contrastingLightness, luminanceOfOklch } from "../color.ts";
-import type { MotionSpec } from "../motion.ts";
+import type { Ease, MotionSpec } from "../motion.ts";
 
 /**
  * An operator reads the current state and writes its targets into next.
@@ -61,6 +61,15 @@ export type NodeRecord = {
 	clock?: string;
 	/** for phrases: how the passes play; repeat is Infinity for "until the enclosing time ends" */
 	phrase?: { repeat: number; alternate: boolean; retrograde: boolean };
+	/** for a relation inside a Modulate: that Modulate; it holds only while it does */
+	scope?: string;
+	/** for Modulate and Resolve: a change of layout over the node's time span */
+	modulation?: {
+		kind: "modulate" | "resolve";
+		/** for a Resolve: the modulations it releases; none means all of them */
+		releases: string[];
+		ease?: Ease;
+	};
 	r?: number;
 	/** inner radius for arc marks (donut sectors); 0 = full pie slice */
 	innerR?: number;

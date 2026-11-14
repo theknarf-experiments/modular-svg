@@ -1,5 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { layoutToSvg } from "./output.ts";
 import { buildSceneFromJson, checkSolution } from "./parser.ts";
 import { solveLayout } from "./solver/index.ts";
 
@@ -154,6 +155,81 @@ describe("layout relations (properties)", () => {
 				});
 			}),
 			{ numRuns: 500 },
+		);
+	});
+});
+
+// Some of the relations move into Modulates, in scene time or in a phrase
+const modulatedArb = sceneArb.chain((s) =>
+	fc.record({
+		scene: fc.constant(s),
+		when: fc.array(
+			fc.option(
+				fc.record({
+					at: fc.constantFrom(0, 0.5, 1, 2),
+					over: fc.constantFrom(0, 0.25, 1),
+					phrase: fc.boolean(),
+				}),
+				{ nil: undefined },
+			),
+			{ minLength: s.relations.length, maxLength: s.relations.length },
+		),
+		resolve: fc.option(fc.constantFrom(0.75, 1.5, 3), { nil: undefined }),
+	}),
+);
+
+describe("layout in time (properties)", () => {
+	it("never throws, stays finite, and leaves home as it was", () => {
+		fc.assert(
+			fc.property(modulatedArb, ({ scene: s, when, resolve }) => {
+				const base = json(s);
+				const home = {
+					...base,
+					children: base.children.filter(
+						(_, i) => i < s.rects.length || !when[i - s.rects.length],
+					),
+				};
+				const timed = (i: number) => when[i - s.rects.length];
+				const modulate = (i: number) => ({
+					type: "Modulate",
+					id: `m${i}`,
+					props: { at: timed(i)?.at, over: timed(i)?.over },
+					children: [base.children[i]],
+				});
+				const indices = base.children.map((_, i) => i);
+				const moving = indices.filter((i) => i >= s.rects.length && timed(i));
+				const modulated = {
+					...home,
+					children: [
+						...home.children,
+						...moving.filter((i) => !timed(i)?.phrase).map(modulate),
+						{
+							type: "Phrase",
+							id: "phrase",
+							props: { repeat: 2, alternate: true },
+							children: moving.filter((i) => timed(i)?.phrase).map(modulate),
+						},
+						...(resolve !== undefined
+							? [{ type: "Resolve", id: "resolve", props: { at: resolve } }]
+							: []),
+					],
+				};
+				const scene = buildSceneFromJson(modulated);
+				const layout = solveLayout(scene);
+				checkSolution(scene, layout);
+				for (const box of Object.values(layout))
+					for (const phase of Object.values(box.phases ?? {}))
+						for (const v of Object.values(phase))
+							expect(Number.isFinite(v)).toBe(true);
+				expect(layoutToSvg(layout, scene.nodes)).not.toMatch(/NaN|Infinity/);
+				// Home is the layout without the modulations, to the solver's precision
+				const plain = solveLayout(buildSceneFromJson(home));
+				s.rects.forEach((_, i) => {
+					for (const side of ["x", "y", "width", "height"] as const)
+						expect(layout[`r${i}`][side]).toBeCloseTo(plain[`r${i}`][side], 3);
+				});
+			}),
+			{ numRuns: 300 },
 		);
 	});
 });

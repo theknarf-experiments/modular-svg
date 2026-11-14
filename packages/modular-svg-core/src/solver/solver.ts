@@ -9,6 +9,13 @@ const colorHex = (colors: Float64Array, base: number): string =>
 
 import { type Clock, imageOf } from "../phrase.ts";
 import type { LayoutOperator, NodeRecord } from "./index.ts";
+import {
+	foldPhases,
+	type LayoutBox,
+	type PhaseOperators,
+	phaseMoves,
+	solvePhases,
+} from "./phases.ts";
 
 export type Scene = {
 	nodes: NodeRecord[];
@@ -25,6 +32,8 @@ export type Scene = {
 	timeSeed?: number[];
 	/** ids whose solved time span should be emitted into the result */
 	timedIds?: string[];
+	/** the layout relations that hold while the given Modulates are active */
+	phaseOperators?: PhaseOperators;
 };
 
 export type LayoutResult = Record<
@@ -49,6 +58,11 @@ export type LayoutResult = Record<
 		local?: { start: number; duration: number };
 		/** for phrases: how long one pass is in the phrase's own time */
 		length?: number;
+		/**
+		 * where a Modulate or Resolve moves the node to, by the id of each one
+		 * that moves it; x, y, width and height stay the home layout
+		 */
+		phases?: Record<string, LayoutBox>;
 	}
 >;
 
@@ -221,6 +235,31 @@ export function solveLayout(
 		};
 	};
 
+	// Layout in time: one more solve per distinct set of active modulations
+	const clocks = scene.phaseOperators
+		? foldPhases(scene.nodes, (id) => {
+				const i = index.get(id);
+				return i !== undefined && timed.has(id)
+					? {
+							start: roundTime(times[i * 2]),
+							duration: roundTime(times[i * 2 + 1]),
+						}
+					: undefined;
+			})
+		: [];
+	const moves =
+		scene.phaseOperators && clocks.length > 0
+			? phaseMoves(
+					cur,
+					clocks,
+					solvePhases(scene.phaseOperators, cur, clocks, (phase) => {
+						const state = new Float64Array(cur);
+						relax(state, phase, relaxOpts);
+						return state;
+					}),
+				)
+			: undefined;
+
 	const result: LayoutResult = {};
 	scene.nodes.forEach((n, i) => {
 		const base = indexMap.get(n.id) as number;
@@ -237,6 +276,7 @@ export function solveLayout(
 				: {}),
 			...(timed.has(n.id) ? spanOf(n, i) : {}),
 			...(n.phrase ? { length: roundTime(lengths.get(n.id) ?? 0) } : {}),
+			...(moves?.[i] ? { phases: moves[i] } : {}),
 		};
 	});
 	return result;

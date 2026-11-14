@@ -677,3 +677,47 @@ describe("Phrase", () => {
 		]);
 	});
 });
+
+describe("Modulate and Resolve", () => {
+	const row: N = { type: "StackH", id: "row", children: [dot("a"), dot("b")] };
+	const swap = (id: string, props: Record<string, unknown> = {}): N => ({
+		type: "Modulate",
+		id,
+		props,
+		children: [{ type: "StackH", children: [ref("b"), ref("a")] }],
+	});
+
+	it("are leaves: half a second unless told, pinned by at, placed by relations", () => {
+		const { span, warnings } = solve([
+			row,
+			motion("Enter", "aIn", "a", { over: 1 }),
+			swap("m"),
+			{ type: "Resolve", id: "r", props: { over: 0.2 } },
+			{ type: "Sequence", children: [ref("aIn"), ref("m"), ref("r")] },
+			swap("pinned", { at: 3, over: 1 }),
+		]);
+		expect(warnings).toEqual([]);
+		expect(span("m")).toEqual([1, 0.5]);
+		expect(span("r")).toEqual([1.5, 0.2]);
+		expect(span("pinned")).toEqual([3, 1]);
+		// what a Modulate holds takes no time of its own
+		expect(span("row")).toEqual([0, 1]);
+	});
+
+	it("play in the phrase that takes them, and a Resolve over them joins it", () => {
+		const { layout, warnings } = solve([
+			row,
+			{
+				type: "Phrase",
+				id: "p",
+				props: { at: 2, repeat: 2 },
+				children: [swap("m", { over: 1 })],
+			},
+			{ type: "Resolve", id: "r", props: { at: 1 }, children: [ref("m")] },
+		]);
+		expect(warnings).toEqual([]);
+		expect(layout.m.local).toEqual({ start: 0, duration: 1 });
+		expect(layout.r.local).toEqual({ start: 1, duration: 0.5 });
+		expect(layout.p).toMatchObject({ start: 2, duration: 3, length: 1.5 });
+	});
+});

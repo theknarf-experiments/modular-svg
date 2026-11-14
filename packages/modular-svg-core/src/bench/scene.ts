@@ -1,7 +1,9 @@
 // A scene that grows with n and uses every solver domain: a grid of marks in
 // stacks, arrows between neighbours, distinct and copied fills with darker
 // borders, and an enter per mark staggered by row, rows in sequence. With
-// `phrases`, every row's stagger plays inside a phrase of its own.
+// `phrases`, every row's stagger plays inside a phrase of its own. With
+// `modulations`, the layout changes four times: the rows turn upside down,
+// two rows reverse, the first of them shuffles again, and all of it resolves.
 const ref = (target: string, paint?: string) => ({
 	type: "Ref",
 	target,
@@ -10,7 +12,7 @@ const ref = (target: string, paint?: string) => ({
 
 export function scaleScene(
 	n: number,
-	opts: { phrases?: boolean } = {},
+	opts: { phrases?: boolean; modulations?: boolean } = {},
 ): Record<string, unknown> {
 	const rows = Math.ceil(n / 10);
 	const ids = Array.from({ length: n }, (_, i) => `m${i}`);
@@ -85,5 +87,32 @@ export function scaleScene(
 			ref(opts.phrases ? `ph${r}` : `st${r}`),
 		),
 	});
+	if (opts.modulations) {
+		const restack = (
+			id: string,
+			at: number,
+			type: string,
+			spacing: number,
+			members: string[],
+		) => ({
+			type: "Modulate",
+			id,
+			props: { at, over: 0.4 },
+			children: [
+				{ type, props: { spacing }, children: members.map((m) => ref(m)) },
+			],
+		});
+		const rowIds = Array.from({ length: rows }, (_, r) => `row${r}`);
+		children.push(
+			restack("flip", 0, "StackV", 20, [...rowIds].reverse()),
+			restack("reverse0", 1, "StackH", 30, [...row(0)].reverse()),
+			restack("reverse1", 2, "StackH", 30, [...row(1)].reverse()),
+			restack("rotate0", 3, "StackH", 30, [
+				...row(0).slice(3),
+				...row(0).slice(0, 3),
+			]),
+			{ type: "Resolve", id: "settle", props: { at: 4, over: 0.4 } },
+		);
+	}
 	return { type: "Group", id: "root", children };
 }

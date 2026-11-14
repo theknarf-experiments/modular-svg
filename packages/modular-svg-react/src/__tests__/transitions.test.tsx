@@ -149,6 +149,27 @@ describe("reduced motion", () => {
 	});
 });
 
+describe("paths the timeline redraws", () => {
+	const smil = {
+		attributeName: "d",
+		values: "M0 0 L1 1;M0 0 L5 5",
+		keyTimes: "0;1",
+		dur: "1s",
+		repeatCount: "1",
+	};
+	const wire = (d: string, animate?: (typeof smil)[]) =>
+		doc([{ type: "path", id: "wire", d, stroke: "black", animate }]);
+
+	it("leaves d alone on a path that carries its own animation", () => {
+		expect(
+			diffTransitions(wire("M0 0 L1 1"), wire("M0 0 L2 2", [smil])).has("wire"),
+		).toBe(false);
+		expect(
+			diffTransitions(wire("M0 0 L1 1"), wire("M0 0 L2 2")).get("wire"),
+		).toMatchObject([{ attributeName: "d" }]);
+	});
+});
+
 describe("appearing and leaving", () => {
 	const before = doc([
 		{ type: "circle", id: "stay", cx: 0, cy: 0, r: 1 },

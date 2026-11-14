@@ -503,3 +503,306 @@ describe("Phrase", () => {
 		expect(ast.children.map((c) => c.type)).toEqual(["rect", "g"]);
 	});
 });
+
+describe("layout in time", () => {
+	const rel = (
+		type: string,
+		ids: string[],
+		props: Record<string, unknown> = {},
+		id?: string,
+	): N => ({ type, id, props, children: ids.map(ref) });
+	const modulate = (
+		id: string,
+		children: N[],
+		props: Record<string, unknown> = {},
+	): N => ({ type: "Modulate", id, props, children });
+	const resolve = (id: string, props: Record<string, unknown> = {}): N => ({
+		type: "Resolve",
+		id,
+		props,
+	});
+	const phrase = (props: Record<string, unknown>, children: N[]): N => ({
+		type: "Phrase",
+		id: "p",
+		props,
+		children,
+	});
+	const row = (ids: string[], id = "row"): N => ({
+		type: "StackH",
+		id,
+		props: { spacing: 10 },
+		children: ids.map((i) => box(i, { "stroke-width": 0 })),
+	});
+	const swap = (props: Record<string, unknown> = {}) =>
+		modulate("swap", [rel("StackH", ["b", "a"], { spacing: 10 })], {
+			over: 1,
+			ease: "linear",
+			...props,
+		});
+	const keyframesOf = (css: string | undefined) =>
+		[...(css ?? "").matchAll(/@keyframes [^{]+\{(.*)\}\n/g)].map((m) => m[1]);
+
+	it("animates a scene whose only timed node is a Modulate", () => {
+		const { ast } = render([row(["a", "b"]), swap()]);
+		expect(ast.duration).toBe(1);
+		expect(keyframesOf(ast.css)).toEqual([
+			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:30px 0px}",
+			"0%{translate:0px 0px;animation-timing-function:linear}100%{translate:-30px 0px}",
+		]);
+	});
+
+	it("renders home when animation is off", () => {
+		const scene = buildSceneFromJson({
+			type: "Group",
+			id: "root",
+			children: [row(["a", "b"]), swap()],
+		});
+		const plain = buildSceneFromJson({
+			type: "Group",
+			id: "root",
+			children: [row(["a", "b"])],
+		});
+		const svg = (s: typeof scene) =>
+			serializeToSvg(
+				layoutToAst(solveLayout(s), s.nodes, 0, { animation: false }),
+			);
+		expect(svg(scene)).toBe(svg(plain));
+	});
+
+	it("moves a modulated mark in a shell outside the shells of its motions", () => {
+		const { ast } = render([
+			row(["a", "b"]),
+			on("Enter", "in", "a", { over: 1, from: { scale: 0 } }),
+			swap(),
+		]);
+		const [outer] = ast.children;
+		const inner = outer.type === "g" ? outer.children[0] : undefined;
+		const classOf = (el: typeof inner) =>
+			String(el?.attrs?.class).split(" ")[1];
+		expect(inner?.type).toBe("g");
+		expect(ast.css).toMatch(
+			new RegExp(`\\.${classOf(outer)}\\{animation-name:[\\w-]+\\}`),
+		);
+		expect(ast.css).toMatch(
+			new RegExp(`\\.${classOf(inner)}\\{animation-name:[\\w-]+;transform-box`),
+		);
+		// the outer shell is the translate
+		const name = new RegExp(
+			`\\.${classOf(outer)}\\{animation-name:([\\w-]+)\\}`,
+		).exec(ast.css ?? "")?.[1];
+		expect(ast.css).toContain(`@keyframes ${name}{0%{translate:0px 0px`);
+	});
+
+	it("resizes a background with width and height keyframes", () => {
+		const { ast, svg } = render([
+			{
+				type: "Background",
+				id: "bg",
+				props: { padding: 5, "stroke-width": 1 },
+				children: [
+					{
+						type: "StackV",
+						id: "list",
+						props: { spacing: 10 },
+						children: [box("a"), box("b"), box("c")],
+					},
+				],
+			},
+			modulate("two", [rel("StackV", ["a", "c"], { spacing: 10 })], {
+				over: 1,
+				ease: "linear",
+			}),
+		]);
+		// three rows of 20 with 10 between, 5 padding and the frame's 1 stroke
+		expect(ast.css).toContain(
+			"0%{height:91px;animation-timing-function:linear}100%{height:61px}",
+		);
+		expect(ast.css).not.toContain("width:");
+		expect(svg).toMatch(/<rect id="bg"[^>]+class="ms\w+-a ms\w+-c\d"/);
+	});
+
+	const attached = () =>
+		render(
+			[
+				row(["a", "b", "c"]),
+				box("job", { width: 8, height: 8, y: 60 }),
+				rel("Align", ["a", "job"], { alignment: "centerX" }),
+				{ type: "Arrow", id: "arrow", children: [ref("a"), ref("job")] },
+				modulate(
+					"hop",
+					[rel("Align", ["c", "job"], { alignment: "centerX" })],
+					{ over: 1 },
+				),
+			],
+			{ stillAt: 1 },
+		);
+
+	it("redraws an arrow whose end moves: two paths with d animations and still twins", () => {
+		const { ast, svg } = attached();
+		const paths = ast.children.filter((c) => c.type === "path");
+		expect(paths.map((p) => p.id)).toEqual([
+			"arrow",
+			"arrow-still",
+			"arrow-head",
+			"arrow-head-still",
+		]);
+		for (const p of paths) {
+			if (p.type !== "path") continue;
+			const still = p.id?.endsWith("-still");
+			expect(p.animate?.length ?? 0).toBe(still ? 0 : 1);
+			expect(String(p.attrs?.class)).toMatch(still ? /-ds$/ : /-dm$/);
+		}
+		const shaft = paths[0].type === "path" ? paths[0] : undefined;
+		const values = shaft?.animate?.[0].values.split(";") ?? [];
+		// home, then sixteen samples along the ease
+		expect(values).toHaveLength(17);
+		expect(values[0]).toBe(shaft?.d);
+		expect(new Set(values.map((v) => v.replace(/[-\d.]+/g, "n")))).toEqual(
+			new Set(["M n,n L n,n"]),
+		);
+		// the still twin shows where it ends up
+		expect(paths[1].type === "path" && paths[1].d).toBe(values[16]);
+		expect(svg).toContain('<animate attributeName="d"');
+		expect(ast.css).toMatch(/-ds\{display:none\}/);
+	});
+
+	it("leaves a static arrow a line and a polygon when nothing modulates", () => {
+		const { ast } = render([
+			row(["a", "b"]),
+			{ type: "Arrow", id: "arrow", children: [ref("a"), ref("b")] },
+			on("Enter", "in", "a"),
+		]);
+		expect(ast.children.map((c) => c.type)).toEqual([
+			"g",
+			"rect",
+			"line",
+			"polygon",
+		]);
+	});
+
+	it("carries a connector whose ends move together in a shell, without SMIL", () => {
+		const { ast, svg } = render([
+			{
+				type: "StackV",
+				id: "page",
+				props: { spacing: 10 },
+				children: [row(["a", "b"]), box("c", { "stroke-width": 0 })],
+			},
+			{ type: "Arrow", id: "arrow", children: [ref("a"), ref("b")] },
+			modulate("flip", [rel("StackV", ["c", "row"], { spacing: 10 })], {
+				over: 1,
+				ease: "linear",
+			}),
+		]);
+		expect(svg).not.toContain("<animate");
+		const shell = ast.children.find(
+			(c) => c.type === "g" && c.children[0].id === "arrow",
+		);
+		expect(shell?.type === "g" && shell.children.map((c) => c.type)).toEqual([
+			"line",
+			"polygon",
+		]);
+		expect(ast.css).toContain("100%{translate:0px 30px}");
+	});
+
+	it("sizes the viewBox to cover every phase", () => {
+		const still = render([row(["a", "b"]), on("Enter", "in", "a")]);
+		const { ast } = render([
+			row(["a", "b"]),
+			modulate("apart", [rel("StackH", ["a", "b"], { spacing: 100 })]),
+		]);
+		expect(ast.width).toBeCloseTo(still.ast.width + 90, 3);
+		expect(ast.height).toBeCloseTo(still.ast.height, 3);
+	});
+
+	it("reports a Motion that sizes what a Modulate resizes", () => {
+		expect(() =>
+			render([
+				{
+					type: "Background",
+					id: "bg",
+					children: [
+						{ type: "StackV", id: "list", children: [box("a"), box("b")] },
+					],
+				},
+				on("Motion", "grow", "bg", {
+					steps: [{ to: { height: 100 }, over: 1 }],
+				}),
+				modulate("one", [rel("StackV", ["b", "a"], { spacing: 0 })], {
+					over: 1,
+				}),
+			]),
+		).toThrow(/one and grow both move height on bg/);
+	});
+
+	describe("inside a phrase", () => {
+		const there = (props: Record<string, unknown>) =>
+			render([
+				row(["a", "b"]),
+				phrase(props, [
+					swap(),
+					resolve("back", { at: 1, over: 1, ease: "linear" }),
+				]),
+			]);
+
+		it("plays there and back twice over without a cut when it alternates", () => {
+			const { ast } = there({ repeat: 2, alternate: true });
+			expect(ast.duration).toBe(4);
+			const [a] = keyframesOf(ast.css);
+			expect(a).not.toContain("steps(");
+			expect(
+				[...a.matchAll(/([\d.]+)%\{translate:(-?\d+)px/g)].map((m) => [
+					Number(m[1]),
+					Number(m[2]),
+				]),
+			).toEqual([
+				[0, 0],
+				[25, 30],
+				[50, 0],
+				[75, 30],
+				[100, 0],
+			]);
+		});
+
+		it("starts modulated and ends home in retrograde", () => {
+			const { ast } = render([
+				row(["a", "b"]),
+				phrase({ retrograde: true }, [swap()]),
+			]);
+			expect(keyframesOf(ast.css)[0]).toBe(
+				"0%{translate:30px 0px;animation-timing-function:linear}100%{translate:0px 0px}",
+			);
+		});
+
+		it("halves the tween at rate 2", () => {
+			const { ast } = render([row(["a", "b"]), phrase({ rate: 2 }, [swap()])], {
+				duration: 1,
+			});
+			expect(keyframesOf(ast.css)[0]).toBe(
+				"0%{translate:0px 0px;animation-timing-function:linear}50%{translate:30px 0px}100%{translate:30px 0px}",
+			);
+		});
+
+		it("retimes a redrawn connector with it", () => {
+			const { ast } = render([
+				row(["a", "b"]),
+				box("job", { width: 8, height: 8, y: 60 }),
+				rel("Align", ["a", "job"], { alignment: "centerX" }),
+				{ type: "Line", id: "wire", children: [ref("a"), ref("job")] },
+				phrase({ retrograde: true }, [
+					modulate(
+						"hop",
+						[rel("Align", ["b", "job"], { alignment: "centerX" })],
+						{ over: 1 },
+					),
+				]),
+			]);
+			const wire = ast.children.find((c) => c.id === "wire");
+			const values =
+				(wire?.type === "path" && wire.animate?.[0].values.split(";")) || [];
+			// it starts where the forward pass ends, and ends at home
+			expect(values.at(-1)).toBe(wire?.type === "path" && wire.d);
+			expect(values[0]).not.toBe(values.at(-1));
+		});
+	});
+});

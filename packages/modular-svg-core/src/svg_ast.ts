@@ -2,6 +2,7 @@ import {
 	type AnimationOptions,
 	compileAnimation,
 	type MarkAnimation,
+	type PathsOf,
 	type SmilAnimate,
 } from "./animation.ts";
 import {
@@ -146,10 +147,22 @@ const isTimeOnly = (n: NodeRecord | undefined): boolean =>
 export function layoutBounds(
 	layout: LayoutResult,
 	nodes?: NodeRecord[],
+	/** also cover where modulations move things, so no phase is clipped */
+	opts: { phases?: boolean } = {},
 ): BoundingBox2d {
-	const timeOnly = new Set(nodes?.filter(isTimeOnly).map((n) => n.id));
+	// A Modulate's relations draw nothing and rest on what they ref
+	const timeOnly = new Set(
+		nodes
+			?.filter((n) => isTimeOnly(n) || n.scope !== undefined)
+			.map((n) => n.id),
+	);
 	const byId = new Map(nodes?.map((n) => [n.id, n]));
-	const boxes = Object.entries(layout)
+	const placed = Object.entries(layout).flatMap(([id, box]) =>
+		opts.phases && box.phases
+			? [box, ...Object.values(box.phases)].map((b) => [id, b] as const)
+			: [[id, box] as const],
+	);
+	const boxes = placed
 		.filter(([id]) => !timeOnly.has(id))
 		.map(([, box]) => boundingBoxFromRect(box))
 		.reduce<BoundingBox2d | undefined>(
@@ -157,7 +170,7 @@ export function layoutBounds(
 			undefined,
 		);
 
-	const withStroke = Object.entries(layout).reduce<BoundingBox2d | undefined>(
+	const withStroke = placed.reduce<BoundingBox2d | undefined>(
 		(acc, [id, box]) => {
 			const n = byId.get(id);
 			const sw = n?.strokeWidth ?? (n?.type === "arrow" ? 3 : 0);
@@ -536,15 +549,29 @@ export function layoutToAst(
 	const byId = new Map<string, NodeRecord>();
 	if (nodes) for (const n of nodes) byId.set(n.id, n);
 
-	const bounds = layoutBounds(layout, nodes);
+	const bounds = layoutBounds(layout, nodes, {
+		phases: opts.animation !== false,
+	});
 	const min = bounds.start;
 	const max = bounds.end;
 	// Translate the layout so its bounds start at the margin; otherwise
 	// content with a positive minimum would sit outside the viewport.
 	const offset = vec(-min.x + margin, -min.y + margin);
+	const pathsOf: PathsOf = (mark, ends) => {
+		const drawn =
+			mark.type === "arrow"
+				? buildArrow(mark.id, mark, ends, offset)
+				: mark.type === "curve"
+					? [buildCurve(mark.id, mark, ends, offset)]
+					: [buildLine(mark.id, mark, ends, offset)];
+		return (drawn ?? []).flatMap((el) => {
+			const path = el && asPath(el);
+			return path?.id !== undefined ? [{ id: path.id, d: path.d }] : [];
+		});
+	};
 	const animation =
 		nodes && opts.animation !== false
-			? compileAnimation(layout, nodes, offset, opts.animation)
+			? compileAnimation(layout, nodes, offset, opts.animation, pathsOf)
 			: undefined;
 
 	// Elements grouped per node so multi-element marks (arrows) sort together
@@ -604,6 +631,34 @@ export function layoutToAst(
 	};
 }
 
+// Path data is animated as text, so long fractions are cut to what shows
+const tidy = (d: string): string =>
+	d.replace(/-?\d+\.\d{3,}(?:e[-+]?\d+)?/gi, (n) =>
+		String(Number(Number(n).toFixed(2))),
+	);
+
+/** A line or polygon as the path that draws the same thing, so its `d` can animate. */
+export function asPath(el: SvgElement): PathElement | undefined {
+	if (el.type === "path") return { ...el, d: tidy(el.d) };
+	if (el.type !== "line" && el.type !== "polygon") return undefined;
+	const d =
+		el.type === "line"
+			? `M ${el.x1},${el.y1} L ${el.x2},${el.y2}`
+			: `M ${el.points.trim().split(/\s+/).join(" L ")} Z`;
+	return {
+		type: "path",
+		...(el.id !== undefined ? { id: el.id } : {}),
+		d: tidy(d),
+		...(el.type === "polygon" && el.transform
+			? { transform: el.transform }
+			: {}),
+		fill: el.fill,
+		stroke: el.stroke,
+		strokeWidth: el.strokeWidth,
+		...(el.attrs ? { attrs: el.attrs } : {}),
+	};
+}
+
 // The mark's own elements take its class, pins and SMIL; its shells wrap them.
 // A morphing path also gets a still copy that reduced motion shows instead.
 function animateElements(
@@ -618,6 +673,26 @@ function animateElements(
 	};
 	const own = elements.flatMap((el): SvgElement[] => {
 		if (el.type === "g") return [el];
+		// A connector redrawn between layouts: the element becomes its path
+		const morph = el.id !== undefined ? animation.paths?.[el.id] : undefined;
+		const path = morph && asPath(el);
+		if (morph && path) {
+			const redrawn: PathElement = {
+				...path,
+				attrs: withClass(path, morph.still?.movingClass),
+				animate: [morph.smil],
+			};
+			if (!morph.still) return [redrawn];
+			return [
+				redrawn,
+				{
+					...path,
+					id: `${path.id}-still`,
+					d: morph.still.d,
+					attrs: withClass(path, morph.still.stillClass),
+				},
+			];
+		}
 		if (el.type !== "path" || animation.smil.length === 0)
 			return [{ ...el, attrs: withClass(el) }];
 		const moving: SvgElement = {

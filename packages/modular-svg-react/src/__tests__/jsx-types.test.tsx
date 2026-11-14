@@ -22,6 +22,14 @@ describe("shipped JSX types", () => {
 				<phrase rate={2} repeat>
 					<ref target="m" />
 				</phrase>
+				<modulate key="shuffle" at={1} over={0.4} ease="inOut">
+					<stackV spacing={8}>
+						<ref target="a" />
+					</stackV>
+				</modulate>
+				<resolve key="home" at={2} ease="out">
+					<ref target="shuffle" />
+				</resolve>
 			</Graphic>
 		);
 		const wrong = (
@@ -32,6 +40,10 @@ describe("shipped JSX types", () => {
 				<enter ease="wobbly" />
 				{/* @ts-expect-error repeat is a count or a boolean */}
 				<phrase repeat="twice" />
+				{/* @ts-expect-error not an ease */}
+				<modulate ease="wobbly" />
+				{/* @ts-expect-error over is a number */}
+				<resolve over="slowly" />
 				{/* @ts-expect-error align is start or end */}
 				<onBeat align="middle" />
 			</Graphic>

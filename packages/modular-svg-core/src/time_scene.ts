@@ -1,4 +1,5 @@
 import {
+	DEFAULT_OVER,
 	type Ease,
 	easeAt,
 	intrinsicDuration,
@@ -53,8 +54,9 @@ const TIME_GROUPS = new Set([
 	"Before",
 	"Fermata",
 ]);
-// Spans of their own with nothing inside: grids and silences
-const TIME_LEAVES = new Set(["Beat", "Bar", "Rest"]);
+// Spans of their own with nothing inside: grids, silences and changes of layout
+const TIME_LEAVES = new Set(["Beat", "Bar", "Rest", "Modulate", "Resolve"]);
+const MODULATIONS = new Set(["Modulate", "Resolve"]);
 // Pure constraints: no span, nothing to Ref
 const TIME_CONSTRAINTS = new Set([
 	"Legato",
@@ -206,6 +208,8 @@ export function buildTime(
 			timeSeed.push(num(t.props.at, 0), num(t.props.over, 0));
 		} else if (t?.type === "Rest") {
 			timeSeed.push(num(t.props.at, 0), num(t.props.over, 0.5));
+		} else if (t && MODULATIONS.has(t.type)) {
+			timeSeed.push(num(t.props.at, 0), num(t.props.over, DEFAULT_OVER));
 		} else timeSeed.push(num(t?.props.at, 0), 0);
 	}
 
@@ -678,6 +682,10 @@ export function buildTime(
 				warnings.push(`${name}: both members must be Beats`);
 			const of = (props.of as [number, number] | undefined) ?? [3, 2];
 			ops.push(polyrhythmOp(base(a.id), base(b.id), of));
+		} else if (t.type === "Resolve") {
+			for (const c of t.children)
+				if (typeOf(c) !== "Modulate")
+					warnings.push(`${name} releases ${c.id}, which is not a Modulate`);
 		}
 
 		nameNewOps(name);
@@ -768,6 +776,34 @@ export function buildTime(
 				: `${name} has nothing to play`,
 		);
 		timeChecks.push(earliestCheck(ids, `${name} starts`, "the phrase"));
+	}
+
+	// A change of layout that starts before the one before it has settled
+	const changes = new Map<string | undefined, TimeNode[]>();
+	for (const t of order) {
+		if (!MODULATIONS.has(t.type)) continue;
+		const clock = clockOf.get(t.rec.id);
+		changes.set(clock, [...(changes.get(clock) ?? []), t]);
+	}
+	for (const list of changes.values()) {
+		const sorted = [...list].sort((a, b) => base(a.rec.id) - base(b.rec.id));
+		sorted.forEach((t, i) => {
+			timeChecks.push((span) => {
+				// The change before this one: the latest start, ties in document order
+				let prev: TimeNode | undefined;
+				sorted.forEach((o, j) => {
+					if (o === t) return;
+					const [mine, theirs] = [span(t.rec.id)[0], span(o.rec.id)[0]];
+					if (theirs > mine || (theirs === mine && j > i)) return;
+					if (!prev || theirs >= span(prev.rec.id)[0]) prev = o;
+				});
+				if (!prev) return undefined;
+				const [start, over] = span(prev.rec.id);
+				return span(t.rec.id)[0] < start + over - TIME_EPSILON
+					? `${t.type}(${t.rec.id}) starts while ${prev.type}(${prev.rec.id}) is still settling; ${prev.rec.id} is cut short`
+					: undefined;
+			});
+		});
 	}
 
 	// A Sequence sets b's start from a's length while Legato sets a's length

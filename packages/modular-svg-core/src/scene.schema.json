@@ -52,7 +52,9 @@
 				"Rest",
 				"Fermata",
 				"Polyrhythm",
-				"Phrase"
+				"Phrase",
+				"Modulate",
+				"Resolve"
 			]
 		},
 		"id": { "type": "string" },

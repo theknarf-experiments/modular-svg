@@ -22,5 +22,6 @@ export {
 	stackV,
 	unionOp,
 } from "./operators.ts";
+export * from "./phases.ts";
 export * from "./solver.ts";
 export * from "./time.ts";
