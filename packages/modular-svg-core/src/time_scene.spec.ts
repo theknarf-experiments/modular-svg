@@ -815,3 +815,250 @@ describe("Modulate and Resolve", () => {
 		expect(layout.p).toMatchObject({ start: 2, duration: 3, length: 1.5 });
 	});
 });
+
+describe("reading across clocks", () => {
+	const beat: N = { type: "Beat", id: "beat", props: { period: 1 } };
+	const phrase = (
+		id: string,
+		props: Record<string, unknown>,
+		children: N[],
+	) => ({
+		type: "Phrase",
+		id,
+		props,
+		children,
+	});
+	const onBeat = (id: string, ...targets: string[]): N => ({
+		type: "OnBeat",
+		id,
+		children: targets.map(ref),
+	});
+
+	it("lands what a phrase plays on a beat of the time around it", () => {
+		const { span, layout, warnings } = solve([
+			dot("a"),
+			beat,
+			phrase("p", { at: 0.25, rate: 2 }, [
+				motion("Enter", "lead", "a", { over: 0.2 }),
+				motion("Enter", "hit", "a", { over: 0.4 }),
+				onBeat("land", "beat", "hit"),
+			]),
+		]);
+		expect(warnings).toEqual([]);
+		// the phrase plays twice as fast from 0.25s: beat 1 is 1.5 of its seconds in
+		expect(layout.hit.local).toEqual({ start: 1.5, duration: 0.4 });
+		expect(span("hit")).toEqual([1, 0.2]);
+		expect(span("p")).toEqual([0.25, 0.95]);
+		expect(layout.beat.local).toBeUndefined();
+	});
+
+	it("follows the phrase when a relation moves it", () => {
+		const { span, warnings } = solve([
+			dot("a"),
+			beat,
+			motion("Enter", "first", "a", { over: 0.4 }),
+			phrase("p", {}, [
+				motion("Enter", "hit", "a", { at: 0.1, over: 0.2 }),
+				motion("Enter", "tail", "a", { over: 0.2 }),
+				onBeat("land", "beat", "tail"),
+			]),
+			{ type: "Sequence", id: "s", children: [ref("first"), ref("p")] },
+		]);
+		expect(warnings).toEqual([]);
+		expect(span("p")[0]).toBeCloseTo(0.4, 6);
+		expect(span("tail")[0]).toBeCloseTo(1, 6);
+	});
+
+	it("lets a relation declared outside read the beat for a phrase's member", () => {
+		const { span, scene, warnings } = solve([
+			dot("a"),
+			beat,
+			motion("Enter", "hit", "a", { over: 0.5 }),
+			phrase("p", { at: 0.5 }, [ref("hit")]),
+			onBeat("land", "beat", "hit"),
+		]);
+		expect(warnings).toEqual([]);
+		expect(scene.nodes.find((n) => n.id === "land")?.clock).toBe("p");
+		expect(span("hit")).toEqual([1, 0.5]);
+	});
+
+	it("reads through every phrase in between", () => {
+		const { span, layout, warnings } = solve([
+			dot("a"),
+			beat,
+			phrase("outer", { at: 0.5, rate: 2 }, [
+				phrase("inner", { at: 0.25, rate: 0.5, repeat: 2 }, [
+					motion("Enter", "hit", "a", { over: 0.25 }),
+					onBeat("land", "beat", "hit"),
+				]),
+			]),
+		]);
+		expect(warnings).toEqual([]);
+		// scene 1s is 1 in outer's seconds, 0.75 past inner's start at half speed
+		expect(layout.hit.local?.start).toBeCloseTo(0.375, 6);
+		expect(span("hit")[0]).toBeCloseTo(1, 6);
+	});
+
+	it("counts note values and bars in a beat from outside", () => {
+		const { span, layout, warnings } = solve([
+			dot("a"),
+			beat,
+			phrase("p", { rate: 2 }, [
+				motion("Enter", "note", "a"),
+				{
+					type: "Stretch",
+					id: "st",
+					props: { beats: 2 },
+					children: [ref("beat"), ref("note")],
+				},
+				{
+					type: "Bar",
+					id: "bar",
+					props: { beats: 2 },
+					children: [ref("beat")],
+				},
+				{ type: "Beat", id: "triplet" },
+				{
+					type: "Polyrhythm",
+					id: "poly",
+					props: { of: [3, 2] },
+					children: [ref("beat"), ref("triplet")],
+				},
+			]),
+		]);
+		expect(warnings).toEqual([]);
+		expect(layout.note.local?.duration).toBeCloseTo(4, 6);
+		expect(span("note")[1]).toBeCloseTo(2, 6);
+		expect(layout.bar.local).toEqual({ start: 0, duration: 4 });
+		expect(span("bar")).toEqual([0, 2]);
+		// three for two of a beat that is 2 of the phrase's seconds
+		expect(layout.triplet.local?.duration).toBeCloseTo(3, 6);
+	});
+
+	it("keeps inside a span, and after one, of the time around", () => {
+		const { layout, span, warnings } = solve([
+			dot("a"),
+			{ type: "Rest", id: "window", props: { at: 2, over: 1 } },
+			motion("Enter", "first", "a", { over: 1.5 }),
+			phrase("p", { at: 1, rate: 2 }, [
+				motion("Enter", "note", "a", { over: 0.5 }),
+				motion("Enter", "next", "a", { over: 0.5 }),
+				{ type: "During", id: "in", children: [ref("window"), ref("note")] },
+				{ type: "After", id: "then", children: [ref("next"), ref("first")] },
+			]),
+		]);
+		expect(warnings).toEqual([]);
+		expect(layout.note.local?.start).toBeCloseTo(2, 6);
+		expect(span("note")[0]).toBeCloseTo(2, 6);
+		expect(layout.next.local?.start).toBeCloseTo(1, 6);
+		expect(span("next")[0]).toBeCloseTo(1.5, 6);
+	});
+
+	it("warns when the phrase's speed follows from what the beat places", () => {
+		const scene = (props: Record<string, unknown>, more: N[] = []) =>
+			solve([
+				dot("a"),
+				beat,
+				phrase("p", props, [
+					motion("Enter", "hit", "a", { over: 0.4 }),
+					onBeat("land", "beat", "hit"),
+				]),
+				...more,
+			]);
+		const sized = scene({ at: 0.25, over: 2 });
+		expect(sized.warnings).toEqual([
+			"OnBeat(land) reads beat through Phrase(p), whose speed follows from its length, which OnBeat(land) changes; give Phrase(p) a rate instead of a length, or put beat inside it",
+		]);
+		expect(sized.layout.hit.local).toEqual({ start: 0, duration: 0.4 });
+		expect(
+			scene({ at: 0.25 }, [
+				{
+					type: "Stretch",
+					id: "st",
+					props: { beats: 2 },
+					children: [ref("beat"), ref("p")],
+				},
+			]).warnings,
+		).toEqual([
+			"OnBeat(land) reads beat through Phrase(p), whose speed follows from its length, which OnBeat(land) changes; give Phrase(p) a rate instead of a length, or put beat inside it",
+		]);
+		expect(scene({ at: 0.25, retrograde: true }).warnings).toEqual([
+			"OnBeat(land) reads beat through Phrase(p), which plays backwards from its end, which OnBeat(land) moves; put beat inside it",
+		]);
+	});
+
+	it("still refuses to write across clocks, or to read into a phrase", () => {
+		const moved = solve([
+			dot("a"),
+			motion("Enter", "hit", "a", { over: 0.4 }),
+			phrase("p", {}, [beat]),
+			onBeat("land", "beat", "hit"),
+		]);
+		expect(moved.warnings).toEqual([
+			"OnBeat(land) reads beat, which plays in Phrase(p)'s time; only what Phrase(p) plays can read it, so declare beat outside the phrase",
+		]);
+		expect(moved.span("hit")).toEqual([0, 0.4]);
+		const written = solve([
+			dot("a"),
+			motion("Enter", "lead", "a", { over: 0.4 }),
+			motion("Enter", "hit", "a", { over: 0.4 }),
+			phrase("p", {}, [ref("hit")]),
+			{
+				type: "SameTime",
+				id: "st",
+				children: [ref("lead"), ref("hit")],
+			},
+		]);
+		expect(written.warnings).toEqual([
+			"SameTime(st) relates lead and hit, which play in different time; relate Phrase(p) itself",
+		]);
+	});
+
+	it("takes what an inline constraint moves into the phrase, not what it reads", () => {
+		const { scene, span, warnings } = solve([
+			dot("a"),
+			beat,
+			motion("Enter", "hit", "a"),
+			motion("Enter", "tail", "a", { at: 2, over: 0.5 }),
+			phrase("p", { at: 0.5 }, [
+				onBeat("land", "beat", "hit"),
+				{ type: "Legato", id: "tie", children: [ref("hit"), ref("tail")] },
+			]),
+		]);
+		expect(warnings).toEqual([]);
+		const clock = (id: string) => scene.nodes.find((n) => n.id === id)?.clock;
+		expect([clock("hit"), clock("tail"), clock("beat")]).toEqual([
+			"p",
+			"p",
+			undefined,
+		]);
+		expect(span("hit")[0]).toBe(1);
+	});
+
+	it("says where a Resolve in another time belongs", () => {
+		const stack: N = {
+			type: "StackV",
+			id: "list",
+			children: [dot("a"), dot("b")],
+		};
+		const swap: N = {
+			type: "Modulate",
+			id: "m",
+			props: { at: 0 },
+			children: [{ type: "StackV", children: [ref("b"), ref("a")] }],
+		};
+		const release: N = {
+			type: "Resolve",
+			id: "r",
+			props: { at: 1 },
+			children: [ref("m")],
+		};
+		// declared outside over a phrase's Modulate, it plays in the phrase too
+		const joined = solve([stack, phrase("p", {}, [swap]), release]);
+		expect(joined.warnings).toEqual([]);
+		expect(joined.scene.nodes.find((n) => n.id === "r")?.clock).toBe("p");
+		expect(solve([stack, swap, phrase("p", {}, [release])]).warnings).toEqual([
+			"Resolve(r) releases m, which holds in the scene's time; a Resolve only releases in its own time, so put it next to m, outside Phrase(p)",
+		]);
+	});
+});

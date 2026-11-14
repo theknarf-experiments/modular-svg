@@ -87,9 +87,34 @@ relations (a relation spans its members), and moving one carries its contents:
 
 A `Phrase` is how a group gets a length: outside it is a leaf like a motion,
 so every relation above works on it; inside, its members are solved in the
-phrase's own seconds (an `at` inside is local). A relation only relates nodes
-in the same time, so to place a phrase's content from outside, relate the
-`Phrase`. Stretching a phrase changes its tape speed (a `Shake` inside keeps
+phrase's own seconds (an `at` inside is local). A relation only moves nodes
+in its own time, so to place a phrase's content from outside, relate the
+`Phrase`. What a relation only reads may play in a time around it: the beat
+of an `OnBeat`, `Bar` or `Polyrhythm`, the source of a `Stretch`, the span a
+`During` keeps to and what an `After` waits for. So a phrase's content can
+land on a beat of the scene, seen through every phrase in between:
+
+```tsx
+<beat key="beat" bpm={120} />
+<phrase key="fill" rate={2} repeat={2}>
+  <enter key="hit">...</enter>
+  <onBeat><ref target="beat" /><ref target="hit" /></onBeat>
+</phrase>
+```
+
+The order of dependence runs one way: the time around a phrase is solved
+first and places it, its start and `rate` say how the beat looks inside, the
+beat places the content, and the content gives the phrase its length. The
+beat is read on the phrase's first pass; later passes land on it when a pass
+is a whole number of beats. A phrase whose length is set (`over`, a `Stretch`)
+gets its speed from that length, and a `retrograde` one counts from its end,
+so there the content would place the beat it reads: that warns and the
+relation is dropped (give the phrase a `rate`, or a `Beat` of its own).
+Reading into a phrase from outside warns too. A relation written inside a
+phrase brings what it moves into the phrase (as a `Sequence` there does) and
+leaves what it reads where it is. A `Resolve` releases only in its own time:
+one declared outside over a phrase's `Modulate` joins that phrase, and one
+inside a phrase that names a `Modulate` outside warns. Stretching a phrase changes its tape speed (a `Shake` inside keeps
 its number of shakes), and `over` is its whole span: `over={2} repeat={3}` is
 three passes in two seconds (it must be above 0; a phrase left with no time
 warns, since nothing in it plays).

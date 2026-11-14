@@ -69,6 +69,49 @@ export function phraseOp(
 	);
 }
 
+/** A phrase a span is read through: its start slot and its tape speed. */
+export type Through = { phrase: number; rate: number };
+
+/**
+ * A span of the time around some phrases as it looks in the innermost one's
+ * own seconds; `chain` runs from the outermost phrase in.
+ */
+export function imageThrough(
+	chain: readonly { start: number; rate: number }[],
+	start: number,
+	duration: number,
+): [number, number] {
+	let [s, d] = [start, duration];
+	for (const c of chain) {
+		s = (s - c.start) * c.rate;
+		d *= c.rate;
+	}
+	return [s, d];
+}
+
+/**
+ * Keeps slots `at` on the span at `source` as seen through `chain`: read
+ * only, so what plays inside a phrase can follow a beat outside it.
+ */
+export function imageOp(
+	source: number,
+	chain: readonly Through[],
+	at: number,
+): LayoutOperator {
+	return writing(
+		(cur, next) => {
+			const [s, d] = imageThrough(
+				chain.map((c) => ({ start: cur[c.phrase], rate: c.rate })),
+				cur[source],
+				cur[source + 1],
+			);
+			next[at] = s;
+			next[at + 1] = d;
+		},
+		[at, at + 1],
+	);
+}
+
 /** Back to back with an exact gap; the anchor stays, the rest pack around it. */
 export function sequenceOp(
 	children: readonly TimeChild[],

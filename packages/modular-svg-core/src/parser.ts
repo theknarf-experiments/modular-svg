@@ -33,6 +33,7 @@ import {
 	TIME_TYPES,
 	type TimeCheck,
 	type TimeNode,
+	type TimeViews,
 	unsettled,
 	unsettledMessage,
 } from "./time_scene.ts";
@@ -57,6 +58,8 @@ export type JsonScene = {
 	timedIds: string[];
 	/** run against a solved layout with checkTime */
 	timeChecks: TimeCheck[];
+	/** spans a phrase's content reads from the time around it */
+	timeViews?: TimeViews;
 	/** Ownership conflicts detected at parse time (over-constrained scenes) */
 	warnings: string[];
 	/**
@@ -1565,6 +1568,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		timeSeed: time.timeSeed,
 		timedIds: time.timedIds,
 		timeChecks: time.timeChecks,
+		timeViews: time.timeViews,
 		warnings: [
 			...warnings,
 			...scopeWarnings,

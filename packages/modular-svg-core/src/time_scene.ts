@@ -20,6 +20,8 @@ import {
 	beforeOp,
 	duringOp,
 	holdOp,
+	imageOp,
+	imageThrough,
 	lengthOp,
 	onBeatOp,
 	phraseOp,
@@ -30,6 +32,7 @@ import {
 	staggerOp,
 	stretchOp,
 	type Tempo,
+	type Through,
 	TIME_EPSILON,
 	type TimeAlignment,
 	type TimeChild,
@@ -72,6 +75,18 @@ const TIME_CONSTRAINTS = new Set([
 
 // Clocks: a leaf in the time around them, with a time of their own inside
 const TIME_CLOCKS = new Set(["Phrase"]);
+
+// The members a relation only reads, never moves or sizes: those may play in
+// a time around the relation's own
+const reads = (type: string, index: number): boolean =>
+	type === "After"
+		? index > 0
+		: index === 0 &&
+			(type === "OnBeat" ||
+				type === "Bar" ||
+				type === "Stretch" ||
+				type === "Polyrhythm" ||
+				type === "During");
 
 export const TIME_TYPES = new Set([
 	...TIME_GROUPS,
@@ -156,12 +171,21 @@ export type TimeScene = {
 	timeSeed: number[];
 	timedIds: string[];
 	timeChecks: TimeCheck[];
+	timeViews: TimeViews;
 	warnings: string[];
 	/** the phrase whose time each node plays in; absent for scene time */
 	clockOf: Map<string, string>;
 	/** how each phrase plays its passes */
 	phrases: Map<string, PhraseSpec>;
 };
+
+/**
+ * Spans read from a time around a phrase, as they look in the phrase's own
+ * seconds. They sit in slots past the nodes' and only follow what they read,
+ * so a check fills them in before it applies the relations. `inside` are the
+ * slots of what plays in a phrase that reads this way.
+ */
+export type TimeViews = { operators: LayoutOperator[]; inside: number[] };
 
 /** `repeat` is Infinity for a phrase that repeats until its enclosing time ends. */
 export type PhraseSpec = {
@@ -178,7 +202,15 @@ const num = (v: unknown, fallback: number): number =>
  * marks and groups span the motions on them and their members, relations
  * become operators. `order` is the walk's post-order, so members precede the
  * relations over them, as Refs require. What a Phrase takes is solved in the
- * same array but in the phrase's own seconds, sealed from the time around it.
+ * same array but in the phrase's own seconds. Nothing outside may move it,
+ * and it moves nothing outside; it may read what plays around it (a Beat to
+ * land on), seen through the phrases in between. That order of dependence is
+ * one way only while a phrase's speed is its `rate`: the time around sets
+ * where the phrase starts, start and rate set how the beat looks inside, the
+ * beat places the content, and the content sets how long the phrase is. A
+ * phrase with a set length, or one that plays backwards, gets its speed or
+ * its origin from that length, which closes the circle, so reading through
+ * one warns and is dropped.
  */
 export function buildTime(
 	nodes: readonly NodeRecord[],
@@ -247,6 +279,15 @@ export function buildTime(
 		return yes;
 	};
 
+	const relatedOf = (t: TimeNode): NodeRecord[] =>
+		t.children.filter((c) => rawTimed(c));
+	const writtenBy = (n: NodeRecord): NodeRecord[] => {
+		const t = byId.get(n.id);
+		return t && TIME_CONSTRAINTS.has(t.type)
+			? relatedOf(t).filter((_, i) => !reads(t.type, i))
+			: [];
+	};
+
 	// Clocks: a phrase takes its children and all they span, down to the next
 	// phrase (whose own slot plays in this one's time)
 	const clockOf = new Map<string, string>();
@@ -265,6 +306,8 @@ export function buildTime(
 			}
 			clockOf.set(n.id, p.rec.id);
 			for (const c of rawChildren(n)) take(c);
+			// A constraint has no span, but what it moves plays where it does
+			for (const c of writtenBy(n)) take(c);
 		};
 		for (const c of p.children) take(c);
 		// Judged once everything is taken: a phrase this one holds keeps its own
@@ -290,7 +333,10 @@ export function buildTime(
 			clockOf.has(t.rec.id)
 		)
 			continue;
-		const members = t.children.filter((c) => rawTimed(c));
+		// What it only reads may play further out
+		const related = relatedOf(t);
+		const written = related.filter((_, i) => !reads(t.type, i));
+		const members = written.length > 0 ? written : related;
 		const clock = members[0] && clockOf.get(members[0].id);
 		if (clock && members.every((m) => clockOf.get(m.id) === clock))
 			clockOf.set(t.rec.id, clock);
@@ -423,6 +469,7 @@ export function buildTime(
 	const isBeat = (n: NodeRecord) => byId.get(n.id)?.type === "Beat";
 	const gridCheck = (
 		relation: string,
+		own: string | undefined,
 		beat: NodeRecord,
 		m: NodeRecord,
 		grid: BeatGrid,
@@ -431,7 +478,7 @@ export function buildTime(
 		spanCheck(
 			relation,
 			(span) => {
-				const [origin, period] = span(beat.id);
+				const [origin, period] = spanFrom(own, beat)(span);
 				const [s0, d] = span(m.id);
 				const at = align === "end" ? s0 + d : s0;
 				return (
@@ -441,6 +488,77 @@ export function buildTime(
 			},
 			`${m.id} is off the beat`,
 		);
+	// Phrases whose length a relation sets, known before the relations are read
+	const lengthSet = new Set<string>();
+	for (const t of order) {
+		const sized =
+			t.type === "Stretch"
+				? t.children.slice(1)
+				: t.type === "Legato" || t.type === "Staccato"
+					? t.children.slice(0, -1)
+					: [];
+		for (const c of sized) if (isClock(c)) lengthSet.add(c.id);
+	}
+	const rateOf = (props: Props): number =>
+		num(props.rate, 0) > 0 ? num(props.rate, 1) : 1;
+
+	// A span read from a time around `own`: a slot pair past the nodes', kept
+	// by an operator as the span looks through the phrases in between
+	const views = new Map<string, { at: number; chain: Through[] }>();
+	const viewOps: LayoutOperator[] = [];
+	const reading = new Set<string>();
+	const view = (
+		relation: string,
+		m: NodeRecord,
+		own: string | undefined,
+	): string | undefined => {
+		const theirs = clockOf.get(m.id);
+		const chain: Through[] = [];
+		for (let at = own; at !== theirs; at = clockOf.get(at)) {
+			if (at === undefined)
+				return `${relation} reads ${m.id}, which plays in Phrase(${theirs})'s time; only what Phrase(${theirs}) plays can read it, so declare ${m.id} outside the phrase`;
+			const props = byId.get(at)?.props ?? {};
+			const through = `${relation} reads ${m.id} through Phrase(${at})`;
+			if (props.retrograde === true)
+				return `${through}, which plays backwards from its end, which ${relation} moves; put ${m.id} inside it`;
+			if (num(props.over, 0) > 0 || lengthSet.has(at))
+				return `${through}, whose speed follows from its length, which ${relation} changes; give Phrase(${at}) a rate instead of a length, or put ${m.id} inside it`;
+			chain.unshift({ phrase: base(at), rate: rateOf(props) });
+		}
+		const key = `${m.id}\n${own}`;
+		if (!views.has(key)) {
+			const at = timeSeed.length;
+			timeSeed.push(0, 0);
+			views.set(key, { at, chain });
+			const op = imageOp(base(m.id), chain, at);
+			viewOps.push(op);
+			ops.push(op);
+			if (own !== undefined) reading.add(own);
+			nameNewOps(`span(${m.id} in Phrase(${own}))`);
+		}
+		return undefined;
+	};
+	// Where a relation playing in `own` reads a member's span
+	const seenFrom = (own: string | undefined, m: NodeRecord): number =>
+		views.get(`${m.id}\n${own}`)?.at ?? base(m.id);
+	const spanFrom =
+		(own: string | undefined, m: NodeRecord) =>
+		(span: (id: string) => [number, number]): [number, number] => {
+			const seen = views.get(`${m.id}\n${own}`);
+			const [start, duration] = span(m.id);
+			return seen
+				? imageThrough(
+						seen.chain.map((c) => ({
+							start: span(phraseAt.get(c.phrase) as string)[0],
+							rate: c.rate,
+						})),
+						start,
+						duration,
+					)
+				: [start, duration];
+		};
+	const phraseAt = new Map(phraseNodes.map((p) => [base(p.rec.id), p.rec.id]));
+
 	// Adjacent pairs a Sequence chains end-to-start, and pairs articulation ties
 	const sequencePairs: { relation: string; a: string; b: string }[] = [];
 	const articulatedPairs: { relation: string; a: string; b: string }[] = [];
@@ -466,9 +584,10 @@ export function buildTime(
 		const { rec, props } = t;
 		const members = t.children.filter((c) => timed.has(c.id));
 		const name = `${t.type}(${rec.id})`;
+		const own = clockOf.get(rec.id);
+		const seen = (m: NodeRecord): number => seenFrom(own, m);
 
 		if (TIME_TYPES.has(t.type) && !TIME_CLOCKS.has(t.type)) {
-			const own = clockOf.get(rec.id);
 			const related = t.children.filter((c) => rawTimed(c));
 			for (const m of related) {
 				if (clockOf.get(m.id) !== own || timed.has(m.id)) continue;
@@ -478,8 +597,17 @@ export function buildTime(
 						`${name}: ${m.id} only moves inside Phrase(${phrase}); relate the Phrase`,
 					);
 			}
-			// A relation only relates nodes that play in the same time
-			const stranger = related.find((m) => clockOf.get(m.id) !== own);
+			// A relation only moves nodes that play in its own time
+			const stranger = related.find(
+				(m, i) => clockOf.get(m.id) !== own && !reads(t.type, i),
+			);
+			if (stranger && t.type === "Resolve") {
+				const theirs = clockOf.get(stranger.id);
+				warnings.push(
+					`${name} releases ${stranger.id}, which holds in ${theirs === undefined ? "the scene" : `Phrase(${theirs})`}'s time; a Resolve only releases in its own time, so put it ${own === undefined ? `in Phrase(${theirs}) too` : `next to ${stranger.id}, outside Phrase(${own})`}`,
+				);
+				continue;
+			}
 			if (stranger) {
 				const other =
 					related.find((m) => clockOf.get(m.id) !== clockOf.get(stranger.id)) ??
@@ -488,6 +616,15 @@ export function buildTime(
 				warnings.push(
 					`${name} relates ${other.id} and ${stranger.id}, which play in different time; relate Phrase(${phrase}) itself`,
 				);
+				continue;
+			}
+			// What it reads may play in a time around its own
+			const unread = related
+				.filter((m) => clockOf.get(m.id) !== own)
+				.map((m) => view(name, m, own))
+				.find((problem) => problem !== undefined);
+			if (unread) {
+				warnings.push(unread);
 				continue;
 			}
 		}
@@ -556,20 +693,14 @@ export function buildTime(
 			const gap = num(props.gap, 0);
 			if (pinned(follower)) {
 				// A pinned follower can only be checked, not moved
-			} else
-				ops.push(
-					afterOp(
-						child(follower),
-						leaders.map((l) => base(l.id)),
-						gap,
-					),
-				);
+			} else ops.push(afterOp(child(follower), leaders.map(seen), gap));
 			for (const l of leaders) {
+				const led = spanFrom(own, l);
 				spanCheck(
 					name,
 					(span) =>
 						span(follower.id)[0] >=
-						span(l.id)[0] + span(l.id)[1] + gap - TIME_EPSILON,
+						led(span)[0] + led(span)[1] + gap - TIME_EPSILON,
 					`${follower.id} starts before ${l.id} ends`,
 				);
 			}
@@ -577,17 +708,18 @@ export function buildTime(
 			const [outer, ...inner] = members;
 			ops.push(
 				duringOp(
-					base(outer.id),
+					seen(outer),
 					inner.map(child),
 					inner.map((m) => !pinned(m)),
 				),
 			);
+			const around = spanFrom(own, outer);
 			for (const m of inner) {
 				spanCheck(
 					name,
 					(span) => {
 						const [s, d] = span(m.id);
-						const [os, od] = span(outer.id);
+						const [os, od] = around(span);
 						return s >= os - TIME_EPSILON && s + d <= os + od + TIME_EPSILON;
 					},
 					`${m.id} runs outside ${outer.id}`,
@@ -603,16 +735,16 @@ export function buildTime(
 				ops.push(
 					isBeat(source)
 						? beatLengthOp(
-								base(source.id),
+								seen(source),
 								targetsBases,
 								num(props.beats, 1),
 								tempoOf(source),
 							)
-						: lengthOp(base(source.id), targetsBases, num(props.beats, 1)),
+						: lengthOp(seen(source), targetsBases, num(props.beats, 1)),
 				);
 			} else {
 				claim(name, targets, null);
-				ops.push(stretchOp(base(source.id), targets.map(child)));
+				ops.push(stretchOp(seen(source), targets.map(child)));
 			}
 		} else if (
 			(t.type === "Legato" || t.type === "Staccato") &&
@@ -653,14 +785,14 @@ export function buildTime(
 				props.align === "end" ? ("end" as const) : ("start" as const);
 			const snap = props.snap === "nearest" ? "nearest" : "next";
 			ops.push(
-				onBeatOp(base(beat.id), rest.map(child), {
+				onBeatOp(seen(beat), rest.map(child), {
 					...grid,
 					align,
 					snap,
 					movable: rest.map((m) => !pinned(m)),
 				}),
 			);
-			for (const m of rest) gridCheck(name, beat, m, grid, align);
+			for (const m of rest) gridCheck(name, own, beat, m, grid, align);
 		} else if (t.type === "Bar") {
 			// A bar starts on a bar line and lasts `count` bars of `beats` beats
 			const beat = t.children[0];
@@ -676,27 +808,27 @@ export function buildTime(
 					tempo: tempoOf(beat),
 				};
 				ops.push(
-					onBeatOp(base(beat.id), [child(rec)], {
+					onBeatOp(seen(beat), [child(rec)], {
 						...grid,
 						align: "start",
 						snap: "next",
 						movable: [!pinned(rec)],
 					}),
 					beatLengthOp(
-						base(beat.id),
+						seen(beat),
 						[base(rec.id)],
 						beats * num(props.count, 1),
 						grid.tempo,
 					),
 				);
-				gridCheck(name, beat, rec, grid, "start");
+				gridCheck(name, own, beat, rec, grid, "start");
 			}
 		} else if (t.type === "Polyrhythm" && members.length === 2) {
 			const [a, b] = members;
 			if (!isBeat(a) || !isBeat(b))
 				warnings.push(`${name}: both members must be Beats`);
 			const of = (props.of as [number, number] | undefined) ?? [3, 2];
-			ops.push(polyrhythmOp(base(a.id), base(b.id), of));
+			ops.push(polyrhythmOp(seen(a), base(b.id), of));
 		} else if (t.type === "Resolve") {
 			for (const c of t.children)
 				if (typeOf(c) !== "Modulate")
@@ -761,7 +893,7 @@ export function buildTime(
 		const repeat = count >= 1 ? count : 1;
 		if (props.rate !== undefined && !(num(props.rate, 0) > 0))
 			warnings.push(`${name}: rate must be above 0; playing at 1`);
-		const rate = num(props.rate, 0) > 0 ? num(props.rate, 1) : 1;
+		const rate = rateOf(props);
 		const alternate = props.alternate === true;
 		if (alternate && repeat === 1)
 			warnings.push(`${name}: alternate needs repeat`);
@@ -852,6 +984,23 @@ export function buildTime(
 			);
 	}
 
+	// Everything a reading phrase plays, phrases inside it included
+	const readsAround = (id: string): boolean => {
+		for (
+			let at = clockOf.get(id), d = 0;
+			at !== undefined && d <= phraseNodes.length;
+			at = clockOf.get(at), d++
+		)
+			if (reading.has(at)) return true;
+		return false;
+	};
+	const inside =
+		reading.size > 0
+			? nodes
+					.filter((n) => readsAround(n.id))
+					.flatMap((n) => [base(n.id), base(n.id) + 1])
+			: [];
+
 	timeChecks.push(
 		earliestCheck(
 			[...timed].filter((id) => !clockOf.has(id)),
@@ -866,6 +1015,7 @@ export function buildTime(
 		timeSeed,
 		timedIds: nodes.filter((n) => timed.has(n.id)).map((n) => n.id),
 		timeChecks,
+		timeViews: { operators: viewOps, inside },
 		warnings,
 		clockOf,
 		phrases,
@@ -930,6 +1080,7 @@ export function checkTime(
 		timeOperators?: readonly LayoutOperator[];
 		timeOperatorNames?: readonly string[];
 		timeSeed?: readonly number[];
+		timeViews?: TimeViews;
 	},
 	layout: Record<
 		string,
@@ -965,6 +1116,7 @@ export function checkTime(
 			if (box?.start !== undefined) times[i * 2] = box.start;
 			if (box?.duration !== undefined) times[i * 2 + 1] = box.duration;
 		});
+		for (const view of scene.timeViews?.operators ?? []) view(times, times);
 		const names = unsettled(
 			times,
 			scene.timeOperators,

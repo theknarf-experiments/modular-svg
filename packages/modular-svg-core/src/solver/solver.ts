@@ -30,8 +30,10 @@ export type Scene = {
 	coloredPaints?: string[];
 	/** operators over the time array (2 slots per node: start, duration) */
 	timeOperators?: LayoutOperator[];
-	/** initial start, duration per node (length nodes * 2) */
+	/** initial start, duration per node (nodes * 2, then the slots of timeViews) */
 	timeSeed?: number[];
+	/** spans a phrase's content reads from the time around it, and that content's slots */
+	timeViews?: { operators: LayoutOperator[]; inside: number[] };
 	/** ids whose solved time span should be emitted into the result */
 	timedIds?: string[];
 	/** the layout relations that hold while the given Modulates are active */
@@ -142,13 +144,23 @@ export function solveTime(
 	scene: Scene,
 	opts?: Partial<RelaxOptions>,
 ): Float64Array {
-	const times = new Float64Array(scene.timeSeed ?? []);
-	relax(times, scene.timeOperators ?? [], {
+	const seed = scene.timeSeed ?? [];
+	const times = new Float64Array(seed);
+	const options = {
 		// Time feeds keyframe percentages, so it converges further than layout
 		maxIter: opts?.maxIter ?? 400,
 		epsilon: opts?.epsilon ?? 1e-9,
 		damping: opts?.damping ?? 0.5,
-	});
+	};
+	relax(times, scene.timeOperators ?? [], options);
+	// The time around a phrase comes first: while the phrase is still finding
+	// its start the beat it reads drifts, and what snaps onto a drifting beat
+	// overshoots for good. So its content starts over once the rest is settled
+	const inside = scene.timeViews?.inside ?? [];
+	if (inside.length > 0) {
+		for (const i of inside) times[i] = seed[i];
+		relax(times, scene.timeOperators ?? [], options);
+	}
 	return times;
 }
 

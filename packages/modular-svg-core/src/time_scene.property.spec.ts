@@ -268,3 +268,130 @@ describe("time relations (properties)", () => {
 		);
 	});
 });
+
+describe("reading a beat across clocks (properties)", () => {
+	const readingArb = fc.record({
+		period: fc.constantFrom(0.4, 0.5, 1),
+		offset: fc.constantFrom(0, 0.1, 0.3),
+		lead: fc.constantFrom(0.15, 0.4, 1.3),
+		placed: fc.constantFrom(
+			"at" as const,
+			"sequence" as const,
+			"onBeat" as const,
+		),
+		rates: fc.array(fc.constantFrom(0.5, 1, 2, 3), {
+			minLength: 1,
+			maxLength: 3,
+		}),
+		starts: fc.array(fc.constantFrom(0, 0.2, 0.75), {
+			minLength: 3,
+			maxLength: 3,
+		}),
+		division: fc.constantFrom(1, 2, 3),
+		repeat: fc.constantFrom(1, 2),
+	});
+
+	it("lands on the first beat after where the phrase would play it, however the phrase is placed", () => {
+		fc.assert(
+			fc.property(readingArb, (s) => {
+				// Phrases nest outermost first; the innermost holds the hit
+				const inner: N[] = [
+					{
+						type: "Enter",
+						id: "wait",
+						props: { over: s.starts[0] + 0.1 },
+						children: [ref("r")],
+					},
+					{
+						type: "Enter",
+						id: "hit",
+						props: { over: 0.3 },
+						children: [ref("r")],
+					},
+					{
+						type: "After",
+						id: "after",
+						children: [ref("hit"), ref("wait")],
+					},
+					{
+						type: "OnBeat",
+						id: "land",
+						props: { division: s.division },
+						children: [ref("beat"), ref("hit")],
+					},
+				];
+				const phrases = s.rates.reduceRight<N[]>(
+					(children, rate, i) => [
+						{
+							type: "Phrase",
+							id: `p${i}`,
+							props: {
+								rate,
+								repeat: s.repeat,
+								...(i > 0 || s.placed === "at" ? { at: s.starts[i] } : {}),
+							},
+							children,
+						},
+					],
+					inner,
+				);
+				const placing: N[] =
+					s.placed === "sequence"
+						? [
+								{
+									type: "Sequence",
+									id: "seq",
+									children: [ref("lead"), ref("p0")],
+								},
+							]
+						: s.placed === "onBeat"
+							? [
+									{
+										type: "After",
+										id: "then",
+										children: [ref("p0"), ref("lead")],
+									},
+									{
+										type: "OnBeat",
+										id: "bar",
+										props: { every: 2 },
+										children: [ref("beat"), ref("p0")],
+									},
+								]
+							: [];
+				const scene = buildSceneFromJson({
+					type: "Group",
+					id: "root",
+					children: [
+						{ type: "Rect", id: "r", props: { width: 10, height: 10 } },
+						{
+							type: "Beat",
+							id: "beat",
+							props: { period: s.period, offset: s.offset },
+						},
+						{
+							type: "Enter",
+							id: "lead",
+							props: { over: s.lead },
+							children: [ref("r")],
+						},
+						...phrases,
+						...placing,
+					],
+				} as Record<string, unknown>);
+				const layout = solveLayout(scene);
+				expect([...scene.warnings, ...checkSolution(scene, layout)]).toEqual(
+					[],
+				);
+				const grid = { every: 1, division: s.division, offset: 0, swing: 0.5 };
+				const [hit, wait] = [layout.hit, layout.wait];
+				const free = (wait.start ?? 0) + (wait.duration ?? 0);
+				expect(hit.start).toBeCloseTo(
+					snapToGrid(free, s.offset, s.period, grid, "next"),
+					4,
+				);
+			}),
+			{ numRuns: 200 },
+		);
+	});
+});
