@@ -54,13 +54,78 @@ self-contained SVG with CSS keyframes and no runtime script.
 | `Shake amplitude`, `Wiggle amplitude seed` | damped shake; seeded looping noise |
 | `Motion from steps` | svjeez-style steps: `{to, over, ease}`, `{set}`, `{wait}`; any channel, `fill`/`stroke`/`width`/`height`/`d` and a circle's `r` included |
 | `Sampled fn tolerance` | bake a function of time into few keyframes |
-| `Travel` | move the first child through the following refs, at even speed |
+| `Travel route pace orient` | move the first child through the following refs, at even speed: in straight legs between their centres, along one smooth curve through them (`route="smooth"`), or along the marks themselves (`route="along"`, below) |
+
+**Routes.** A `Travel`'s first child is the mover; the rest are refs to where
+it goes, and nothing but the mover is moved. `route="smooth"` passes through
+the same centres as the straight legs do, on one curve (a centripetal
+Catmull-Rom spline); when the last waypoint is where the mover started, the
+route closes and loops without a seam. `route="along"` reads the refs as the
+route itself, in order: a `Line`'s segment, a `Curve`'s curve, an `Arrow` up
+to the tip of its head, a `Path`'s first subpath where it is drawn (`M L H V
+C S Q T Z`) and an `Arc`'s outer arc from its start angle. A gap between two
+marks is crossed in a straight run, and the mover sits on the start of the
+route from the start of the scene, as an `Enter`'s `from` holds before it
+plays.
+
+```tsx
+<curve key="wire"><ref target="a" /><ref target="b" /></curve>
+<travel key="trip" route="along" orient over={1.2} ease="inOut">
+  <ref target="packet" /><ref target="wire" />
+</travel>
+```
+
+Speed is even along the length of the route. `pace` says what the `ease`
+shapes: `"leg"` eases every stretch between two waypoints on its own, so the
+mover settles at each (the default on a straight route), and `"trip"` eases
+the whole way once (the default otherwise; a route along marks has no legs).
+An ease that leaves 0..1 runs off the ends of the route along their tangents,
+so a spring overshoots the last waypoint and comes back; on a closed route it
+runs on round. `orient` turns the mover to face along the route, about its
+own centre: `true` for a mover drawn facing right, or the degrees to add for
+one that is not. It keeps its first heading until the trip starts and its
+last afterwards, and played backwards (`retrograde`) it keeps the forward
+heading, as a tape would. A curved route is written as sampled `translate`
+(and `rotate`) keyframes within a quarter pixel of the curve, never closer
+together than a 240Hz frame, so it is an ordinary motion to everything else:
+phrases retime it and connectors follow it. A route is read where layout has
+it at home: a `Travel` along something a modulation moves warns, as does one
+sent along a mark with no path (it passes through its centre), a path's
+second subpath or an `A` command (crossed in a straight line).
 
 Colors in `Motion` (`fill`, `stroke`) may be `{ ref: "id" }`: that node's
 solved color, so motions can animate to colors that `DistinctColors`,
 `SameColor` and the other color relations picked.
 
-Eases: `linear in out inOut pop hold steps(n)` or bezier points. `loop` repeats a
+Eases: `linear in out inOut pop hold steps(n)` or bezier points; `anticipate`
+(pulls back first), `overshoot` (another name for `pop`) and
+`anticipateOvershoot`; and three that are sampled curves rather than one
+bezier: `spring`, `bounce` (a ball landing on the target, never past it) and
+`elastic`. Each of those also takes parameters as an object:
+`{ kind: "spring", bounce: 0.3 }` (-0.9..0.9: how far it overshoots; below 0
+it only creeps in), `{ kind: "spring", stiffness: 180, damping: 14, mass: 1 }`,
+`{ kind: "bounce", bounces: 3, elasticity: 0.5 }`, `{ kind: "elastic", period: 0.3 }`.
+Numbers out of range warn and are read as the nearest allowed value.
+
+```tsx
+<enter ease="spring" from={{ scale: 0 }}>...</enter>
+<modulate ease={{ kind: "spring", bounce: 0.3 }} over={0.6}>...</modulate>
+<travel ease={{ kind: "spring", stiffness: 180, damping: 14 }}>...</travel>
+```
+
+A spring is a shape fitted to the span it eases, like every other ease: the
+solved span owns the length, so `over`, a relation or a `Phrase` that resizes
+the span plays the same spring faster or slower. Only a physical spring
+(`stiffness`, `damping`) brings a length of its own, the time it takes to
+settle, and only as the length the motion has when nothing else sizes it (a
+`Motion` step with such an ease may leave out `over`). The browser gets a
+sampled ease as one CSS `linear()` timing function. Where a value has a
+range, the ease is cut at it: a spring fade stops at opaque and a spring
+`Draw` at the whole stroke, while positions, scales, turns and path shapes
+overshoot freely. A `Stagger` whose `ease` overshoots would start its members
+out of order, which warns.
+
+`loop` repeats a
 motion's span until the scene ends (or `n` times). A looping motion is a
 one-motion `Phrase` (below), so both repeat alike: every pass starts over from
 where the motion began (its `from`; a channel that names none, where the mark
@@ -198,7 +263,11 @@ boxes that swap places pass through each other. A motion plays on things where
 the layout has them: a mark follows its box innermost, and `scale` and
 `rotate` pivot on the centre of their target as it then is, so a reordered
 list turns as the list it has become. Offsets are still measured from home, so
-a `Travel` towards something a modulation moves warns.
+a `Travel` towards something a modulation moves warns (a waypoint, a mark of
+its route, or an end of a connector it rides along). A `Modulate` on a spring
+`ease` overshoots like anything else: boxes run past and settle, sizes stop at
+zero, and a connector between them is redrawn at every turn of the spring, so
+it stays attached through the overshoot.
 
 **Connectors follow their ends.** The same holds for motions: a line, curve
 or arrow whose end a motion moves (`Travel`, `x`/`y` in `Enter`, `Exit`,
@@ -210,9 +279,11 @@ shell instead, and a motion on the connector itself (`Draw`, a fade, a slide)
 stays its own. A motion on a group that holds the connector and one end keeps
 the other end where it is. The redrawn path keeps only the keys it needs
 (within half a pixel), and the reduced-motion still shows it attached.
-Only the translate is followed: an end that a motion scales or rotates keeps
-its connector at the unscaled box, and an end inside a group that turns or
-scales is not followed around the pivot.
+A mover on a curved route is followed the same way, round every bend.
+Only the translate is followed: an end that a motion scales or rotates (a
+`Travel`'s `orient` included) keeps its connector at the unscaled, unturned
+box, and an end inside a group that turns or scales is not followed around
+the pivot.
 
 A `Sequence` and a `Legato` over the same pair are circular (each sets the
 other's input), which warns: place legato members with `Stagger`, `OnBeat` or `At`.
@@ -233,7 +304,8 @@ over-constrained scenes are reported rather than silently drifting. `Graphic`
 logs these warnings outside production builds, and the CLI prints them.
 
 In React, `Graphic` takes `transition` (tween marks from their previous solved
-geometry and color whenever state changes the solution), `playhead` (hold every motion at a time, for
+geometry and color whenever state changes the solution; with a spring or an
+overshooting `ease`, geometry runs past and settles while colors ease out), `playhead` (hold every motion at a time, for
 scrubbing; while it holds, changes apply at once, since the tweens share the
 held clock) and `onSolve`, which hands out the solved spans of every timed ref,
 the layout boxes, warnings and a live animation clock. `useCues(solution,

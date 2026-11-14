@@ -12,6 +12,8 @@ import { DrumFillExample } from "./examples/animation/DrumFillExample";
 import drumFillExampleCode from "./examples/animation/DrumFillExample.tsx?raw";
 import { EasingExample } from "./examples/animation/EasingExample";
 import easingExampleCode from "./examples/animation/EasingExample.tsx?raw";
+import { FlightPathExample } from "./examples/animation/FlightPathExample";
+import flightPathExampleCode from "./examples/animation/FlightPathExample.tsx?raw";
 import { GrooveExample } from "./examples/animation/GrooveExample";
 import grooveExampleCode from "./examples/animation/GrooveExample.tsx?raw";
 import { HandoffExample } from "./examples/animation/HandoffExample";
@@ -40,10 +42,14 @@ import { ScrubberExample } from "./examples/animation/ScrubberExample";
 import scrubberExampleCode from "./examples/animation/ScrubberExample.tsx?raw";
 import { SelectionExample } from "./examples/animation/SelectionExample";
 import selectionExampleCode from "./examples/animation/SelectionExample.tsx?raw";
+import { SignalFlowExample } from "./examples/animation/SignalFlowExample";
+import signalFlowExampleCode from "./examples/animation/SignalFlowExample.tsx?raw";
 import { SortExample } from "./examples/animation/SortExample";
 import sortExampleCode from "./examples/animation/SortExample.tsx?raw";
 import { SoundExample } from "./examples/animation/SoundExample";
 import soundExampleCode from "./examples/animation/SoundExample.tsx?raw";
+import { SpringMenuExample } from "./examples/animation/SpringMenuExample";
+import springMenuExampleCode from "./examples/animation/SpringMenuExample.tsx?raw";
 import { StatusExample } from "./examples/animation/StatusExample";
 import statusExampleCode from "./examples/animation/StatusExample.tsx?raw";
 import { TempoExample } from "./examples/animation/TempoExample";
@@ -369,6 +375,27 @@ export const pages: Page[] = [
 					"A Travel carries the parcel from dock to dock. Its two arrows are drawn between their ends, so they follow the parcel through the trip, and back again when the Phrase around it plays in reverse",
 				code: courierExampleCode,
 				element: <CourierExample />,
+			},
+			{
+				title: "Springs: a menu that opens",
+				description:
+					"A spring is an ease like any other, fitted to the span it eases: the cards enter on one under a Stagger, the ring's Modulate overshoots the card it moves to and settles, and the badge lands with a bounce. The browser gets each as one linear() timing function",
+				code: springMenuExampleCode,
+				element: <SpringMenuExample />,
+			},
+			{
+				title: "Flight path",
+				description:
+					'A Travel can follow a mark instead of hopping between centres. On the left the plane rides the dashed path (route="along") and turns to face along it (orient), while a Draw stretched to the trip strokes the same path behind it. On the right the route is one smooth curve through four beacons (route="smooth") that closes on itself, so the loop has no seam',
+				code: flightPathExampleCode,
+				element: <FlightPathExample />,
+			},
+			{
+				title: "Signals on the wires",
+				description:
+					'Packets ride the Curves that join the services (route="along"), set off one beat apart by an OnBeat. Each arrival rings its service with an elastic ease, and the Phrase around it all plays the exchange twice',
+				code: signalFlowExampleCode,
+				element: <SignalFlowExample />,
 			},
 			{
 				title: "Sorting, step by step",

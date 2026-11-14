@@ -1,7 +1,11 @@
+import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import {
+	along,
 	buildSceneFromJson,
 	layoutToSvg,
+	routeOf,
+	smoothThrough,
 	solveLayout,
 } from "../../modular-svg-core/src/index.ts";
 
@@ -899,4 +903,394 @@ test("the Drum fill example lands its crash on the scene's beat", async ({
 	expect((await at(1)).slider).toBeCloseTo(home, 0);
 	expect((await at(1.5)).slider).toBeCloseTo(home + 60, 0);
 	expect(problems).toEqual([]);
+});
+
+// --- springs and routes ----------------------------------------------------------
+
+const dot = (id: string, x: number, y: number, r = 5): N => ({
+	type: "Circle",
+	id,
+	props: { r, cx: x, cy: y, "stroke-width": 0, fill: "#888" },
+});
+const on = (type: string, id: string, target: string, props: N): N => ({
+	type,
+	id,
+	props,
+	children: [ref(target)],
+});
+const times = (from: number, to: number, count: number): number[] =>
+	Array.from({ length: count + 1 }, (_, i) => from + ((to - from) * i) / count);
+
+test("a spring enter runs past where it rests, then rests there", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			rect("a", { x: 100, y: 0 }),
+			rect("mark", { x: 0, y: 30, width: 200 }),
+			on("Enter", "in", "a", { from: { x: -80 }, ease: "spring", over: 1 }),
+		]),
+	);
+	const xs: number[] = [];
+	for (const t of times(0, 1, 25)) {
+		await seek(page, t);
+		xs.push((await centres(page, ["a"])).a.x);
+	}
+	const home = xs[xs.length - 1];
+	expect(xs[0]).toBeCloseTo(home - 80, 1);
+	// A bounce of 0.4 overshoots by about a tenth of the way
+	expect(Math.max(...xs)).toBeGreaterThan(home + 5);
+	expect(Math.max(...xs)).toBeLessThan(home + 10);
+	await seek(page, 5);
+	expect((await centres(page, ["a"])).a.x).toBeCloseTo(home, 1);
+});
+
+test("a spring never fades past opaque or draws past the whole stroke", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			rect("a"),
+			{
+				type: "Path",
+				id: "line",
+				props: { d: "M 0 40 L 120 40", "stroke-width": 2 },
+			},
+			on("Enter", "fade", "a", { ease: "spring", over: 1 }),
+			on("Draw", "stroke", "line", { ease: "spring", over: 1 }),
+		]),
+	);
+	const seen: { opacity: number; offset: number }[] = [];
+	for (const t of times(0, 1, 40)) {
+		await seek(page, t);
+		seen.push(
+			await page.evaluate(() => {
+				const a = document.querySelector("#a") as Element;
+				const line = document.querySelector("#line") as Element;
+				return {
+					opacity: Number(getComputedStyle(a.parentElement as Element).opacity),
+					offset: Number.parseFloat(getComputedStyle(line).strokeDashoffset),
+				};
+			}),
+		);
+	}
+	expect(Math.max(...seen.map((s) => s.opacity))).toBe(1);
+	expect(Math.min(...seen.map((s) => s.offset))).toBe(0);
+	// Both spend a good while clamped, having got there early
+	expect(seen.filter((s) => s.opacity === 1).length).toBeGreaterThan(8);
+	expect(seen[10].opacity).toBeGreaterThan(0.3);
+	expect(seen[0]).toEqual({ opacity: 0, offset: 1 });
+});
+
+const waypoints = [
+	{ x: 20, y: 20 },
+	{ x: 140, y: 110 },
+	{ x: 260, y: 30 },
+	{ x: 330, y: 150 },
+];
+const course = (props: N, mover: N = dot("mover", 20, 20)): N[] => [
+	...waypoints.slice(1).map((p, i) => dot(`w${i}`, p.x, p.y, 3)),
+	mover,
+	{
+		type: "Travel",
+		id: "trip",
+		props: { over: 2, ease: "linear", ...props },
+		children: [ref("mover"), ...waypoints.slice(1).map((_, i) => ref(`w${i}`))],
+	},
+];
+
+test("a smooth route passes where core says it does", async ({ page }) => {
+	await page.setContent(svgOf(course({ route: "smooth" })));
+	const curve = smoothThrough(waypoints);
+	const route = routeOf(curve.points);
+	const total = route.lengths[route.lengths.length - 1];
+	await seek(page, 0);
+	const start = (await centres(page, ["mover"])).mover;
+	for (const f of [0.1, 0.3, 0.5, 0.75, 1]) {
+		await seek(page, 2 * f);
+		const at = (await centres(page, ["mover"])).mover;
+		const want = along(route, total * f);
+		expect(
+			Math.hypot(
+				at.x - start.x - (want.x - waypoints[0].x),
+				at.y - start.y - (want.y - waypoints[0].y),
+			),
+			`at ${f}`,
+		).toBeLessThan(1);
+	}
+	// It rounds the corner at the first waypoint rather than turning on it
+	await seek(page, 2 * 0.3);
+	const bend = (await centres(page, ["mover", "w0"])) as Record<
+		string,
+		{ x: number; y: number }
+	>;
+	expect(bend.mover.y).toBeLessThan(bend.w0.y + 12);
+});
+
+test("an oriented mover faces along its route", async ({ page }) => {
+	await page.setContent(
+		svgOf([
+			dot("down", 20, 205, 2),
+			dot("across", 220, 205, 2),
+			rect("mover", { x: 0, y: 0 }),
+			{
+				type: "Travel",
+				id: "trip",
+				props: { over: 2, ease: "linear", orient: true },
+				children: [ref("mover"), ref("down"), ref("across")],
+			},
+		]),
+	);
+	// The first leg runs straight down: the 40x10 mover stands on end
+	await seek(page, 0.5);
+	const falling = (await centres(page, ["mover"])).mover;
+	expect(falling.width).toBeCloseTo(10, 0);
+	expect(falling.height).toBeCloseTo(40, 0);
+	// The second runs to the right: it lies flat again, further along
+	await seek(page, 1.6);
+	const flying = (await centres(page, ["mover"])).mover;
+	expect(flying.width).toBeCloseTo(40, 0);
+	expect(flying.height).toBeCloseTo(10, 0);
+	expect(flying.x).toBeGreaterThan(falling.x + 50);
+	// Turned about its own centre, so the centre is still on the route
+	expect(falling.x).toBeCloseTo(20, 0);
+});
+
+/** How far the centre of a mark is from the nearest point of a drawn path. */
+const offPath = (page: Page, mark: string, path: string) =>
+	page.evaluate(
+		([markId, pathId]) => {
+			const svg = document.querySelector("svg") as SVGSVGElement;
+			const line = svg.querySelector(`[id="${pathId}"]`) as SVGGeometryElement;
+			const r = (
+				svg.querySelector(`[id="${markId}"]`) as Element
+			).getBoundingClientRect();
+			const [x, y] = [r.x + r.width / 2, r.y + r.height / 2];
+			const ctm = line.getScreenCTM() as DOMMatrix;
+			const length = line.getTotalLength();
+			let [best, where] = [Infinity, 0];
+			for (let i = 0; i <= 1000; i++) {
+				const p = new DOMPoint(
+					line.getPointAtLength((length * i) / 1000).x,
+					line.getPointAtLength((length * i) / 1000).y,
+				).matrixTransform(ctm);
+				const d = Math.hypot(p.x - x, p.y - y);
+				if (d < best) [best, where] = [d, i / 1000];
+			}
+			return { gap: best, where };
+		},
+		[mark, path],
+	);
+
+test("a mover rides the curve it is sent along", async ({ page }) => {
+	await page.setContent(
+		svgOf([
+			rect("a", { x: 0, y: 0 }),
+			rect("b", { x: 220, y: 140 }),
+			{ type: "Curve", id: "wire", children: [ref("a"), ref("b")] },
+			dot("mover", 100, 20, 4),
+			{
+				type: "Travel",
+				id: "trip",
+				props: { at: 0.5, over: 2, ease: "linear", route: "along" },
+				children: [ref("mover"), ref("wire")],
+			},
+		]),
+	);
+	const seen: number[] = [];
+	// Before the trip starts it already sits on the start of the wire
+	for (const t of [0, 0.5, 0.9, 1.3, 1.5, 1.9, 2.2, 2.5]) {
+		await seek(page, t);
+		const { gap, where } = await offPath(page, "mover", "wire");
+		expect(gap, `at ${t}s`).toBeLessThan(1);
+		seen.push(where);
+	}
+	expect(seen[0]).toBeLessThan(0.01);
+	expect(seen[1]).toBeLessThan(0.01);
+	// Even speed along the curve: a fifth of the trip is a fifth of its length
+	expect(seen[2]).toBeCloseTo(0.2, 1);
+	expect(seen[4]).toBeCloseTo(0.5, 1);
+	expect(seen[7]).toBeGreaterThan(0.99);
+});
+
+test("a route plays backwards in a retrograde phrase", async ({ page }) => {
+	const positions = async (retrograde: boolean) => {
+		await page.setContent(
+			svgOf([
+				...course({ route: "smooth" }).slice(0, -1),
+				{
+					type: "Phrase",
+					id: "p",
+					props: { retrograde },
+					children: [course({ route: "smooth" }).at(-1) as N],
+				},
+			]),
+		);
+		const seen: { x: number; y: number }[] = [];
+		for (const t of times(0, 2, 8)) {
+			await seek(page, t);
+			seen.push((await centres(page, ["mover"])).mover);
+		}
+		return seen;
+	};
+	const forward = await positions(false);
+	const back = await positions(true);
+	back.reverse();
+	forward.forEach((p, i) => {
+		expect(
+			Math.hypot(p.x - back[i].x, p.y - back[i].y),
+			`key ${i}`,
+		).toBeLessThan(1);
+	});
+	expect(Math.hypot(forward[8].x - forward[0].x)).toBeGreaterThan(200);
+});
+
+test("an arrow stays on a mover that takes a smooth route", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			pad("base", 150, 220),
+			...course({ route: "smooth" }, pad("mover", 5, 10)),
+			arrowTo("lead", "base", "mover"),
+		]),
+	);
+	const seen: number[] = [];
+	for (const t of times(0, 2, 12)) {
+		await seek(page, t);
+		const at = await reach(page, "lead", "mover", "end");
+		expect(at.gap, `at ${t}s`).toBeLessThan(TOUCHING);
+		expect(at.head, `head at ${t}s`).toBeLessThan(HEAD);
+		seen.push(Math.round(at.x));
+	}
+	expect(new Set(seen).size).toBeGreaterThan(8);
+});
+
+test("an arrow stays on a box through the overshoot of a spring Modulate", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			{
+				type: "StackH",
+				id: "row",
+				props: { spacing: 40 },
+				children: [pad("a", 0, 0), pad("b", 0, 0)],
+			},
+			arrowTo("k", "a", "b"),
+			{
+				type: "Modulate",
+				id: "m",
+				props: { at: 0.2, over: 1, ease: { kind: "spring", bounce: 0.6 } },
+				children: [
+					{
+						type: "StackH",
+						props: { spacing: 200 },
+						children: [ref("a"), ref("b")],
+					},
+				],
+			},
+		]),
+	);
+	const xs: number[] = [];
+	for (const t of times(0.2, 1.2, 25)) {
+		await seek(page, t);
+		const at = await reach(page, "k", "b", "end");
+		// The arrow stops 5 to 11px short of the box, and nowhere further
+		expect(at.gap, `at ${t}s`).toBeLessThan(TOUCHING);
+		expect(at.gap, `at ${t}s`).toBeGreaterThan(3);
+		expect(at.head, `head at ${t}s`).toBeLessThan(HEAD);
+		xs.push(at.x);
+	}
+	// b went well past where it settles, and the arrow was on it there
+	expect(Math.max(...xs)).toBeGreaterThan(xs[xs.length - 1] + 20);
+});
+
+test("a Graphic transition on a spring overshoots and lands", async ({
+	page,
+}) => {
+	const fixture = fileURLToPath(
+		new URL("./fixtures/spring.tsx", import.meta.url),
+	);
+	await page.goto("http://localhost:5173/");
+	await page.addScriptTag({ type: "module", url: `/@fs${fixture}` });
+	await page.waitForFunction(() => "mount" in window);
+	await page.evaluate(() => (window as never as { mount: () => void }).mount());
+	await page.waitForSelector("#sprung #b");
+	const left = () =>
+		page.evaluate(() => {
+			const svg = document.querySelector("#sprung svg") as SVGSVGElement;
+			const b = svg.querySelector("#b") as SVGRectElement;
+			return b.getBoundingClientRect().x - svg.getBoundingClientRect().x;
+		});
+	expect(await left()).toBeCloseTo(130, 0);
+	await page.evaluate(() =>
+		(window as never as { change: () => void }).change(),
+	);
+	const seen: number[] = [];
+	for (let i = 0; i < 30; i++) {
+		await page.waitForTimeout(30);
+		seen.push(await left());
+	}
+	// It moves (the tween runs), goes past 30 and comes back to it
+	expect(seen.some((x) => x > 35 && x < 125)).toBe(true);
+	expect(Math.min(...seen)).toBeLessThan(28);
+	await page.waitForTimeout(400);
+	expect(await left()).toBeCloseTo(30, 0);
+});
+
+test("the Flight path example keeps the plane on its trail", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/animation/");
+	const svg = page.locator("section", {
+		has: page.getByRole("heading", { name: "Flight path", exact: true }),
+	});
+	await svg.locator("svg [id='plane']").waitFor();
+	const at = (t: number) =>
+		page.evaluate((time) => {
+			const root = [...document.querySelectorAll("main svg")].find((s) =>
+				s.querySelector("[id='plane']"),
+			) as SVGSVGElement;
+			for (const a of root.getAnimations({ subtree: true })) {
+				a.pause();
+				a.currentTime = time * 1000;
+			}
+			const centre = (el: Element) => {
+				const r = el.getBoundingClientRect();
+				return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+			};
+			const trail = root.querySelector("[id='trail']") as SVGGeometryElement;
+			const drawn =
+				1 - Number.parseFloat(getComputedStyle(trail).strokeDashoffset);
+			const tip = trail.getPointAtLength(trail.getTotalLength() * drawn);
+			const p = new DOMPoint(tip.x, tip.y).matrixTransform(
+				trail.getScreenCTM() as DOMMatrix,
+			);
+			const plane = centre(root.querySelector("[id='plane']") as Element);
+			const holding = centre(root.querySelector("[id='holding']") as Element);
+			return { gap: Math.hypot(p.x - plane.x, p.y - plane.y), drawn, holding };
+		}, t);
+	const drawn: number[] = [];
+	for (const t of [0.5, 1.2, 1.8, 2.3, 2.9, 3.5, 4.1]) {
+		const now = await at(t);
+		expect(now.gap, `at ${t}s`).toBeLessThan(1.5);
+		drawn.push(now.drawn);
+	}
+	expect(drawn[0]).toBeCloseTo(0, 2);
+	expect(drawn[6]).toBeCloseTo(1, 2);
+	// The holding pattern closes: a lap later the plane is where it was
+	const [lap0, lap1, half] = [await at(0.4), await at(3.4), await at(1.9)];
+	expect(
+		Math.hypot(
+			lap0.holding.x - lap1.holding.x,
+			lap0.holding.y - lap1.holding.y,
+		),
+	).toBeLessThan(1);
+	expect(
+		Math.hypot(
+			lap0.holding.x - half.holding.x,
+			lap0.holding.y - half.holding.y,
+		),
+	).toBeGreaterThan(60);
 });
