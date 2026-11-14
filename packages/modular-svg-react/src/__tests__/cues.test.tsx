@@ -1,13 +1,35 @@
 import { cuesBetween } from "@modular-svg/core";
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { Solution } from "../cues";
+import { animationTime, type Solution } from "../cues";
 import { Graphic } from "../Graphic";
 
 const solution = (loop: boolean) => ({
 	spans: { a: { start: 0.5, duration: 1 }, b: { start: 2, duration: 0.5 } },
 	duration: 3,
 	loop,
+});
+
+describe("animationTime", () => {
+	const svgWith = (animations: object[], smil = 7) =>
+		({
+			getAnimations: () => animations,
+			getCurrentTime: () => smil,
+		}) as unknown as SVGSVGElement;
+
+	it("reads the scene's own animation, whatever else animates its marks", () => {
+		const svg = svgWith([
+			{ currentTime: 100 },
+			{ transitionProperty: "opacity", currentTime: 200 },
+			{ animationName: "spin", currentTime: 300 },
+			{ animationName: "ms1k2j3h-k4", currentTime: 2508 },
+		]);
+		expect(animationTime(svg)).toBe(2.508);
+	});
+
+	it("falls back to the SMIL clock when the scene has no CSS animation", () => {
+		expect(animationTime(svgWith([{ currentTime: 100 }]))).toBe(7);
+	});
 });
 
 describe("cuesBetween", () => {

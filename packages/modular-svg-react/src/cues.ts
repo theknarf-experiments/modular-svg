@@ -77,12 +77,27 @@ export function useSolution(): [
 	return React.useState<Solution>();
 }
 
-/** The clock of the animations under an SVG, in seconds (unwrapped). */
+// How a scene's stylesheet names its keyframes
+const SCENE_KEYFRAMES = /^ms[0-9a-z]+-k\d+$/;
+
+/**
+ * The CSS animations a scene's own stylesheet runs under an SVG. Whatever
+ * else animates its marks (a transition from the page's styles, say) keeps
+ * a clock of its own.
+ */
+export function sceneAnimations(svg: SVGSVGElement): Animation[] {
+	if (typeof svg.getAnimations !== "function") return [];
+	return svg
+		.getAnimations({ subtree: true })
+		.filter((a) =>
+			SCENE_KEYFRAMES.test((a as Partial<CSSAnimation>).animationName ?? ""),
+		);
+}
+
+/** The clock of a scene's animations under an SVG, in seconds (unwrapped). */
 export function animationTime(svg: SVGSVGElement): number | undefined {
-	if (typeof svg.getAnimations === "function") {
-		for (const a of svg.getAnimations({ subtree: true })) {
-			if (typeof a.currentTime === "number") return a.currentTime / 1000;
-		}
+	for (const a of sceneAnimations(svg)) {
+		if (typeof a.currentTime === "number") return a.currentTime / 1000;
 	}
 	// Scenes animated only through SMIL keep their own document clock
 	return typeof svg.getCurrentTime === "function"

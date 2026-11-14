@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Graphic } from "../Graphic";
 
 type Fake = {
+	animationName?: string;
 	playState: string;
 	currentTime: number | null;
 	ready: Promise<unknown>;
@@ -26,6 +27,8 @@ let smil: { paused: boolean; time: number };
 beforeEach(() => {
 	smil = { paused: false, time: 0.07 };
 	animation = {
+		// named as the scene's stylesheet names its keyframes
+		animationName: "ms1x2y3z-k0",
 		playState: "running",
 		currentTime: 0,
 		ready: Promise.resolve(),
@@ -55,7 +58,11 @@ afterEach(() => {
 });
 
 const scene = (
-	props: { playhead?: number; transition?: boolean; spacing?: number } = {},
+	props: {
+		playhead?: number;
+		transition?: boolean | { duration: number };
+		spacing?: number;
+	} = {},
 ) => (
 	<Graphic
 		playhead={props.playhead}
@@ -116,6 +123,61 @@ describe("Graphic playback", () => {
 		const { container } = render(scene());
 		await mounted(container);
 		expect(smil.time).toBeCloseTo(0.012, 6);
+	});
+});
+
+describe("Graphic clocks", () => {
+	// e.g. a CSS transition the page puts on a mark
+	const stranger = (currentTime: number): Fake => ({
+		...animation,
+		animationName: undefined,
+		currentTime,
+		play: vi.fn(),
+		pause: vi.fn(),
+	});
+
+	it("follows the scene's own animation, not another one on its marks", async () => {
+		const other = stranger(100);
+		proto.getAnimations = () => [other, animation];
+		animation.currentTime = 2508;
+		smil.time = 2.5;
+		const { container } = render(scene());
+		await mounted(container);
+		expect(smil.time).toBeCloseTo(2.508, 6);
+	});
+
+	it("holds and lets go of the scene's animations only", async () => {
+		const other = stranger(100);
+		proto.getAnimations = () => [other, animation];
+		const { container, rerender } = render(scene({ playhead: 0.5 }));
+		await mounted(container);
+		expect(animation.currentTime).toBe(500);
+		rerender(scene());
+		await mounted(container);
+		expect(other.pause).not.toHaveBeenCalled();
+		expect(other.play).not.toHaveBeenCalled();
+		expect(other.currentTime).toBe(100);
+	});
+
+	it("leaves the SMIL clock alone while tweens run on it, then lines it up", async () => {
+		const { container, rerender } = render(
+			scene({ transition: { duration: 0.15 } }),
+		);
+		await mounted(container);
+		// the scene's CSS restarted while SMIL kept counting
+		smil.time = 2.33;
+		animation.currentTime = 100;
+		rerender(scene({ transition: { duration: 0.15 }, spacing: 40 }));
+		await waitFor(() =>
+			expect(container.querySelector("[data-transition]")).toBeTruthy(),
+		);
+		await new Promise((r) => setTimeout(r, 20));
+		expect(smil.time).toBe(2.33);
+		// a finished tween would play again once a clock set back passes it
+		await waitFor(() =>
+			expect(container.querySelector("[data-transition]")).toBeNull(),
+		);
+		await waitFor(() => expect(smil.time).toBeCloseTo(0.1, 6));
 	});
 });
 

@@ -9,7 +9,7 @@ import {
 } from "@modular-svg/core";
 import { FiberProvider, useContextBridge } from "its-fine";
 import * as React from "react";
-import { animationTime, type Solution } from "./cues";
+import { animationTime, type Solution, sceneAnimations } from "./cues";
 import {
 	createRoot,
 	getEventHandlers,
@@ -60,11 +60,6 @@ const prefersReducedMotion = (): boolean =>
 const useIsomorphicLayoutEffect =
 	typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;
 
-const animationsOf = (svg: SVGSVGElement): Animation[] =>
-	typeof svg.getAnimations === "function"
-		? svg.getAnimations({ subtree: true })
-		: [];
-
 // Under reduced motion the stylesheet pauses an animation on its still frame;
 // play() would override that for good
 function heldByStyle(a: Animation): boolean {
@@ -87,7 +82,7 @@ function seek(
 	wasHeld: boolean,
 ): void {
 	if (playhead === undefined && !wasHeld) return;
-	for (const a of animationsOf(svg)) {
+	for (const a of sceneAnimations(svg)) {
 		if (playhead !== undefined) {
 			a.pause();
 			a.currentTime = playhead * 1000;
@@ -108,12 +103,15 @@ function seek(
 const IN_STEP = 0.002;
 
 /**
- * SMIL starts counting when the svg is inserted, CSS with the first frame
- * after it, so on a busy page SMIL lanes run ahead. Once the CSS animations
- * have started, the SMIL clock is set to theirs. Returns a cancel.
+ * SMIL starts counting when the svg is inserted, the scene's CSS with the
+ * first frame after its stylesheet arrives, so SMIL lanes run ahead. Once
+ * the CSS animations have started, the SMIL clock is set to theirs. Only
+ * call this with no transition tweens mounted: they run on the SMIL clock,
+ * so setting it back would skip one in flight and replay a finished one.
+ * Returns a cancel.
  */
 function align(svg: SVGSVGElement): () => void {
-	const running = animationsOf(svg).filter((a) => a.playState === "running");
+	const running = sceneAnimations(svg).filter((a) => a.playState === "running");
 	if (running.length === 0 || typeof svg.setCurrentTime !== "function")
 		return () => {};
 	let live = true;
@@ -486,10 +484,9 @@ function GraphicImpl({
 		const timer = setTimeout(
 			() => {
 				setRoom(null);
-				// Faded-out marks are done; frozen tweens on the rest stay harmless
-				setTweens((last) =>
-					last && last.leaving.length > 0 ? { ...last, leaving: [] } : last,
-				);
+				// Faded-out marks are done, and the tweens rest on their targets:
+				// without them the SMIL clock is free to be lined up again
+				setTweens(null);
 			},
 			((options || undefined)?.duration ?? 0.3) * 1000,
 		);
@@ -505,9 +502,7 @@ function GraphicImpl({
 		const resume = resumeRef.current;
 		resumeRef.current = undefined;
 		if (resume !== undefined && playhead === undefined) {
-			if (typeof svg.getAnimations === "function")
-				for (const a of svg.getAnimations({ subtree: true }))
-					a.currentTime = resume * 1000;
+			for (const a of sceneAnimations(svg)) a.currentTime = resume * 1000;
 			svg.setCurrentTime?.(resume);
 		}
 		if (!tweens) return;
@@ -532,10 +527,11 @@ function GraphicImpl({
 		if (!svg || !ast) return;
 		seek(svg, playhead, heldRef.current);
 		heldRef.current = playhead !== undefined;
-		if (playhead === undefined) return align(svg);
+		// Lined up once no tween runs on the clock that would move
+		if (playhead === undefined) return tweens ? undefined : align(svg);
 		// A tween caught mid-flight would stay frozen there
 		setTweens(null);
-	}, [playhead, ast]);
+	}, [playhead, ast, tweens]);
 
 	if (!ast) {
 		return <div {...props} />;

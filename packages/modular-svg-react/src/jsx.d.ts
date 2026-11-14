@@ -90,6 +90,7 @@ declare module "react" {
 				onClick?: React.MouseEventHandler<SVGElement>;
 				children?: React.ReactNode;
 			};
+			/** in a `modulate`, a circle or arc it gives one side stays round */
 			span: {
 				key?: React.Key;
 				axis?: "x" | "y";
