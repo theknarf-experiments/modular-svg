@@ -521,7 +521,8 @@ export function expandMotion(
 			});
 		for (const s of first.steps) {
 			const at = s.start + offset;
-			if (at >= sceneEnd - 1e-9) break;
+			// A cut on the scene's last instant still lands; a transition has no room
+			if (s.over > 0 ? at >= sceneEnd - 1e-9 : at > sceneEnd + 1e-9) continue;
 			steps.push({ ...s, start: at, over: Math.min(s.over, sceneEnd - at) });
 		}
 	}

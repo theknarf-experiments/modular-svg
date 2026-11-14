@@ -255,22 +255,32 @@ export function buildTime(
 		.sort((a, b) => base(a.rec.id) - base(b.rec.id));
 	for (const p of phraseNodes) {
 		// However the phrase got to it: directly, or through what it takes
-		const refused = new Set<string>();
+		const refused = new Map<string, string>();
 		const take = (n: NodeRecord): void => {
 			if (n.id === p.rec.id) return;
 			const owner = clockOf.get(n.id);
 			if (owner !== undefined) {
-				if (owner !== p.rec.id && !refused.has(n.id))
-					warnings.push(
-						`Phrase(${p.rec.id}) takes ${n.id}, which already plays in Phrase(${owner})'s time`,
-					);
-				refused.add(n.id);
+				if (owner !== p.rec.id) refused.set(n.id, owner);
 				return;
 			}
 			clockOf.set(n.id, p.rec.id);
 			for (const c of rawChildren(n)) take(c);
 		};
 		for (const c of p.children) take(c);
+		// Judged once everything is taken: a phrase this one holds keeps its own
+		const within = (owner: string): boolean => {
+			let at: string | undefined = owner;
+			for (let d = 0; at !== undefined && d <= phraseNodes.length; d++) {
+				if (at === p.rec.id) return true;
+				at = clockOf.get(at);
+			}
+			return false;
+		};
+		for (const [id, owner] of refused)
+			if (!within(owner))
+				warnings.push(
+					`Phrase(${p.rec.id}) takes ${id}, which already plays in Phrase(${owner})'s time`,
+				);
 	}
 	// A relation declared outside over members of one phrase plays in it too
 	for (const t of order) {
@@ -761,7 +771,11 @@ export function buildTime(
 			retrograde: props.retrograde === true,
 		});
 		const members = playing.get(rec.id) ?? [];
-		const sized = props.over !== undefined || durationClaimed.has(rec.id);
+		const given = props.over !== undefined;
+		if (given && !(num(props.over, 0) > 0))
+			warnings.push(`${name}: over must be above 0; playing at its own length`);
+		const sized =
+			(given && num(props.over, 0) > 0) || durationClaimed.has(rec.id);
 		if (sized && props.rate !== undefined)
 			warnings.push(`${name}: rate is overridden by its length`);
 		if (!sized)
@@ -780,9 +794,11 @@ export function buildTime(
 
 		const ids = members.map((m) => m.id);
 		timeChecks.push((span) =>
-			ids.some((id) => span(id)[0] + span(id)[1] > TIME_EPSILON)
-				? undefined
-				: `${name} has nothing to play`,
+			!ids.some((id) => span(id)[0] + span(id)[1] > TIME_EPSILON)
+				? `${name} has nothing to play`
+				: span(rec.id)[1] > TIME_EPSILON
+					? undefined
+					: `${name} lasts ${Math.round(span(rec.id)[1] * 1000) / 1000}s, so nothing in it plays`,
 		);
 		timeChecks.push(earliestCheck(ids, `${name} starts`, "the phrase"));
 	}

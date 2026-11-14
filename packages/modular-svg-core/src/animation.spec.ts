@@ -603,6 +603,78 @@ describe("Phrase", () => {
 		);
 	});
 
+	it("cuts to a backward phrase's first frame where the phrase starts, not at 0", () => {
+		const { ast } = render([
+			box("a"),
+			paint("m0", 0, "#ff0000"),
+			phrase({ at: 2, retrograde: true }, [paint("m1", 0, "#0000ff")]),
+		]);
+		// the phrase's tape is red to blue, so backwards it gives red back
+		expect(keyframesOf(ast.css)[0]).toBe(
+			"0%{fill:#fff;animation-timing-function:linear}33.333%{fill:#ff0000;animation-timing-function:steps(1)}66.667%{fill:#0000ff;animation-timing-function:linear}100%{fill:#ff0000}",
+		);
+	});
+
+	it("starts each phrase on a lane from what the one before left", () => {
+		const { ast } = render([
+			box("a"),
+			phrase({ repeat: 2, alternate: true }, [paint("m1", 0, "#0000ff")]),
+			phrase({ at: 3, retrograde: true }, [paint("m2", 0, "#00ff00")], "q"),
+		]);
+		expect(keyframesOf(ast.css)[0]).toBe(
+			"0%{fill:#fff;animation-timing-function:linear}25%{fill:#0000ff;animation-timing-function:linear}50%{fill:#fff;animation-timing-function:steps(1)}75%{fill:#00ff00;animation-timing-function:linear}100%{fill:#fff}",
+		);
+	});
+
+	it("cuts to a later motion's from where it starts, when another moved the lane first", () => {
+		const { ast } = render([
+			box("a"),
+			paint("m0", 0, "#ff0000"),
+			on("Motion", "m1", "a", {
+				at: 2,
+				from: { fill: "#0000ff" },
+				steps: [{ to: { fill: "#00ff00" }, over: 1, ease: "linear" }],
+			}),
+		]);
+		expect(keyframesOf(ast.css)[0]).toBe(
+			"0%{fill:#fff;animation-timing-function:linear}33.333%{fill:#ff0000;animation-timing-function:steps(1)}66.667%{fill:#0000ff;animation-timing-function:linear}100%{fill:#00ff00}",
+		);
+	});
+
+	it("keeps the first frame inside an outer phrase, and on width", () => {
+		const { ast } = render([
+			box("a"),
+			phrase(
+				{},
+				[
+					on("Motion", "m0", "a", {
+						steps: [{ to: { width: 50 }, over: 1, ease: "linear" }],
+					}),
+					phrase({ at: 2, retrograde: true }, [
+						on("Motion", "m1", "a", {
+							steps: [{ to: { width: 80 }, over: 1, ease: "linear" }],
+						}),
+					]),
+				],
+				"outer",
+			),
+		]);
+		expect(keyframesOf(ast.css)[0]).toBe(
+			"0%{width:20px;animation-timing-function:linear}33.333%{width:50px;animation-timing-function:steps(1)}66.667%{width:80px;animation-timing-function:linear}100%{width:50px}",
+		);
+	});
+
+	it("repeats a phrase from where its lane was when it began", () => {
+		const { ast } = render([
+			box("a"),
+			paint("m0", 0, "#ff0000"),
+			phrase({ at: 2, repeat: 2 }, [paint("m1", 0, "#0000ff")]),
+		]);
+		expect(keyframesOf(ast.css)[0]).toBe(
+			"0%{fill:#fff;animation-timing-function:linear}25%{fill:#ff0000}50%{fill:#ff0000;animation-timing-function:linear}75%{fill:#0000ff;animation-timing-function:steps(1)}75.001%{fill:#ff0000;animation-timing-function:linear}100%{fill:#0000ff}",
+		);
+	});
+
 	it("still refuses two motions in a phrase moving one replaced lane at once", () => {
 		expect(() =>
 			render([

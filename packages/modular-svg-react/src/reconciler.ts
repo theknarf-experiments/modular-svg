@@ -91,6 +91,12 @@ function instanceToJson(instance: Instance): Record<string, unknown> {
 }
 
 // HostConfig implementation
+// React moves a child by appending or inserting it again, without removing it
+function detach<T>(list: T[], child: T): void {
+	const index = list.indexOf(child);
+	if (index !== -1) list.splice(index, 1);
+}
+
 const hostConfig: Reconciler.HostConfig<
 	Type,
 	Props,
@@ -204,6 +210,7 @@ const hostConfig: Reconciler.HostConfig<
 
 	appendChild(parent: Instance, child: Instance | TextInstance): void {
 		if (child === null) return;
+		detach(parent.children, child);
 		parent.children.push(child);
 		child.parent = parent;
 	},
@@ -213,6 +220,7 @@ const hostConfig: Reconciler.HostConfig<
 		child: Instance | TextInstance,
 	): void {
 		if (child === null) return;
+		detach(container.rootInstances, child);
 		container.rootInstances.push(child);
 	},
 
@@ -242,6 +250,7 @@ const hostConfig: Reconciler.HostConfig<
 		beforeChild: Instance | TextInstance,
 	): void {
 		if (child === null || beforeChild === null) return;
+		detach(parent.children, child);
 		const index = parent.children.indexOf(beforeChild);
 		if (index !== -1) {
 			parent.children.splice(index, 0, child);
@@ -255,6 +264,7 @@ const hostConfig: Reconciler.HostConfig<
 		beforeChild: Instance | TextInstance,
 	): void {
 		if (child === null || beforeChild === null) return;
+		detach(container.rootInstances, child);
 		const index = container.rootInstances.indexOf(beforeChild);
 		if (index !== -1) {
 			container.rootInstances.splice(index, 0, child);

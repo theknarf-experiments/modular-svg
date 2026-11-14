@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { buildSceneFromJson } from "../parser.ts";
+import { buildSceneFromJson, checkSolution } from "../parser.ts";
 import type { LayoutOperator } from "./operators.ts";
 import { foldPhases, lerpBoxes, phaseBoxes } from "./phases.ts";
 import { type LayoutResult, solveLayout } from "./solver.ts";
@@ -151,6 +151,50 @@ describe("phases", () => {
 		]);
 		expect(layout.c.phases).toBeUndefined();
 		expect(boxAfter(layout, "b", "pair").y).toBeCloseTo(layout.a.y, 3);
+	});
+
+	it("resizes what a restated stack sized when the modulation gives another total", () => {
+		const row = (total: number, id = "row"): N => ({
+			type: "StackH",
+			id,
+			props: { spacing: 10, total },
+			children: ["a", "b", "c"].map((r) => ({
+				type: "Rect",
+				id: r,
+				props: { height: 10 },
+			})),
+		});
+		const wide = solve([row(200)]).layout;
+		const { scene, layout } = solve([
+			row(100),
+			modulate("m", [
+				rel("StackH", "o", ["a", "b", "c"], { spacing: 10, total: 200 }),
+			]),
+		]);
+		expect(scene.warnings).toEqual([]);
+		expect(checkSolution(scene, layout)).toEqual([]);
+		expect(wide.a.width).toBeGreaterThan(layout.a.width + 10);
+		for (const id of ["a", "b", "c", "row"])
+			expect(boxAfter(layout, id, "m").width).toBeCloseTo(wide[id].width, 3);
+	});
+
+	it("keeps the sizes of a restated stack when the modulation only reorders it", () => {
+		const { scene, layout } = solve([
+			{
+				type: "StackH",
+				id: "row",
+				props: { spacing: 10, total: 100 },
+				children: ["a", "b", "c"].map((r) => ({
+					type: "Rect",
+					id: r,
+					props: { height: 10 },
+				})),
+			},
+			modulate("m", [rel("StackH", "o", ["c", "a", "b"], { spacing: 10 })]),
+		]);
+		expect(scene.warnings).toEqual([]);
+		expect(boxAfter(layout, "c", "m")).toEqual(near(home(layout, "a")));
+		expect(layout.row.phases).toBeUndefined();
 	});
 
 	it("folds each clock's events in start order and cuts a step short at the next", () => {

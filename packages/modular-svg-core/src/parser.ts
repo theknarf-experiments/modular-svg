@@ -955,10 +955,24 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			}
 		}
 
-		function extentOwnedOf(children: NodeRecord[], axis: "w" | "h"): boolean[] {
-			return children.map((c) => {
+		// `assigns`: the relation sizes what nothing else has. A home relation
+		// that it restates sized its members for home only, so those are free
+		function extentOwnedOf(
+			d: Desc,
+			axis: "w" | "h",
+			assigns: boolean,
+		): boolean[] {
+			return d.children.map((c) => {
 				const key = `${c.id}:${axis}`;
-				return hard.has(key) || userOwned.has(key) || !!home?.hard.has(key);
+				if (hard.has(key) || userOwned.has(key)) return true;
+				const owner = home?.hard.get(key);
+				if (owner === undefined) return false;
+				if (!assigns) return true;
+				const theirs = new Set(descs[owner].children.map((m) => m.id));
+				return !(
+					theirs.has(c.id) &&
+					d.children.filter((m) => theirs.has(m.id)).length > 1
+				);
 			});
 		}
 
@@ -1002,7 +1016,11 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				const total = d.props.total as number | undefined;
 				const spacing =
 					spacingProp === undefined && total === undefined ? 10 : spacingProp;
-				const extentOwned = extentOwnedOf(d.children, extentAxis);
+				const extentOwned = extentOwnedOf(
+					d,
+					extentAxis,
+					spacing !== undefined && total !== undefined,
+				);
 				claimExtents(
 					d.container.id,
 					d.children,
@@ -1055,7 +1073,11 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				const extentAxis = d.axis === "x" ? "w" : "h";
 				const anchor = anchorIndex(d, d.axis) ?? 0;
 				claim(d.children, d.axis, exactMode ? anchor : null, "distribute");
-				const extentOwned = extentOwnedOf(d.children, extentAxis);
+				const extentOwned = extentOwnedOf(
+					d,
+					extentAxis,
+					spacing !== undefined && total !== undefined,
+				);
 				claimExtents(
 					"distribute",
 					d.children,

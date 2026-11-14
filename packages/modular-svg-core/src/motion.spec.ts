@@ -3,6 +3,7 @@ import {
 	expandMotion,
 	intrinsicDuration,
 	keysOf,
+	type MotionSpec,
 	resolveEase,
 } from "./motion.ts";
 
@@ -67,6 +68,25 @@ describe("motion expansion", () => {
 			[2, 0],
 			[2, 0.5],
 		]);
+	});
+
+	it("keeps a cut that lands exactly on the scene end in the last pass of a loop", () => {
+		const spec: MotionSpec = {
+			kind: "motion",
+			steps: [{ to: { x: 10 }, over: 1 }, { set: { x: 0 } }],
+			loop: true,
+		};
+		const { steps } = expandMotion(spec, 0, 1, 2);
+		expect(steps.map((s) => [s.start, s.over, s.values.x])).toEqual([
+			[0, 1, 10],
+			[1, 0, 0],
+			[1, 0, undefined],
+			[1, 1, 10],
+			[2, 0, 0],
+		]);
+		// a pass that would only begin at the end still does not
+		const tight = expandMotion({ kind: "draw", loop: true }, 0, 1, 2);
+		expect(tight.steps.map((s) => s.start)).toEqual([0, 1, 1]);
 	});
 
 	it("makes a deterministic damped shake ending at rest", () => {

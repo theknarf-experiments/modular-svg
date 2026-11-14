@@ -58,19 +58,41 @@ const prefersReducedMotion = (): boolean =>
 const useIsomorphicLayoutEffect =
 	typeof window === "undefined" ? React.useEffect : React.useLayoutEffect;
 
-// Seek every CSS and SMIL animation in the graphic, or let them run again
-function seek(svg: SVGSVGElement, playhead: number | undefined): void {
-	const animations =
-		typeof svg.getAnimations === "function"
-			? svg.getAnimations({ subtree: true })
-			: [];
-	for (const a of animations) {
-		if (playhead === undefined) {
-			if (a.playState === "paused") a.play();
-		} else {
+const animationsOf = (svg: SVGSVGElement): Animation[] =>
+	typeof svg.getAnimations === "function"
+		? svg.getAnimations({ subtree: true })
+		: [];
+
+// Under reduced motion the stylesheet pauses an animation on its still frame;
+// play() would override that for good
+function heldByStyle(a: Animation): boolean {
+	const target = (a.effect as KeyframeEffect | null)?.target;
+	if (!target || typeof getComputedStyle !== "function") return false;
+	return getComputedStyle(target)
+		.animationPlayState.split(",")
+		.some((state) => state.trim() === "paused");
+}
+
+/**
+ * Hold every CSS and SMIL animation in the graphic at the playhead. With no
+ * playhead, `wasHeld` says a hold is being let go: only then is there
+ * anything to undo, so a graphic that was never held plays (or rests) as its
+ * stylesheet says.
+ */
+function seek(
+	svg: SVGSVGElement,
+	playhead: number | undefined,
+	wasHeld: boolean,
+): void {
+	if (playhead === undefined && !wasHeld) return;
+	for (const a of animationsOf(svg)) {
+		if (playhead !== undefined) {
 			a.pause();
 			a.currentTime = playhead * 1000;
-		}
+		} else if (heldByStyle(a)) {
+			// Its negative delay is the still frame
+			a.currentTime = 0;
+		} else if (a.playState === "paused") a.play();
 	}
 	if (typeof svg.pauseAnimations !== "function") return;
 	if (playhead === undefined) svg.unpauseAnimations();
@@ -78,6 +100,34 @@ function seek(svg: SVGSVGElement, playhead: number | undefined): void {
 		svg.pauseAnimations();
 		svg.setCurrentTime(playhead);
 	}
+}
+
+// Two clocks further apart than this are worth a jump (seconds)
+const IN_STEP = 0.002;
+
+/**
+ * SMIL starts counting when the svg is inserted, CSS with the first frame
+ * after it, so on a busy page SMIL lanes run ahead. Once the CSS animations
+ * have started, the SMIL clock is set to theirs. Returns a cancel.
+ */
+function align(svg: SVGSVGElement): () => void {
+	const running = animationsOf(svg).filter((a) => a.playState === "running");
+	if (running.length === 0 || typeof svg.setCurrentTime !== "function")
+		return () => {};
+	let live = true;
+	Promise.all(running.map((a) => a.ready)).then(
+		() => {
+			const css = running[0].currentTime;
+			if (!live || typeof css !== "number") return;
+			if (Math.abs(svg.getCurrentTime() - css / 1000) > IN_STEP)
+				svg.setCurrentTime(css / 1000);
+		},
+		// A cancelled animation has no clock to follow
+		() => {},
+	);
+	return () => {
+		live = false;
+	};
 }
 
 // React DOM wants camelCase SVG attribute names (fontSize, strokeDasharray);
@@ -310,6 +360,9 @@ function GraphicImpl({
 	} | null>(null);
 	const transitionRef = React.useRef(transition);
 	transitionRef.current = transition;
+	const playheadRef = React.useRef(playhead);
+	playheadRef.current = playhead;
+	const heldRef = React.useRef(false);
 	const svgRef = React.useRef<SVGSVGElement>(null);
 	const solvedRef = React.useRef<Omit<Solution, "time"> | null>(null);
 	// What was last committed; re-renders with an identical result are skipped
@@ -371,7 +424,9 @@ function GraphicImpl({
 						? animationTime(svgRef.current)
 						: undefined;
 				const tween = transitionRef.current;
-				if (tween && committedRef.current && !prefersReducedMotion()) {
+				// Tweens run on the SMIL clock, which a playhead holds still
+				const held = playheadRef.current !== undefined;
+				if (tween && committedRef.current && !prefersReducedMotion() && !held) {
 					const options = tween === true ? {} : tween;
 					const svg = svgRef.current;
 					const prev = committedRef.current;
@@ -476,7 +531,13 @@ function GraphicImpl({
 
 	// Before paint, so a scrubbed frame never flashes the live one
 	useIsomorphicLayoutEffect(() => {
-		if (svgRef.current && ast) seek(svgRef.current, playhead);
+		const svg = svgRef.current;
+		if (!svg || !ast) return;
+		seek(svg, playhead, heldRef.current);
+		heldRef.current = playhead !== undefined;
+		if (playhead === undefined) return align(svg);
+		// A tween caught mid-flight would stay frozen there
+		setTweens(null);
 	}, [playhead, ast]);
 
 	if (!ast) {

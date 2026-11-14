@@ -715,6 +715,63 @@ describe("Phrase", () => {
 	});
 });
 
+describe("Phrase warnings", () => {
+	it("lets an outer phrase take a mark whose motion an inner phrase it holds plays", () => {
+		const scene = (outer: N[]): N[] => [
+			dot("a"),
+			motion("Enter", "aIn", "a", { over: 1 }),
+			motion("Exit", "aOut", "a", { at: 3, over: 1 }),
+			{
+				type: "Phrase",
+				id: "inner",
+				props: { repeat: 2, alternate: true },
+				children: [ref("aIn")],
+			},
+			{ type: "Phrase", id: "outer", props: { rate: 2 }, children: outer },
+		];
+		expect(solve(scene([ref("inner"), ref("a")])).warnings).toEqual([]);
+		expect(solve(scene([ref("a"), ref("inner")])).warnings).toEqual([]);
+	});
+
+	it("warns about an over that is not above 0 and plays the phrase at its own length", () => {
+		for (const over of [0, -1]) {
+			const { warnings, layout } = solve([
+				dot("a"),
+				{
+					type: "Phrase",
+					id: "p",
+					props: { over },
+					children: [motion("Enter", "aIn", "a", { over: 1 })],
+				},
+			]);
+			expect(warnings).toEqual([
+				"Phrase(p): over must be above 0; playing at its own length",
+			]);
+			expect(layout.p).toMatchObject({ start: 0, duration: 1, length: 1 });
+			expect(layout.aIn).toMatchObject({ start: 0, duration: 1 });
+		}
+	});
+
+	it("warns when a relation leaves a phrase no time to play in", () => {
+		const { warnings } = solve([
+			dot("a"),
+			{ type: "Beat", id: "beat", props: { period: 1 } },
+			{
+				type: "Phrase",
+				id: "p",
+				children: [motion("Enter", "aIn", "a", { over: 1 })],
+			},
+			{
+				type: "Stretch",
+				id: "st",
+				props: { beats: 0 },
+				children: [ref("beat"), ref("p")],
+			},
+		]);
+		expect(warnings).toEqual(["Phrase(p) lasts 0s, so nothing in it plays"]);
+	});
+});
+
 describe("Modulate and Resolve", () => {
 	const row: N = { type: "StackH", id: "row", children: [dot("a"), dot("b")] };
 	const swap = (id: string, props: Record<string, unknown> = {}): N => ({

@@ -330,26 +330,65 @@ type ReplacedLane = {
 };
 
 /**
+ * A lane's value just before `t`, from what plays on it in `list`: the last
+ * step to end by then, or the `initial` of a motion that started by then.
+ * Undefined when nothing has set it yet.
+ */
+function valueBefore(
+	list: readonly Performed[],
+	channel: Channel,
+	t: number,
+): number | string | undefined {
+	let at = -Infinity;
+	let value: number | string | undefined;
+	const set = (time: number, v: number | string | undefined): void => {
+		if (v === undefined || time > t + 1e-9 || time < at) return;
+		[at, value] = [time, v];
+	};
+	for (const { expanded } of list) {
+		const steps = expanded.steps.filter((s) => channel in s.values);
+		set(Math.min(...steps.map((s) => s.start)), expanded.initial[channel]);
+		for (const s of steps) set(s.start + s.over, s.values[channel]);
+	}
+	return value;
+}
+
+/**
  * The lanes whose value each motion replaces (fill, width, d, ...), merged
  * across the motions on one mark. Two that move a lane at once is an error.
+ * The motion that moves a lane first decides where it starts; where a later
+ * one starts from (its `from`, a backward phrase's last frame) is a cut at
+ * that motion's start.
  */
 function replacedLanes(
 	markId: string,
 	list: readonly Performed[],
 ): Map<string, ReplacedLane> {
-	const own = new Map<string, ReplacedLane>();
-	for (const { motion, expanded } of list) {
-		for (const [name, channels] of lanesOf(touched(expanded))) {
+	type Part = Performed & { segments: Step[]; first: number };
+	const parts = new Map<string, { channels: Channel[]; parts: Part[] }>();
+	for (const performed of list) {
+		for (const [name, channels] of lanesOf(touched(performed.expanded))) {
 			if (CHANNELS[channels[0]].nest) continue;
-			const entry = own.get(name) ?? {
-				channels,
-				initial: {},
-				segments: [],
-				owners: [],
-			};
-			const segments = expanded.steps
-				.filter((s) => channels.some((c) => c in s.values))
-				.map((s) => ({ ...s, values: pick(s.values, channels) }));
+			const lane = parts.get(name) ?? { channels, parts: [] };
+			const segments = performed.expanded.steps
+				.filter((s) => lane.channels.some((c) => c in s.values))
+				.map((s) => ({ ...s, values: pick(s.values, lane.channels) }));
+			const first = Math.min(...segments.map((s) => s.start));
+			lane.parts.push({ ...performed, segments, first });
+			parts.set(name, lane);
+		}
+	}
+	const own = new Map<string, ReplacedLane>();
+	for (const [name, lane] of parts) {
+		const entry: ReplacedLane = {
+			channels: lane.channels,
+			initial: {},
+			segments: [],
+			owners: [],
+		};
+		// Array sort is stable, so equal starts keep the order they came in
+		const ordered = [...lane.parts].sort((a, b) => a.first - b.first);
+		ordered.forEach(({ motion, expanded, segments, first }, i) => {
 			for (const a of segments) {
 				const clash = entry.segments.find(
 					(b) =>
@@ -361,26 +400,28 @@ function replacedLanes(
 						`${entry.owners.join(", ")} and ${motion} both move ${name} on ${markId} at ${num(Math.max(a.start, clash.start))}s`,
 					);
 			}
-			// The motion that moves the lane first decides where it starts
-			const first = Math.min(...segments.map((s) => s.start));
-			const earliest = Math.min(
-				Infinity,
-				...entry.segments.map((s) => s.start),
-			);
-			if (first < earliest)
-				entry.initial = {
-					...entry.initial,
-					...pick(expanded.initial, channels),
-				};
-			else
-				entry.initial = {
-					...pick(expanded.initial, channels),
-					...entry.initial,
-				};
+			const initial = pick(expanded.initial, lane.channels);
+			if (i === 0 || !Number.isFinite(first))
+				entry.initial = { ...initial, ...entry.initial };
+			else {
+				const so: Performed[] = [
+					{
+						motion,
+						expanded: { initial: entry.initial, steps: entry.segments },
+					},
+				];
+				const values = Object.fromEntries(
+					Object.entries(initial).filter(
+						([c, v]) => valueBefore(so, c as Channel, first) !== v,
+					),
+				);
+				if (Object.keys(values).length > 0)
+					entry.segments.push({ start: first, over: 0, ease: CUT, values });
+			}
 			entry.segments.push(...segments);
 			entry.owners.push(motion);
-			own.set(name, entry);
-		}
+		});
+		own.set(name, entry);
 	}
 	return own;
 }
@@ -653,43 +694,55 @@ export function compileAnimation(
 		}
 	}
 
-	// Innermost phrases first: each merges what plays on a lane in its time,
-	// then plays that as one into the phrase around it
+	// Outermost phrases first, in the order they start: each merges what plays
+	// on a lane in its time, then plays that as one into the time around it. A
+	// lane nothing inside has set starts from what the time around left it at
 	for (const [markId, byClock] of phrased) {
 		const mark = byId.get(markId) as NodeRecord;
-		const rest = (c: Channel) => restValue(c, mark, layout[markId]);
-		const chains = new Map<string, Phrase[]>();
-		const chainOf = (id: string): Phrase[] => {
-			const chain = chains.get(id) ?? clocksFrom(id);
-			chains.set(id, chain);
-			return chain;
+		const inside = new Map<string | undefined, Phrase[]>();
+		const known = new Set<string>();
+		for (const id of byClock.keys())
+			clocksFrom(id).forEach((clock, i, chain) => {
+				if (known.has(clock.id)) return;
+				known.add(clock.id);
+				const outer = chain[i + 1]?.id;
+				inside.set(outer, [...(inside.get(outer) ?? []), clock]);
+			});
+		const phrasesIn = (id: string | undefined): Phrase[] =>
+			[...(inside.get(id) ?? [])].sort((a, b) => a.start - b.start);
+		const play = (
+			clock: Phrase,
+			until: number,
+			around: readonly Performed[],
+			before: (c: Channel) => number | string,
+		): Performed => {
+			const rest = (c: Channel) =>
+				valueBefore(around, c, clock.start) ?? before(c);
+			const playing = [...(byClock.get(clock.id) ?? [])];
+			for (const inner of phrasesIn(clock.id))
+				playing.push(play(inner, clock.length, playing, rest));
+			const lanes = [...replacedLanes(markId, playing).values()];
+			return {
+				motion: [...new Set(lanes.flatMap((l) => l.owners))].join(", "),
+				expanded: retime(
+					{
+						initial: Object.assign({}, ...lanes.map((l) => l.initial)),
+						steps: lanes.flatMap((l) => l.segments),
+					},
+					clock,
+					until,
+					rest,
+				),
+			};
 		};
-		while (byClock.size > 0) {
-			const [id] = [...byClock.keys()].sort(
-				(a, b) => chainOf(b).length - chainOf(a).length,
+		const around: Performed[] = [...(contributions.get(markId) ?? [])];
+		for (const clock of phrasesIn(undefined)) {
+			const played = play(clock, period, around, (c) =>
+				restValue(c, mark, layout[markId]),
 			);
-			const [clock, outer] = chainOf(id);
-			const lanes = [...replacedLanes(markId, byClock.get(id) ?? []).values()];
-			byClock.delete(id);
-			const motion = [...new Set(lanes.flatMap((l) => l.owners))].join(", ");
-			const expanded = retime(
-				{
-					initial: Object.assign({}, ...lanes.map((l) => l.initial)),
-					steps: lanes.flatMap((l) => l.segments),
-				},
-				clock,
-				outer?.length ?? period,
-				rest,
-			);
-			if (outer)
-				byClock.set(outer.id, [
-					...(byClock.get(outer.id) ?? []),
-					{ motion, expanded },
-				]);
-			else {
-				pastEnd(motion, expanded);
-				contribute(markId, { motion, expanded, pivot: { x: 0, y: 0 } });
-			}
+			pastEnd(played.motion, played.expanded);
+			around.push(played);
+			contribute(markId, { ...played, pivot: { x: 0, y: 0 } });
 		}
 	}
 
