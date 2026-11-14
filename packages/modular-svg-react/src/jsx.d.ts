@@ -239,7 +239,14 @@ declare module "react" {
 				step?: number;
 			};
 			/** moves its first child through the rest, in order */
-			travel: Motion;
+			travel: Motion & {
+				/** straight legs through the waypoints' centres (default), one smooth curve through them, or along the marks themselves */
+				route?: "straight" | "smooth" | "along";
+				/** what the ease shapes: every leg (settling at each waypoint) or the whole trip. Default "leg" on a straight route, "trip" otherwise */
+				pace?: "leg" | "trip";
+				/** turn the mover to face along the route: true, or degrees added for a mover not drawn facing right */
+				orient?: boolean | number;
+			};
 
 			// Time relations: constrain the spans of what they ref
 			sequence: Timed & { gap?: number };

@@ -2,15 +2,20 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { cuesBetween } from "./cues.ts";
 import {
+	CHANNELS,
+	type Channel,
+	type Ease,
 	easeAt,
 	expandMotion,
 	keysOf,
+	MAX_STOPS,
 	type MotionSpec,
 	ramerDouglasPeucker,
 	resolveEase,
 	sampleAt,
 } from "./motion.ts";
-import { retime } from "./phrase.ts";
+import { retime, reverseEase } from "./phrase.ts";
+import { along, routeOf, smoothThrough } from "./route.ts";
 import { beatWarp, snapToGrid } from "./solver/time.ts";
 
 const easeArb = fc.oneof(
@@ -517,6 +522,157 @@ describe("ramerDouglasPeucker (properties)", () => {
 						0,
 						samples.length - 1,
 					]);
+				},
+			),
+		);
+	});
+});
+
+const shapedArb: fc.Arbitrary<Ease> = fc.oneof(
+	fc.record({
+		kind: fc.constant("spring" as const),
+		bounce: fc.double({ min: -0.9, max: 0.9, noNaN: true }),
+	}),
+	fc.record({
+		kind: fc.constant("spring" as const),
+		stiffness: fc.double({ min: 1, max: 2000, noNaN: true }),
+		damping: fc.double({ min: 0.5, max: 200, noNaN: true }),
+		mass: fc.double({ min: 0.1, max: 10, noNaN: true }),
+	}),
+	fc.record({
+		kind: fc.constant("bounce" as const),
+		bounces: fc.integer({ min: 1, max: 6 }),
+		elasticity: fc.double({ min: 0.1, max: 0.9, noNaN: true }),
+	}),
+	fc.record({
+		kind: fc.constant("elastic" as const),
+		period: fc.double({ min: 0.1, max: 1, noNaN: true }),
+	}),
+);
+
+describe("sampled eases (properties)", () => {
+	it("resolve to the same bounded, rising stops every time", () => {
+		fc.assert(
+			fc.property(shapedArb, (ease) => {
+				const e = resolveEase(ease);
+				if (e.kind !== "stops") throw new Error("expected stops");
+				expect(resolveEase({ ...(ease as object) } as Ease)).toEqual(e);
+				expect(e.stops.length).toBeLessThanOrEqual(MAX_STOPS);
+				expect(e.stops[0]).toEqual([0, 0]);
+				expect(e.stops.at(-1)).toEqual([1, 1]);
+				for (let i = 1; i < e.stops.length; i++)
+					expect(e.stops[i][0]).toBeGreaterThan(e.stops[i - 1][0]);
+				for (const [, y] of e.stops) expect(Number.isFinite(y)).toBe(true);
+			}),
+		);
+	});
+
+	it("play backwards as their own mirror", () => {
+		fc.assert(
+			fc.property(
+				shapedArb,
+				fc.double({ min: 0, max: 1, noNaN: true }),
+				(ease, x) => {
+					const e = resolveEase(ease);
+					expect(easeAt(reverseEase(e), x)).toBeCloseTo(
+						1 - easeAt(e, 1 - x),
+						6,
+					);
+				},
+			),
+		);
+	});
+
+	it("never take a ranged channel out of its range", () => {
+		fc.assert(
+			fc.property(
+				shapedArb,
+				fc.constantFrom<Channel>("opacity", "draw", "width", "r", "blur"),
+				fc.double({ min: 0, max: 1, noNaN: true }),
+				fc.double({ min: 0, max: 1, noNaN: true }),
+				(ease, channel, from, to) => {
+					const keys = keysOf(
+						{ [channel]: from },
+						[
+							{
+								start: 0,
+								over: 1,
+								ease: resolveEase(ease),
+								values: { [channel]: to },
+							},
+						],
+						1,
+					);
+					const [lo, hi] = CHANNELS[channel].range ?? [0, 1];
+					for (let t = 0; t <= 1; t += 0.05) {
+						const v = Number(sampleAt(keys, t)[channel]);
+						expect(v).toBeGreaterThanOrEqual(lo);
+						expect(v).toBeLessThanOrEqual(hi);
+					}
+				},
+			),
+		);
+	});
+});
+
+describe("travel along a route (properties)", () => {
+	const pointArb = fc.record({
+		x: fc.integer({ min: -300, max: 300 }),
+		y: fc.integer({ min: -300, max: 300 }),
+	});
+
+	it("stays within a quarter pixel of the route, and ends on the last waypoint", () => {
+		fc.assert(
+			fc.property(
+				fc.uniqueArray(pointArb, {
+					minLength: 2,
+					maxLength: 5,
+					selector: (p) => `${p.x},${p.y}`,
+				}),
+				fc.oneof(
+					fc.constantFrom<Ease>("linear", "inOut", "out", "spring", "bounce"),
+					shapedArb,
+				),
+				fc.boolean(),
+				(waypoints, ease, smooth) => {
+					const through = [{ x: 0, y: 0 }, ...waypoints].filter(
+						(p, i, all) => i === 0 || p.x !== all[0].x || p.y !== all[0].y,
+					);
+					if (through.length < 3) return;
+					const path = smooth
+						? routeOf(smoothThrough(through).points)
+						: routeOf(through);
+					const total = path.lengths[path.lengths.length - 1];
+					const { initial, steps } = expandMotion(
+						{ kind: "travel", via: [], ease, pace: "trip", path },
+						0,
+						60,
+						60,
+					);
+					const keys = keysOf(initial, steps, 60);
+					const e = resolveEase(ease);
+					const count = 997;
+					const distance = Array.from(
+						{ length: count + 1 },
+						(_, i) => total * easeAt(e, i / count),
+					);
+					// Samples are no closer than a 240Hz frame, so a corner taken at
+					// speed is cut by what the mover covers in one
+					const frame =
+						Math.max(
+							...distance.slice(1).map((s, i) => Math.abs(s - distance[i])),
+						) *
+						(count / 60 / 240);
+					distance.forEach((s, i) => {
+						const at = sampleAt(keys, (60 * i) / count);
+						const want = along(path, s);
+						expect(
+							Math.hypot(Number(at.x) - want.x, Number(at.y) - want.y),
+						).toBeLessThan(0.25 + frame);
+					});
+					const last = through[through.length - 1];
+					expect(Number(sampleAt(keys, 60).x)).toBeCloseTo(last.x, 6);
+					expect(Number(sampleAt(keys, 60).y)).toBeCloseTo(last.y, 6);
 				},
 			),
 		);

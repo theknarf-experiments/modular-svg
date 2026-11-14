@@ -188,6 +188,94 @@ describe("post-solve checks", () => {
 		]);
 	});
 
+	it("warns when a Modulate moves the end of a connector a Travel rides", () => {
+		expect(
+			check([
+				row(["a", "b"]),
+				rect("dot", { width: 4, height: 4 }),
+				{ type: "Curve", id: "wire", children: [ref("a"), ref("b")] },
+				{
+					type: "Travel",
+					id: "trip",
+					props: { route: "along" },
+					children: [ref("dot"), ref("wire")],
+				},
+				modulate("m", [{ type: "StackH", children: [ref("b"), ref("a")] }]),
+			]),
+		).toEqual([
+			"Travel(trip) aims at wire's home position, which Modulate(m) moves",
+		]);
+	});
+
+	it("says what a Travel's route cannot do", () => {
+		const travel = (props: Record<string, unknown>, via: string) => ({
+			type: "Travel",
+			id: "trip",
+			props,
+			children: [ref("dot"), ref(via)],
+		});
+		const scene = (props: Record<string, unknown>, via: string) =>
+			check([
+				row(["a", "b"]),
+				rect("dot", { width: 4, height: 4 }),
+				{
+					type: "Path",
+					id: "two",
+					props: { d: "M 0 0 L 10 0 A 5 5 0 0 1 20 0 M 30 0 L 40 0" },
+				},
+				travel(props, via),
+			]);
+		expect(scene({ route: "along" }, "a")).toEqual([
+			"Travel(trip) cannot follow a: a rect has no path, so it is passed through its centre",
+		]);
+		expect(scene({ route: "along", pace: "leg" }, "two")).toEqual([
+			'Travel(trip): a route along marks has no legs, so pace="leg" is read as "trip"',
+			"Travel(trip) follows only the first subpath of two",
+			"Travel(trip): two draws an arc (A), which is followed as a straight line; use C or an Arc",
+		]);
+		expect(scene({ orient: "yes" }, "a")).toEqual([
+			'Travel(trip): orient must be true or an angle in degrees, got "yes"',
+		]);
+		expect(scene({ route: "curvy", pace: "fast" }, "a")).toEqual([
+			'Travel(trip): route must be "straight", "smooth" or "along", got "curvy"',
+			'Travel(trip): pace must be "leg" or "trip", got "fast"',
+		]);
+		expect(scene({ route: "smooth", orient: -90, pace: "leg" }, "a")).toEqual(
+			[],
+		);
+	});
+
+	it("names an ease whose numbers are out of range, on motions, steps and modulations", () => {
+		expect(
+			check([
+				row(["a", "b"]),
+				{
+					type: "Enter",
+					id: "in",
+					props: { ease: { kind: "spring", bounce: 3 } },
+					children: [ref("a")],
+				},
+				{
+					type: "Motion",
+					id: "mo",
+					props: {
+						steps: [
+							{ to: { x: 4 }, over: 1, ease: { kind: "elastic", period: 0 } },
+						],
+					},
+					children: [ref("b")],
+				},
+				modulate("m", [{ type: "StackH", children: [ref("b"), ref("a")] }], {
+					ease: { kind: "bounce", bounces: 0 },
+				}),
+			]),
+		).toEqual([
+			"Enter(in): spring bounce must be between -0.9 and 0.9, got 3; using the nearest allowed value",
+			"Motion(mo): elastic period must be between 0.1 and 1, got 0; using the nearest allowed value",
+			"Modulate(m): bounce bounces must be 1 to 6, got 0; using the nearest allowed value",
+		]);
+	});
+
 	it("warns when modulations in different time move the same mark", () => {
 		const swap = (id: string) =>
 			modulate(id, [{ type: "StackH", children: [ref("b"), ref("a")] }]);

@@ -1,25 +1,38 @@
 import {
 	CHANNELS,
 	type Channel,
+	clampEase,
 	type Expanded,
+	easeAt,
 	expandMotion,
 	type Key,
 	keysOf,
 	loopClock,
 	type MotionSpec,
+	mixNumbers,
 	moving,
+	overshoots,
 	passesOf,
+	progressWindow,
 	type ResolvedEase,
 	ramerDouglasPeucker,
 	resolveColorRefs,
 	resolveEase,
 	type Step,
 	sampleAt,
+	stopsOf,
 	type Values,
 	valueAt,
 } from "./motion.ts";
 import { defaultPaint } from "./parser.ts";
 import { type Clock, retime } from "./phrase.ts";
+import {
+	arcPoints,
+	flattenPath,
+	type Point,
+	routeOf,
+	smoothThrough,
+} from "./route.ts";
 import type { LayoutResult, NodeRecord } from "./solver/index.ts";
 import {
 	foldPhases,
@@ -112,6 +125,14 @@ function timing(ease: ResolvedEase): string {
 	if (ease.kind === "linear") return "linear";
 	if (ease.kind === "steps")
 		return `steps(${ease.count}${ease.jump ? ",start" : ""})`;
+	if (ease.kind === "stops") {
+		const last = ease.stops.length - 1;
+		return `linear(${ease.stops
+			.map(([x, y], i) =>
+				i === 0 || i === last ? num(y, 3) : `${num(y, 3)} ${num(x * 100, 2)}%`,
+			)
+			.join(",")})`;
+	}
 	return `cubic-bezier(${ease.points.map((p) => num(p)).join(",")})`;
 }
 
@@ -159,7 +180,12 @@ function keyframes(lane: Lane, period: number): string {
 	return lane.keys
 		.map((k, i) => {
 			const ease = moving(lane.keys, i)
-				? `;animation-timing-function:${timing(k.ease)}`
+				? `;animation-timing-function:${timing(
+						clampEase(
+							k.ease,
+							progressWindow(lane.channels, k.values, lane.keys[i + 1].values),
+						),
+					)}`
 				: "";
 			const declared =
 				lane.declare?.(k.values) ?? declarations(lane.name, k.values);
@@ -188,6 +214,25 @@ function smil(lane: Lane, period: number, loop: boolean): SmilAnimate {
 						}
 					: { t: next.t - nudge, value, spline: "0 0 1 1" },
 			);
+			return;
+		}
+		if (
+			next &&
+			moving(lane.keys, i) &&
+			(k.ease.kind === "stops" || overshoots(k.ease))
+		) {
+			// keySplines cannot leave 0..1, so the ease is spelled out in values
+			const { ease } = k;
+			const shape =
+				ease.kind === "stops" ? ease : stopsOf((x) => easeAt(ease, x));
+			const to = String(next.values[channel]);
+			if (shape.kind === "stops")
+				for (const [x, y] of shape.stops.slice(0, -1))
+					points.push({
+						t: k.t + (next.t - k.t) * x,
+						value: mixNumbers(value, to, y) ?? (y < 1 ? value : to),
+						spline: "0 0 1 1",
+					});
 			return;
 		}
 		const spline =
@@ -323,13 +368,44 @@ function piecesOf(
 		}
 		const count = fine(t0, t1);
 		const over = (t1 - t0) / count;
-		for (let j = 1; j <= count; j++)
-			pieces.push({
-				start: t0 + over * (j - 1),
-				over,
-				ease: LINEAR,
-				at: j === count ? t1 : t0 + over * j,
-			});
+		if (!movers.some(([k]) => k.ease.kind === "stops")) {
+			for (let j = 1; j <= count; j++)
+				pieces.push({
+					start: t0 + over * (j - 1),
+					over,
+					ease: LINEAR,
+					at: j === count ? t1 : t0 + over * j,
+				});
+			continue;
+		}
+		// A sampled ease (a spring) turns at its stops: the ones that matter
+		// at the distance it moves are cut on exactly
+		const cuts = Array.from(
+			{ length: count - 1 },
+			(_, j) => t0 + over * (j + 1),
+		);
+		for (const [k, next] of movers) {
+			if (k.ease.kind !== "stops") continue;
+			const { stops } = k.ease;
+			const far = Math.hypot(
+				...Object.keys(k.values).map(
+					(c) =>
+						Number(next.values[c as Channel]) - Number(k.values[c as Channel]),
+				),
+			);
+			const kept = ramerDouglasPeucker(
+				stops.map(([, y]) => [y]),
+				SLACK / 2 / Math.max(far, SLACK),
+				stops.map(([x]) => x),
+			);
+			for (const i of kept) cuts.push(k.t + (next.t - k.t) * stops[i][0]);
+		}
+		let from = t0;
+		for (const cut of [...cuts.sort((a, b) => a - b), t1]) {
+			if (cut !== t1 && (cut - from < 1e-6 || t1 - cut < 1e-6)) continue;
+			pieces.push({ start: from, over: cut - from, ease: LINEAR, at: cut });
+			from = cut;
+		}
 	}
 	return pieces;
 }
@@ -862,12 +938,15 @@ export function compileAnimation(
 					clocks,
 					expanded: expandMotion(
 						{
-							...resolveColorRefs(resolveTravel(m, layout), (id, paint) => {
-								const node = byId.get(id);
-								if (!node) return undefined;
-								const which = paint ?? defaultPaint(node);
-								return layout[id]?.[which] ?? node[which];
-							}),
+							...resolveColorRefs(
+								resolveTravel(m, layout, byId, offset, pathsOf),
+								(id, paint) => {
+									const node = byId.get(id);
+									if (!node) return undefined;
+									const which = paint ?? defaultPaint(node);
+									return layout[id]?.[which] ?? node[which];
+								},
+							),
 							loop: undefined,
 						},
 						looping ? 0 : start,
@@ -1132,7 +1211,10 @@ export function compileAnimation(
 			});
 		// Motions bring as many keys as they have steps, so only the pieces the
 		// path needs are kept; the still is then drawn rather than read off them
-		const held = apart && still !== undefined ? draw(still) : undefined;
+		const thin =
+			apart ||
+			tracks.some(({ keys }) => keys.some((k) => k.ease.kind === "stops"));
+		const held = thin && still !== undefined ? draw(still) : undefined;
 		morphs.set(
 			mark.id,
 			new Map(
@@ -1140,7 +1222,7 @@ export function compileAnimation(
 					el.id,
 					{
 						initial: { d: el.d },
-						steps: apart ? thinned(el.d, steps[k]) : steps[k],
+						steps: thin ? thinned(el.d, steps[k]) : steps[k],
 						...(held?.[k] ? { still: held[k].d } : {}),
 					},
 				]),
@@ -1463,19 +1545,102 @@ const center = (b: LayoutResult[string]) => ({
 	y: b.y + b.height / 2,
 });
 
+/** The polyline a mark draws, in layout coordinates; undefined for a mark with no path. */
+function drawnRoute(
+	mark: NodeRecord,
+	layout: LayoutResult,
+	offset: { x: number; y: number },
+	pathsOf: PathsOf | undefined,
+): { points: Point[]; closed: boolean } | undefined {
+	const box = layout[mark.id];
+	if (mark.type === "path" && box) {
+		const { points, closed } = flattenPath(mark.d ?? "");
+		const [dx, dy] = [
+			box.x - (mark.dOrigin?.x ?? 0),
+			box.y - (mark.dOrigin?.y ?? 0),
+		];
+		return {
+			points: points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+			closed,
+		};
+	}
+	if (mark.type === "arc" && box) {
+		const r = mark.r ?? box.width / 2;
+		const [start, end] = [mark.startAngle ?? 0, mark.endAngle ?? 360];
+		return {
+			points: arcPoints(box.x + r, box.y + r, r, start, end),
+			closed: Math.abs(end - start) >= 360 - 1e-6,
+		};
+	}
+	if (!isConnector(mark) || !pathsOf) return undefined;
+	const [shaft, head] = pathsOf(mark, layout);
+	if (!shaft) return undefined;
+	const points = flattenPath(shaft.d).points;
+	// An arrow runs on to the tip of its head
+	const tip = head && flattenPath(head.d).points[0];
+	return {
+		points: [...points, ...(tip ? [tip] : [])].map((p) => ({
+			x: p.x - offset.x,
+			y: p.y - offset.y,
+		})),
+		closed: false,
+	};
+}
+
 // Travel's waypoints are refs: their offsets come from the solved layout
-function resolveTravel(m: NodeRecord, layout: LayoutResult): MotionSpec {
+function resolveTravel(
+	m: NodeRecord,
+	layout: LayoutResult,
+	byId: ReadonlyMap<string, NodeRecord>,
+	offset: { x: number; y: number },
+	pathsOf: PathsOf | undefined,
+): MotionSpec {
 	const spec = m.motion as MotionSpec;
 	if (spec.kind !== "travel") return spec;
 	const mover = m.targets?.[0];
 	if (!mover || spec.via.length === 0)
 		throw new Error(`${m.id}: Travel needs a mover and at least one waypoint`);
 	const from = center(layout[mover.id]);
-	const points = spec.via.map((id) => {
-		const to = center(layout[id]);
-		return { x: to.x - from.x, y: to.y - from.y };
-	});
-	return { ...spec, points };
+	const home = (p: Point): Point => ({ x: p.x - from.x, y: p.y - from.y });
+	const centres = spec.via.map((id) => home(center(layout[id])));
+	const route = spec.route ?? "straight";
+	const pace = spec.pace ?? (route === "straight" ? "leg" : "trip");
+	if (route === "straight" && pace === "leg" && spec.orient === undefined)
+		return { ...spec, points: centres };
+	if (route === "along") {
+		const points: Point[] = [];
+		let closed = false;
+		for (const id of spec.via) {
+			const mark = byId.get(id);
+			const drawn = mark && drawnRoute(mark, layout, offset, pathsOf);
+			closed = spec.via.length === 1 && drawn?.closed === true;
+			// A gap to the next mark is crossed in a straight run
+			for (const p of drawn?.points ?? [center(layout[id])]) {
+				const last = points[points.length - 1];
+				if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 1e-6)
+					points.push(p);
+			}
+		}
+		return { ...spec, path: routeOf(points.map(home), undefined, closed) };
+	}
+	const through = [{ x: 0, y: 0 }, ...centres];
+	// Through a single waypoint the smooth curve is the straight leg
+	if (route === "smooth" && through.length > 2) {
+		const curve = smoothThrough(through);
+		return {
+			...spec,
+			path: routeOf(
+				curve.points,
+				pace === "leg" ? curve.marks : undefined,
+				curve.closed,
+			),
+		};
+	}
+	const straight = routeOf(through);
+	return {
+		...spec,
+		path: pace === "leg" ? { ...straight, marks: straight.lengths } : straight,
+	};
 }
 
 function hash(text: string): string {

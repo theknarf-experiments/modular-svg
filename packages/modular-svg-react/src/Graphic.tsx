@@ -20,7 +20,7 @@ import {
 	exiting,
 	type Transition,
 	type TransitionOptions,
-	timingAttributes,
+	tweenAttributes,
 } from "./transitions";
 
 export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
@@ -156,7 +156,7 @@ function reactifyAttrs(
 // Transitions for the current render, by element id
 const TweenContext = React.createContext<{
 	byId: Map<string, Transition[]>;
-	timing: Record<string, string>;
+	options: TransitionOptions;
 	generation: number;
 } | null>(null);
 
@@ -174,8 +174,7 @@ function useTweens(id: string | undefined): React.ReactNode {
 				"data-transition": "",
 				attributeName: t.attributeName,
 				...(t.kind === "translate" ? { type: "translate" } : {}),
-				values: `${t.from};${t.to}`,
-				...tweens.timing,
+				...tweenAttributes(t, tweens.options),
 			},
 		),
 	);
@@ -345,7 +344,7 @@ function GraphicImpl({
 }: GraphicProps) {
 	const [tweens, setTweens] = React.useState<{
 		byId: Map<string, Transition[]>;
-		timing: Record<string, string>;
+		options: TransitionOptions;
 		generation: number;
 		/** marks that are gone from the solution but still fading out */
 		leaving: SvgElement[];
@@ -450,7 +449,7 @@ function GraphicImpl({
 					for (const [id, fade] of gone.fades) byId.set(id, fade);
 					setTweens((last) => ({
 						byId,
-						timing: timingAttributes(options),
+						options,
 						generation: (last?.generation ?? 0) + 1,
 						leaving: gone.elements,
 					}));

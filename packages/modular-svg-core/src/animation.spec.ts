@@ -1828,3 +1828,334 @@ describe("connectors follow motions", () => {
 		});
 	});
 });
+
+describe("springs", () => {
+	it("writes a spring as one linear() timing function", () => {
+		const { ast } = render([
+			box("a"),
+			on("Enter", "in", "a", { from: { x: 40 }, ease: "spring", over: 1 }),
+		]);
+		expect(ast.css).toMatch(
+			/0%\{translate:40px 0px;animation-timing-function:linear\(0,[^)]*,1\)\}100%\{translate:0px 0px\}/,
+		);
+		// It passes the target: some stop is above 1
+		const stops = /linear\(([^)]*)\)/.exec(ast.css ?? "")?.[1].split(",") ?? [];
+		expect(stops.length).toBeLessThanOrEqual(32);
+		expect(
+			Math.max(...stops.map((s) => Number(s.split(" ")[0]))),
+		).toBeGreaterThan(1.05);
+	});
+
+	const peaks = (css: string | undefined): number[] =>
+		[...(css ?? "").matchAll(/linear\(([^)]*)\)/g)].map((m) =>
+			Math.max(...m[1].split(",").map((s) => Number(s.split(" ")[0]))),
+		);
+
+	it("keeps a spring fade and a spring draw inside what they can show", () => {
+		const fade = render([box("a"), on("Enter", "in", "a", { ease: "spring" })]);
+		expect(peaks(fade.ast.css)).toEqual([1]);
+		const draw = render([
+			{ type: "Path", id: "p", props: { d: "M 0 0 L 50 0" } },
+			on("Draw", "d", "p", { ease: "spring" }),
+		]);
+		expect(peaks(draw.ast.css)).toEqual([1]);
+		const grow = render([
+			box("a"),
+			on("Enter", "in", "a", { from: { scale: 0 }, ease: "spring" }),
+		]);
+		expect(peaks(grow.ast.css)[0]).toBeGreaterThan(1.05);
+	});
+
+	const morph = (ease: unknown) => {
+		const { ast } = render([
+			{ type: "Path", id: "p", props: { d: "M 0 0 L 50 0" } },
+			on("Motion", "m", "p", {
+				steps: [{ to: { d: "M 0 0 L 50 40" }, over: 1, ease }],
+			}),
+		]);
+		const path = ast.children.find((c) => c.id === "p");
+		if (path?.type !== "path") throw new Error("expected a path");
+		return path.animate?.[0];
+	};
+
+	it("spells a spring out in the SMIL values of a path morph", () => {
+		const smil = morph("spring");
+		const values = smil?.values.split(";") ?? [];
+		expect(values.length).toBeGreaterThan(8);
+		expect(smil?.keySplines).toBeUndefined();
+		expect(values.at(-1)).toBe("M 0 0 L 50 40");
+		// Past the target on the way
+		expect(
+			Math.max(...values.map((v) => Number(v.split(" ").at(-1)))),
+		).toBeGreaterThan(42);
+		expect(smil?.keyTimes.split(";")).toHaveLength(values.length);
+	});
+
+	it("does the same for pop, whose keySpline no browser would run", () => {
+		const smil = morph("pop");
+		expect(smil?.keySplines).toBeUndefined();
+		expect(smil?.values.split(";").length).toBeGreaterThan(4);
+		// An ease within 0..1 keeps its spline
+		expect(morph("inOut")?.keySplines).toBe("0.77 0 0.175 1");
+	});
+
+	it("keeps an arrow on its box through a spring change of layout", () => {
+		const { ast } = render([
+			{
+				type: "StackH",
+				id: "row",
+				props: { spacing: 60 },
+				children: [box("a"), box("b")],
+			},
+			{ type: "Arrow", id: "k", children: [ref("a"), ref("b")] },
+			{
+				type: "Modulate",
+				id: "m",
+				props: { ease: "spring", over: 1 },
+				children: [
+					{
+						type: "StackH",
+						props: { spacing: 160 },
+						children: [ref("a"), ref("b")],
+					},
+				],
+			},
+		]);
+		const shaft = ast.children.find((c) => c.id === "k");
+		if (shaft?.type !== "path") throw new Error("expected a path");
+		const xs = (shaft.animate?.[0].values.split(";") ?? []).map((v) =>
+			Number(v.split(/[ ,]/).at(-2)),
+		);
+		// The tip goes past where it settles, as b does
+		expect(Math.max(...xs)).toBeGreaterThan((xs.at(-1) ?? 0) + 5);
+		expect(xs.length).toBeGreaterThan(8);
+		expect(xs.length).toBeLessThan(97);
+	});
+});
+
+describe("Travel along a route", () => {
+	type El = ReturnType<typeof render>["ast"]["children"][number];
+	const flat = (els: readonly El[]): El[] =>
+		els.flatMap((el) => (el.type === "g" ? flat(el.children) : [el]));
+	/** Every translate lane in the css, as [percent, x, y] keys. */
+	const translates = (css: string | undefined): number[][][] =>
+		[...(css ?? "").matchAll(/@keyframes [^{]+\{((?:[^{}]+\{[^}]*\})+)\}/g)]
+			.map((m) =>
+				[
+					...m[1].matchAll(/([\d.]+)%\{translate:(-?[\d.]+)px (-?[\d.]+)px/g),
+				].map((k) => [Number(k[1]), Number(k[2]), Number(k[3])]),
+			)
+			.filter((keys) => keys.length > 0);
+	const rotates = (css: string | undefined): number[][] =>
+		[...(css ?? "").matchAll(/([\d.]+)%\{rotate:(-?[\d.]+)deg/g)].map((k) => [
+			Number(k[1]),
+			Number(k[2]),
+		]);
+	const stops: N[] = [
+		box("a", { x: 0, y: 0 }),
+		box("b", { x: 150, y: 80 }),
+		box("c", { x: 300, y: 0 }),
+		{ type: "Circle", id: "dot", props: { r: 5, x: 5, y: 5 } },
+	];
+	const travel = (props: Record<string, unknown>, via = ["b", "c"]): N => ({
+		type: "Travel",
+		id: "trip",
+		props: { over: 2, ...props },
+		children: [ref("dot"), ...via.map(ref)],
+	});
+
+	it("leaves a plain travel's keyframes as they were", () => {
+		const { ast } = render([...stops, travel({ ease: "inOut" })]);
+		expect(ast.css).toMatch(
+			/0%\{translate:0px 0px;animation-timing-function:cubic-bezier\(0\.77,0,0\.175,1\)\}50%\{translate:150px 80px;animation-timing-function:cubic-bezier\(0\.77,0,0\.175,1\)\}100%\{translate:300px 0px\}/,
+		);
+	});
+
+	it("rounds the corner on a smooth route, through the same waypoints", () => {
+		const { ast } = render([...stops, travel({ route: "smooth" })]);
+		const [keys] = translates(ast.css);
+		expect(keys.length).toBeGreaterThan(8);
+		expect(keys.length).toBeLessThan(120);
+		expect(keys[0]).toEqual([0, 0, 0]);
+		expect(keys.at(-1)).toEqual([100, 300, 0]);
+		// It passes b, and dips below it nowhere: b is the lowest point of the arc
+		expect(
+			Math.min(...keys.map(([, x, y]) => Math.hypot(x - 150, y - 80))),
+		).toBeLessThan(2);
+		expect(ast.css).not.toContain("rotate:");
+	});
+
+	it("turns the mover along the route when oriented", () => {
+		const { ast } = render([
+			...stops,
+			travel({ route: "smooth", orient: true }),
+		]);
+		const turns = rotates(ast.css);
+		// Heading down and right at the start, up and right at the end
+		expect(turns[0][1]).toBeGreaterThan(10);
+		expect(turns[0][1]).toBeLessThan(80);
+		expect(turns.at(-1)?.[1]).toBeLessThan(-10);
+		expect(ast.css).toMatch(
+			/transform-box:view-box;transform-origin:11.5px 11.5px/,
+		);
+		const offset = render([...stops, travel({ route: "smooth", orient: 90 })]);
+		expect(rotates(offset.ast.css)[0][1]).toBeCloseTo(turns[0][1] + 90, 1);
+	});
+
+	it("turns at the corners of a straight route", () => {
+		const { ast } = render([
+			box("a", { x: 0, y: 0 }),
+			box("b", { x: 100, y: 0 }),
+			box("c", { x: 100, y: 100 }),
+			{ type: "Circle", id: "dot", props: { r: 5, x: 5, y: 5 } },
+			travel({ orient: true, ease: "linear" }),
+		]);
+		const turns = rotates(ast.css);
+		expect(turns[0]).toEqual([0, 0]);
+		expect(turns.at(-1)).toEqual([100, 90]);
+		// Still paced by leg: on b at half time
+		expect(translates(ast.css)[0]).toContainEqual([50, 100, 0]);
+	});
+
+	const startOf = (route: N, extra: N[] = []) => {
+		const { ast } = render([
+			...stops,
+			...extra,
+			route,
+			travel({ route: "along" }, [String(route.id)]),
+		]);
+		const dot = flat(ast.children).find((c) => c.id === "dot");
+		if (dot?.type !== "circle") throw new Error("expected the dot");
+		const keys = translates(ast.css)[0];
+		const at = (key: number[] | undefined) => ({
+			x: dot.cx + (key?.[1] ?? 0),
+			y: dot.cy + (key?.[2] ?? 0),
+		});
+		return { ast, first: at(keys[0]), last: at(keys.at(-1)) };
+	};
+	const close = (a: { x: number; y: number }, x: number, y: number) => {
+		expect(a.x).toBeCloseTo(x, 1);
+		expect(a.y).toBeCloseTo(y, 1);
+	};
+
+	it("starts on a line and ends at its other end", () => {
+		const { ast, first, last } = startOf({
+			type: "Line",
+			id: "wire",
+			children: [ref("a"), ref("c")],
+		});
+		const line = flat(ast.children).find((c) => c.id === "wire");
+		if (line?.type !== "line") throw new Error("expected a line");
+		close(first, line.x1, line.y1);
+		close(last, line.x2, line.y2);
+	});
+
+	it("rides a curve", () => {
+		const { ast, first, last } = startOf({
+			type: "Curve",
+			id: "wire",
+			children: [ref("a"), ref("b")],
+		});
+		const curve = flat(ast.children).find((c) => c.id === "wire");
+		if (curve?.type !== "path") throw new Error("expected a path");
+		const n = curve.d.match(/-?[\d.]+/g)?.map(Number) ?? [];
+		close(first, n[0], n[1]);
+		close(last, n[6], n[7]);
+		// More than its ends: the curve is followed
+		expect(translates(ast.css)[0].length).toBeGreaterThan(4);
+	});
+
+	it("runs an arrow to the tip of its head", () => {
+		const { ast, first, last } = startOf({
+			type: "Arrow",
+			id: "wire",
+			children: [ref("a"), ref("b")],
+		});
+		const shaft = flat(ast.children).find((c) => c.id === "wire");
+		const head = flat(ast.children).find((c) => c.id === "wire-head");
+		if (shaft?.type !== "line" || head?.type !== "polygon")
+			throw new Error("expected an arrow");
+		close(first, shaft.x1, shaft.y1);
+		const [x, y] = head.points.split(" ")[0].split(",").map(Number);
+		close(last, x, y);
+	});
+
+	it("follows a path where it is drawn", () => {
+		const { ast, first, last } = startOf({
+			type: "Path",
+			id: "wire",
+			props: { d: "M 40 120 C 40 60 140 60 140 120 L 200 120" },
+		});
+		const path = flat(ast.children).find((c) => c.id === "wire");
+		if (path?.type !== "path") throw new Error("expected a path");
+		const [dx, dy] = /translate\(([^,]+),([^)]+)\)/
+			.exec(path.transform ?? "translate(0,0)")
+			?.slice(1)
+			.map(Number) ?? [0, 0];
+		close(first, 40 + dx, 120 + dy);
+		close(last, 200 + dx, 120 + dy);
+	});
+
+	it("goes round an arc from its start angle", () => {
+		const { ast, first, last } = startOf({
+			type: "Arc",
+			id: "wire",
+			props: { r: 40, x: 100, y: 100, startAngle: 90, endAngle: 270 },
+		});
+		const arc = flat(ast.children).find((c) => c.id === "wire");
+		if (arc?.type !== "path") throw new Error("expected a path");
+		// The wedge's path: M centre L start A ... end Z
+		const n = arc.d.match(/-?[\d.]+/g)?.map(Number) ?? [];
+		close(first, n[2], n[3]);
+		close(last, n[0] - 40, n[1]);
+	});
+
+	it("crosses the gap between two marks in a straight run", () => {
+		const { ast } = render([
+			...stops,
+			{ type: "Line", id: "one", children: [ref("a"), ref("b")] },
+			{ type: "Line", id: "two", children: [ref("b"), ref("c")] },
+			travel({ route: "along", ease: "linear" }, ["one", "two"]),
+		]);
+		const keys = translates(ast.css)[0];
+		// Start, the three corners where the runs meet, end
+		expect(keys).toHaveLength(4);
+	});
+
+	it("redraws a connector to a mover on a smooth route", () => {
+		const { ast } = render([
+			...stops,
+			{ type: "Line", id: "leash", children: [ref("a"), ref("dot")] },
+			travel({ route: "smooth" }),
+		]);
+		const leash = flat(ast.children).find((c) => c.id === "leash");
+		if (leash?.type !== "path") throw new Error("expected a redrawn path");
+		const values = leash.animate?.[0].values.split(";") ?? [];
+		expect(values.length).toBeGreaterThan(6);
+		expect(values.length).toBeLessThan(200);
+		const end = (d: string) => d.split(/[ ,]/).slice(-2).map(Number);
+		const dot = flat(ast.children).find((c) => c.id === "dot");
+		if (dot?.type !== "circle") throw new Error("expected the dot");
+		// Its far end finishes near the dot's last place, 300px on
+		expect(end(values.at(-1) ?? "")[0]).toBeGreaterThan(dot.cx + 280);
+	});
+
+	it("plays backwards in a retrograde phrase, mirrored in time", () => {
+		const keysOf = (retrograde: boolean) =>
+			translates(
+				render([
+					...stops,
+					{
+						type: "Phrase",
+						id: "p",
+						props: { retrograde },
+						children: [travel({ route: "smooth", ease: "linear" })],
+					},
+				]).ast.css,
+			)[0];
+		const [forward, back] = [keysOf(false), keysOf(true)];
+		expect(back[0].slice(1)).toEqual(forward.at(-1)?.slice(1));
+		expect(back.at(-1)?.slice(1)).toEqual([0, 0]);
+		expect(back).toHaveLength(forward.length);
+	});
+});

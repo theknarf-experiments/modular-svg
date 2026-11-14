@@ -1103,3 +1103,60 @@ describe("reading across clocks", () => {
 		]);
 	});
 });
+
+describe("springs in time", () => {
+	const cascade = (ease: unknown) =>
+		solve([
+			dot("a"),
+			dot("b"),
+			dot("c"),
+			dot("d"),
+			motion("Enter", "aIn", "a"),
+			motion("Enter", "bIn", "b"),
+			motion("Enter", "cIn", "c"),
+			motion("Enter", "dIn", "d"),
+			{
+				type: "Stagger",
+				id: "wave",
+				props: { total: 1, ease },
+				children: [ref("aIn"), ref("bIn"), ref("cIn"), ref("dIn")],
+			},
+		]);
+
+	it("warns when a stagger's ease puts its members out of order", () => {
+		expect(cascade("spring").warnings).toContain(
+			"Stagger(wave): its ease overshoots, so members start out of order or outside its 1s; use an ease that stays within 0..1",
+		);
+		expect(cascade("out").warnings).toEqual([]);
+	});
+
+	it("gives a modulate the settle time of its physical spring", () => {
+		const ease = { kind: "spring", stiffness: 200, damping: 20 };
+		const { span } = solve([
+			dot("a"),
+			dot("b"),
+			{
+				type: "Modulate",
+				id: "swap",
+				props: { ease },
+				children: [{ type: "StackH", children: [ref("b"), ref("a")] }],
+			},
+		]);
+		const zeta = 20 / (2 * Math.sqrt(200));
+		expect(span("swap")[1]).toBeCloseTo(
+			-Math.log(0.001 * Math.sqrt(1 - zeta * zeta)) / (zeta * Math.sqrt(200)),
+			6,
+		);
+	});
+
+	it("lets over replace the settle time", () => {
+		const ease = { kind: "spring", stiffness: 200, damping: 20 };
+		const { span } = solve([
+			dot("a"),
+			motion("Enter", "in", "a", { ease, over: 2 }),
+			motion("Enter", "free", "a", { ease: "spring" }),
+		]);
+		expect(span("in")[1]).toBe(2);
+		expect(span("free")[1]).toBe(0.5);
+	});
+});

@@ -103,7 +103,42 @@
 				"lightness": { "type": "number" },
 				"startHue": { "type": "number" },
 				"ratio": { "type": "number" },
-				"amount": { "type": "number" }
+				"amount": { "type": "number" },
+				"ease": {
+					"oneOf": [
+						{ "type": "string" },
+						{
+							"type": "array",
+							"items": { "type": "number" },
+							"minItems": 4,
+							"maxItems": 4
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": {
+									"type": "string",
+									"enum": ["spring", "bounce", "elastic"]
+								},
+								"bounce": { "type": "number" },
+								"stiffness": { "type": "number" },
+								"damping": { "type": "number" },
+								"mass": { "type": "number" },
+								"bounces": { "type": "number" },
+								"elasticity": { "type": "number" },
+								"period": { "type": "number" }
+							},
+							"required": ["kind"],
+							"additionalProperties": false
+						}
+					]
+				},
+				"route": {
+					"type": "string",
+					"enum": ["straight", "smooth", "along"]
+				},
+				"pace": { "type": "string", "enum": ["leg", "trip"] },
+				"orient": { "type": ["boolean", "number"] }
 			},
 			"additionalProperties": true
 		},

@@ -394,3 +394,29 @@ describe("a looping motion (properties)", () => {
 		);
 	});
 });
+
+describe("sampled eases in a phrase", () => {
+	it("reverses stops exactly", () => {
+		for (const ease of ["spring", "bounce", "elastic"] as const) {
+			const e = resolveEase(ease);
+			expect(reverseEase(reverseEase(e))).toEqual(e);
+			for (const x of [0.1, 0.33, 0.5, 0.9])
+				expect(easeAt(reverseEase(e), x)).toBeCloseTo(1 - easeAt(e, 1 - x), 9);
+		}
+	});
+
+	it("plays a spring enter backwards as its mirror", () => {
+		const forward = expandMotion(
+			{ kind: "enter", from: { x: 40 }, ease: "spring" },
+			0,
+			1,
+			1,
+		);
+		const back = retime(forward, { ...once, retrograde: true }, 1, noRest);
+		for (let t = 0; t <= 1; t += 0.05)
+			expect(Number(stateAt(back, t).x)).toBeCloseTo(
+				Number(stateAt(forward, 1 - t).x),
+				6,
+			);
+	});
+});

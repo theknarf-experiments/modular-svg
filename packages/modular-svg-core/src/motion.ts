@@ -3,6 +3,7 @@
 // time: the time solver places it, and expandMotion turns it into steps.
 
 import { type Clock, retime } from "./phrase.ts";
+import { along, nearestTurn, type Point, type Route } from "./route.ts";
 
 export type Ease =
 	| "linear"
@@ -11,14 +12,31 @@ export type Ease =
 	| "inOut"
 	| "pop"
 	| "hold"
+	| "anticipate"
+	| "overshoot"
+	| "anticipateOvershoot"
+	| "spring"
+	| "bounce"
+	| "elastic"
 	| `steps(${number})`
-	| readonly [number, number, number, number];
+	| readonly [number, number, number, number]
+	/** fitted to the span it eases; `bounce` (-0.9..0.9) is how far it overshoots */
+	| { kind: "spring"; bounce?: number }
+	/** a physical spring, which also brings its own settle time as the length */
+	| { kind: "spring"; stiffness: number; damping: number; mass?: number }
+	/** a ball landing on the target */
+	| { kind: "bounce"; bounces?: number; elasticity?: number }
+	| { kind: "elastic"; period?: number };
 
 export type ResolvedEase =
 	| { kind: "linear" }
 	| { kind: "bezier"; points: readonly [number, number, number, number] }
 	/** `count` equal jumps, each at the end of its slice (or its start) */
-	| { kind: "steps"; count: number; jump?: "start" };
+	| { kind: "steps"; count: number; jump?: "start" }
+	/** straight runs through (x, progress); x rises from 0 to 1, ends are (0,0) and (1,1) */
+	| { kind: "stops"; stops: readonly (readonly [number, number])[] };
+
+const POP: ResolvedEase = { kind: "bezier", points: [0.34, 1.56, 0.64, 1] };
 
 const NAMED: Record<string, ResolvedEase> = {
 	linear: { kind: "linear" },
@@ -26,9 +44,138 @@ const NAMED: Record<string, ResolvedEase> = {
 	out: { kind: "bezier", points: [0.23, 1, 0.32, 1] },
 	inOut: { kind: "bezier", points: [0.77, 0, 0.175, 1] },
 	/** overshoots, then settles */
-	pop: { kind: "bezier", points: [0.34, 1.56, 0.64, 1] },
+	pop: POP,
+	overshoot: POP,
+	/** pulls back, then goes */
+	anticipate: { kind: "bezier", points: [0.36, 0, 0.66, -0.56] },
+	anticipateOvershoot: { kind: "bezier", points: [0.68, -0.6, 0.32, 1.6] },
 	hold: { kind: "steps", count: 1 },
 };
+
+type SpringEase = Extract<Ease, { kind: "spring" }>;
+type Physical = Extract<SpringEase, { stiffness: number }>;
+
+const isPhysical = (ease: SpringEase): ease is Physical =>
+	"stiffness" in ease || "damping" in ease;
+
+const within = (
+	v: unknown,
+	lo: number,
+	hi: number,
+	fallback: number,
+): number =>
+	typeof v === "number" && Number.isFinite(v)
+		? Math.min(hi, Math.max(lo, v))
+		: fallback;
+
+/** A spring's unit step response from rest: damping ratio, natural frequency, time. */
+export function springAt(zeta: number, omega: number, t: number): number {
+	if (t <= 0) return 0;
+	if (zeta < 1 - 1e-9) {
+		const wd = omega * Math.sqrt(1 - zeta * zeta);
+		return (
+			1 -
+			Math.exp(-zeta * omega * t) *
+				(Math.cos(wd * t) + ((zeta * omega) / wd) * Math.sin(wd * t))
+		);
+	}
+	if (zeta <= 1 + 1e-9) return 1 - Math.exp(-omega * t) * (1 + omega * t);
+	const root = Math.sqrt(zeta * zeta - 1);
+	const [slow, fast] = [omega * (zeta - root), omega * (zeta + root)];
+	return (
+		1 -
+		(fast * Math.exp(-slow * t) - slow * Math.exp(-fast * t)) / (fast - slow)
+	);
+}
+
+// When the spring's envelope is within 0.1% of its target
+const settles = (zeta: number, omega: number): number =>
+	zeta < 1
+		? -Math.log(0.001 * Math.sqrt(1 - zeta * zeta)) / (zeta * omega)
+		: -Math.log(0.001) / (omega * (zeta - Math.sqrt(zeta * zeta - 1)));
+
+const physicsOf = (ease: Physical): { zeta: number; omega: number } => {
+	const k = within(ease.stiffness, 1e-6, Infinity, 100);
+	const c = within(ease.damping, 0, Infinity, 10);
+	const m = within(ease.mass, 1e-6, Infinity, 1);
+	return {
+		zeta: Math.max(0.1, c / (2 * Math.sqrt(k * m))),
+		omega: Math.sqrt(k / m),
+	};
+};
+
+/**
+ * How long a physical spring (`stiffness`, `damping`) takes to settle, which
+ * is the length of what it eases unless something sizes that. Undefined for
+ * every other ease: those are shapes fitted to a span.
+ */
+export function settleTime(ease: Ease | undefined): number | undefined {
+	if (typeof ease !== "object" || ease === null || Array.isArray(ease))
+		return undefined;
+	const spring = ease as SpringEase;
+	if (spring.kind !== "spring" || !isPhysical(spring)) return undefined;
+	const { zeta, omega } = physicsOf(spring);
+	return Math.min(10, Math.max(0.05, settles(zeta, omega)));
+}
+
+/** The most runs a sampled ease is drawn with. */
+export const MAX_STOPS = 32;
+
+/** A function of 0..1 as straight runs: what CSS `linear()` draws. */
+export function stopsOf(f: (x: number) => number): ResolvedEase {
+	const count = 400;
+	const xs = Array.from({ length: count + 1 }, (_, i) => i / count);
+	const ys = xs.map((x, i) => [i === 0 ? 0 : i === count ? 1 : f(x)]);
+	let kept: number[] = [];
+	for (let tolerance = 0.003; ; tolerance *= 1.5) {
+		kept = ramerDouglasPeucker(ys, tolerance, xs);
+		if (kept.length <= MAX_STOPS) break;
+	}
+	const round = (v: number) => Number(v.toFixed(4)) + 0;
+	return {
+		kind: "stops",
+		stops: kept.map((i) => [round(xs[i]), round(ys[i][0])] as const),
+	};
+}
+
+const springShape = (zeta: number): ((x: number) => number) => {
+	const length = settles(zeta, 1);
+	return (x) => springAt(zeta, 1, x * length);
+};
+
+function shapeOf(ease: Exclude<Ease, string | readonly number[]>) {
+	if (ease.kind === "spring") {
+		if (isPhysical(ease)) return springShape(physicsOf(ease).zeta);
+		const bounce = within(ease.bounce, -0.9, 0.9, 0.4);
+		return springShape(bounce >= 0 ? 1 - bounce : 1 / (1 + bounce));
+	}
+	if (ease.kind === "bounce") {
+		const bounces = Math.round(within(ease.bounces, 1, 6, 3));
+		const e = within(ease.elasticity, 0.1, 0.9, 0.5);
+		// The fall, then each rebound: twice as long as its rise, which is e^i of the fall's
+		const halves = Array.from({ length: bounces }, (_, i) => e ** (i + 1));
+		const fall = 1 / (1 + 2 * halves.reduce((a, b) => a + b, 0));
+		return (x: number) => {
+			if (x <= fall) return (x / fall) ** 2;
+			let peak = fall;
+			for (const half of halves) {
+				peak += half * fall;
+				const u = (x - peak) / (half * fall);
+				if (u <= 1) return 1 - half * half * (1 - u * u);
+				peak += half * fall;
+			}
+			return 1;
+		};
+	}
+	if (ease.kind === "elastic") {
+		const p = within(ease.period, 0.1, 1, 0.3);
+		return (x: number) =>
+			2 ** (-10 * x) * Math.sin(((x - p / 4) * 2 * Math.PI) / p) + 1;
+	}
+	return undefined;
+}
+
+const shaped = new Map<string, ResolvedEase>();
 
 export function resolveEase(ease: Ease | undefined): ResolvedEase {
 	if (ease === undefined) return NAMED.out;
@@ -36,12 +183,59 @@ export function resolveEase(ease: Ease | undefined): ResolvedEase {
 		const [x1, y1, x2, y2] = ease as readonly number[];
 		return { kind: "bezier", points: [x1, y1, x2, y2] };
 	}
-	const named = NAMED[ease as string];
-	if (named) return named;
-	const steps = /^steps\((\d+)\)$/.exec(ease as string);
-	if (steps && Number(steps[1]) >= 1)
-		return { kind: "steps", count: Number(steps[1]) };
+	if (typeof ease === "string") {
+		const named = NAMED[ease];
+		if (named) return named;
+		if (ease === "spring" || ease === "bounce" || ease === "elastic")
+			return resolveEase({ kind: ease } as Ease);
+		const steps = /^steps\((\d+)\)$/.exec(ease);
+		if (steps && Number(steps[1]) >= 1)
+			return { kind: "steps", count: Number(steps[1]) };
+	} else if (typeof ease === "object" && ease !== null) {
+		const shape = shapeOf(ease as Exclude<Ease, string | readonly number[]>);
+		if (shape) {
+			// Sampling a shape costs more than everything else here; scenes repeat few
+			const key = JSON.stringify(ease);
+			const known = shaped.get(key) ?? stopsOf(shape);
+			shaped.set(key, known);
+			return known;
+		}
+	}
 	throw new Error(`Unknown ease ${JSON.stringify(ease)}`);
+}
+
+/** What an ease's numbers break, in words; such values are read as the nearest allowed. */
+export function easeProblems(ease: unknown): string[] {
+	if (typeof ease !== "object" || ease === null || Array.isArray(ease))
+		return [];
+	const e = ease as Record<string, unknown>;
+	const out: string[] = [];
+	const outside = (v: unknown, lo: number, hi: number): boolean =>
+		v !== undefined &&
+		!(typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi);
+	if (e.kind === "spring") {
+		if ("stiffness" in e || "damping" in e) {
+			if (
+				outside(e.stiffness ?? 0, 1e-12, Infinity) ||
+				outside(e.damping ?? 0, 1e-12, Infinity)
+			)
+				out.push(
+					`spring stiffness and damping must be above 0, got ${e.stiffness} and ${e.damping}`,
+				);
+			if (outside(e.mass, 1e-12, Infinity))
+				out.push(`spring mass must be above 0, got ${e.mass}`);
+		} else if (outside(e.bounce, -0.9, 0.9))
+			out.push(`spring bounce must be between -0.9 and 0.9, got ${e.bounce}`);
+	} else if (e.kind === "bounce") {
+		if (outside(e.bounces, 1, 6))
+			out.push(`bounce bounces must be 1 to 6, got ${e.bounces}`);
+		if (outside(e.elasticity, 0.1, 0.9))
+			out.push(
+				`bounce elasticity must be between 0.1 and 0.9, got ${e.elasticity}`,
+			);
+	} else if (e.kind === "elastic" && outside(e.period, 0.1, 1))
+		out.push(`elastic period must be between 0.1 and 1, got ${e.period}`);
+	return out;
 }
 
 /** Progress (0..1, may overshoot) of an ease at x in [0, 1]. */
@@ -54,6 +248,18 @@ export function easeAt(ease: ResolvedEase, x: number): number {
 			(ease.jump ? Math.ceil(x * ease.count) : Math.floor(x * ease.count)) /
 			ease.count
 		);
+	if (ease.kind === "stops") {
+		const { stops } = ease;
+		let lo = 0;
+		let hi = stops.length - 2;
+		while (lo < hi) {
+			const mid = (lo + hi + 1) >> 1;
+			if (stops[mid][0] <= x) lo = mid;
+			else hi = mid - 1;
+		}
+		const [[x0, y0], [x1, y1]] = [stops[lo], stops[lo + 1]];
+		return x1 > x0 ? y0 + ((y1 - y0) * (x - x0)) / (x1 - x0) : y1;
+	}
 	const [x1, y1, x2, y2] = ease.points;
 	const bez = (a: number, b: number, t: number) =>
 		3 * a * t * (1 - t) ** 2 + 3 * b * t ** 2 * (1 - t) + t ** 3;
@@ -66,6 +272,83 @@ export function easeAt(ease: ResolvedEase, x: number): number {
 		else hi = mid;
 	}
 	return bez(y1, y2, (lo + hi) / 2);
+}
+
+/** A bezier that leaves 0..1, which SMIL's keySplines cannot say. */
+export const overshoots = (ease: ResolvedEase): boolean =>
+	ease.kind === "bezier" &&
+	[ease.points[1], ease.points[3]].some((y) => y < 0 || y > 1);
+
+/**
+ * The ease kept inside a window of progress, for values the browser would
+ * clamp one by one (an opacity past 1) or not at all (a dash offset below 0).
+ * Only a `stops` ease is cut; the rest are returned as they are.
+ */
+export function clampEase(
+	ease: ResolvedEase,
+	window: readonly [number, number],
+): ResolvedEase {
+	if (ease.kind !== "stops") return ease;
+	const [lo, hi] = window;
+	if (ease.stops.every(([, y]) => y >= lo && y <= hi)) return ease;
+	const clamp = (y: number) => Math.min(hi, Math.max(lo, y));
+	const stops: (readonly [number, number])[] = [];
+	ease.stops.forEach(([x, y], i) => {
+		const prev = ease.stops[i - 1];
+		if (prev)
+			// A run that crosses a bound turns flat exactly there
+			for (const bound of [lo, hi].sort((a, b) =>
+				prev[1] < y ? a - b : b - a,
+			)) {
+				if (!Number.isFinite(bound) || (prev[1] - bound) * (y - bound) >= 0)
+					continue;
+				const at =
+					prev[0] + ((x - prev[0]) * (bound - prev[1])) / (y - prev[1]);
+				stops.push([Number(at.toFixed(4)), bound]);
+			}
+		stops.push([x, clamp(y)]);
+	});
+	return { kind: "stops", stops };
+}
+
+/** The progress over which every ranged channel going from `from` to `to` stays in its range. */
+export function progressWindow(
+	channels: readonly Channel[],
+	from: Values,
+	to: Values,
+): readonly [number, number] {
+	let [lo, hi] = [-Infinity, Infinity];
+	for (const c of channels) {
+		const range = CHANNELS[c].range;
+		const [a, b] = [from[c], to[c]];
+		if (!range || typeof a !== "number" || typeof b !== "number" || a === b)
+			continue;
+		const ends = range.map((r) => (r - a) / (b - a) + 0).sort((x, y) => x - y);
+		lo = Math.max(lo, ends[0]);
+		hi = Math.min(hi, ends[1]);
+	}
+	return [lo, hi];
+}
+
+const NUMBER = /-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi;
+
+/**
+ * Two strings with the same text around their numbers (path data, a pair of
+ * coordinates), mixed number by number at progress p. Undefined when the
+ * text differs.
+ */
+export function mixNumbers(
+	from: string,
+	to: string,
+	p: number,
+): string | undefined {
+	if (from.replace(NUMBER, "#") !== to.replace(NUMBER, "#")) return undefined;
+	const targets = to.match(NUMBER) ?? [];
+	let i = 0;
+	return from.replace(NUMBER, (n) => {
+		const [a, b] = [Number(n), Number(targets[i++])];
+		return String(Number((a + (b - a) * p).toFixed(2)) + 0);
+	});
 }
 
 export type Channel =
@@ -154,7 +437,7 @@ type RestChannel = "opacity" | "x" | "y" | "scale" | "rotate" | "blur";
 
 export type MotionStep =
 	/** transition from the current values, starting at the cursor (or `at`, relative to the motion's start) */
-	| { to: AuthoredValues; over: number; ease?: Ease; at?: number }
+	| { to: AuthoredValues; over?: number; ease?: Ease; at?: number }
 	/** hard cut at the cursor */
 	| { set: AuthoredValues; at?: number }
 	/** hold; advances the cursor */
@@ -183,6 +466,12 @@ export type MotionSpec = (
 			/** offsets from the mover's rest position to each waypoint, known after layout */
 			points?: readonly { x: number; y: number }[];
 			ease?: Ease;
+			route?: "straight" | "smooth" | "along";
+			pace?: "leg" | "trip";
+			/** degrees added to the route's heading; undefined leaves the mover as drawn */
+			orient?: number;
+			/** the route as offsets from the mover's rest centre, when it is more than straight legs */
+			path?: Route;
 	  }
 	| {
 			kind: "sampled";
@@ -272,14 +561,15 @@ export function intrinsicDuration(spec: MotionSpec): number {
 			if ("wait" in step) cursor += step.wait;
 			else {
 				if (step.at !== undefined) cursor = step.at;
-				if ("to" in step) cursor += step.over;
+				if ("to" in step) cursor += step.over ?? settleTime(step.ease) ?? 0;
 			}
 			last = Math.max(last, cursor);
 		}
 		return last > 0 ? last : DEFAULT_OVER;
 	}
 	if (spec.kind === "wiggle") return 2;
-	return DEFAULT_OVER;
+	if (spec.kind === "shake" || spec.kind === "sampled") return DEFAULT_OVER;
+	return settleTime(spec.ease) ?? DEFAULT_OVER;
 }
 
 const restOf = (values: Values): Values =>
@@ -397,17 +687,20 @@ function onePass(spec: MotionSpec, start: number, duration: number): Expanded {
 		case "sampled":
 			return sampledPass(spec, start, duration);
 		case "travel": {
-			if (!spec.points)
+			const { path } = spec;
+			if (path && (spec.orient !== undefined || path.points.length > 2))
+				return travelPass(spec, path, start, duration);
+			if (!path && !spec.points)
 				throw new Error("travel: waypoints are resolved after layout");
 			// Legs take time in proportion to their length, so the speed is even
-			const path = [{ x: 0, y: 0 }, ...spec.points];
-			const lengths = path
+			const points = path?.points ?? [{ x: 0, y: 0 }, ...(spec.points ?? [])];
+			const lengths = points
 				.slice(1)
-				.map((p, i) => Math.hypot(p.x - path[i].x, p.y - path[i].y));
+				.map((p, i) => Math.hypot(p.x - points[i].x, p.y - points[i].y));
 			const total = lengths.reduce((a, b) => a + b, 0);
 			const ease = resolveEase(spec.ease ?? "linear");
 			let at = start;
-			const steps = spec.points.map((p, i) => {
+			const steps = points.slice(1).map((p, i) => {
 				const over =
 					total > 0
 						? (duration * lengths[i]) / total
@@ -417,7 +710,7 @@ function onePass(spec: MotionSpec, start: number, duration: number): Expanded {
 				return step;
 			});
 			return {
-				initial: { x: 0, y: 0 },
+				initial: { x: points[0].x, y: points[0].y },
 				steps: steps.filter((s) => s.over > 0),
 			};
 		}
@@ -433,17 +726,18 @@ function onePass(spec: MotionSpec, start: number, duration: number): Expanded {
 				}
 				if (step.at !== undefined) cursor = step.at;
 				if ("to" in step) {
-					if (!(step.over > 0))
+					const over = step.over ?? settleTime(step.ease);
+					if (!(over !== undefined && over > 0))
 						throw new Error(
 							`motion: a "to" step needs a positive over, got ${step.over}; use "set" for a cut`,
 						);
 					steps.push({
 						start: start + cursor * k,
-						over: step.over * k,
+						over: over * k,
 						ease: resolveEase(step.ease),
 						values: checkValues(step.to, what),
 					});
-					cursor += step.over;
+					cursor += over;
 				} else {
 					steps.push({
 						start: start + cursor * k,
@@ -457,6 +751,133 @@ function onePass(spec: MotionSpec, start: number, duration: number): Expanded {
 			return { initial: from, steps };
 		}
 	}
+}
+
+type Travelled = ReturnType<typeof along>;
+
+// Seconds between the closest two samples of a travel: a 240Hz frame
+const FRAME = 1 / 240;
+
+// How far a sampled travel may stray from its route, in px and degrees
+const TRAVEL_SLACK = 0.25;
+const HEADING_SLACK = 0.5;
+
+/**
+ * A travel along a route, sampled into straight runs: the position (and the
+ * heading, when oriented) at the distance the ease has covered. Each leg is
+ * eased on its own, taking time in proportion to its length.
+ */
+function travelPass(
+	spec: Extract<MotionSpec, { kind: "travel" }>,
+	path: Route,
+	start: number,
+	duration: number,
+): Expanded {
+	const ease = resolveEase(spec.ease ?? "linear");
+	const total = path.lengths[path.lengths.length - 1] ?? 0;
+	const marks = path.marks.length > 1 ? path.marks : [0, total];
+	const turn = spec.orient;
+	const first = along(path, 0);
+	let heading = first.angle;
+	const steps: Step[] = [];
+	const values = (p: Point): Values => ({ x: p.x, y: p.y });
+	let at = start;
+	for (let leg = 0; leg + 1 < marks.length; leg++) {
+		const [s0, s1] = [marks[leg], marks[leg + 1]];
+		const over =
+			total > 0
+				? (duration * (s1 - s0)) / total
+				: duration / (marks.length - 1);
+		if (!(over > 0)) continue;
+		const from = at;
+		at += over;
+		if (ease.kind === "steps") {
+			for (let j = 1; j <= ease.count; j++) {
+				const p = along(path, s0 + ((s1 - s0) * j) / ease.count);
+				heading = nearestTurn(p.angle, heading);
+				steps.push({
+					start: from + (over * (ease.jump ? j - 1 : j)) / ease.count,
+					over: 0,
+					ease: HOLD,
+					values:
+						turn === undefined
+							? values(p)
+							: { ...values(p), rotate: heading + turn },
+				});
+			}
+			continue;
+		}
+		// No two samples closer in time than a frame can show
+		const least = Math.min(0.5, FRAME / over);
+		const count = Math.min(
+			256,
+			Math.max(16, Math.ceil((s1 - s0) / 4)),
+			Math.max(1, Math.floor(1 / least)),
+		);
+		const sample = (u: number) => along(path, s0 + (s1 - s0) * easeAt(ease, u));
+		// An even grid and wherever the ease turns, then halved until a straight
+		// run between two samples misses nothing in between
+		const grid = [
+			...Array.from({ length: count + 1 }, (_, i) => i / count),
+			...(ease.kind === "stops" ? ease.stops.map(([x]) => x) : []),
+		].sort((a, b) => a - b);
+		const us = [0];
+		const samples = [sample(0)];
+		const reach = (u1: number, p1: Travelled, depth: number): void => {
+			const [u0, p0] = [us[us.length - 1], samples[samples.length - 1]];
+			const half = sample((u0 + u1) / 2);
+			const miss = Math.hypot(
+				half.x - (p0.x + p1.x) / 2,
+				half.y - (p0.y + p1.y) / 2,
+			);
+			if (depth < 10 && u1 - u0 >= 2 * least && miss > TRAVEL_SLACK / 6) {
+				reach((u0 + u1) / 2, half, depth + 1);
+				reach(u1, p1, depth + 1);
+				return;
+			}
+			us.push(u1);
+			samples.push(p1);
+		};
+		for (const u of grid)
+			if (u === 1 || (u - us[us.length - 1] >= least && 1 - u >= least))
+				reach(u, sample(u), 0);
+		const run = (
+			lane: number[][],
+			slack: number,
+			of: (i: number) => Values,
+		) => {
+			const kept = ramerDouglasPeucker(lane, slack, us);
+			for (let k = 1; k < kept.length; k++)
+				steps.push({
+					start: from + over * us[kept[k - 1]],
+					over: over * (us[kept[k]] - us[kept[k - 1]]),
+					ease: LINEAR,
+					values: of(kept[k]),
+				});
+		};
+		run(
+			samples.map((p) => [p.x, p.y]),
+			TRAVEL_SLACK / 2,
+			(i) => values(samples[i]),
+		);
+		if (turn === undefined) continue;
+		const angles = samples.map((p) => {
+			heading = nearestTurn(p.angle, heading);
+			return heading;
+		});
+		run(
+			angles.map((a) => [a]),
+			HEADING_SLACK,
+			(i) => ({ rotate: angles[i] + turn }),
+		);
+	}
+	return {
+		initial:
+			turn === undefined
+				? values(first)
+				: { ...values(first), rotate: first.angle + turn },
+		steps,
+	};
 }
 
 function assertRest(values: Values, what: string): void {
@@ -539,9 +960,9 @@ export function expandMotion(
 
 // --- sampled ---------------------------------------------------------------
 
-type Point = { t: number; values: number[] };
+type Sample = { t: number; values: number[] };
 
-const distance = (a: Point, b: Point): number =>
+const distance = (a: Sample, b: Sample): number =>
 	Math.hypot(...a.values.map((v, c) => v - b.values[c]));
 
 /**
@@ -580,11 +1001,11 @@ export function ramerDouglasPeucker(
 // Halving shrinks a smooth change with the span; a change that survives every
 // halving is a jump, which becomes a cut instead of a sweep.
 function jump(
-	a: Point,
-	b: Point,
-	at: (t: number) => Point,
+	a: Sample,
+	b: Sample,
+	at: (t: number) => Sample,
 	tolerance: number,
-): readonly [Point, Point] | undefined {
+): readonly [Sample, Sample] | undefined {
 	const floor = Math.max(tolerance, distance(a, b) / 1000);
 	let [lo, hi] = [a, b];
 	for (let i = 0; i < 20; i++) {
@@ -635,13 +1056,13 @@ function sampledPass(
 		const tolerance = spec.tolerance[lane];
 		if (tolerance === undefined || !(tolerance >= 0))
 			throw new Error(`sampled needs a non-negative tolerance for ${lane}`);
-		const point = (t: number, frame = frameAt(t)): Point => ({
+		const point = (t: number, frame = frameAt(t)): Sample => ({
 			t,
 			values: members.map((c) => Number(frame[c])),
 		});
-		const valuesOf = (p: Point): Values =>
+		const valuesOf = (p: Sample): Values =>
 			Object.fromEntries(members.map((c, i) => [c, p.values[i]]));
-		const runs: Point[][] = [[point(0, frames[0])]];
+		const runs: Sample[][] = [[point(0, frames[0])]];
 		for (let i = 1; i < times.length; i++) {
 			const next = point(times[i], frames[i]);
 			const run = runs[runs.length - 1];
@@ -776,7 +1197,7 @@ export function sampleAt(keys: readonly Key[], t: number): Values {
 			return [
 				c,
 				typeof from === "number" && typeof to === "number"
-					? from + (to - from) * p
+					? clampChannel(c as Channel, from + (to - from) * p)
 					: p >= 1
 						? to
 						: from,

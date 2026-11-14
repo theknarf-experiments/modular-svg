@@ -1,8 +1,13 @@
 import {
+	clampEase,
 	type Ease,
+	easeAt,
+	mixNumbers,
+	overshoots,
 	resolveEase,
 	type SvgDocument,
 	type SvgElement,
+	stopsOf,
 } from "@modular-svg/core";
 
 export type TransitionOptions = {
@@ -139,8 +144,24 @@ export function diffTransitions(
 	return out;
 }
 
-/** SMIL timing attributes for a transition's duration and ease. */
-export function timingAttributes(
+// What an attribute can show; an ease that leaves it is cut there
+const RANGES: Record<string, readonly [number, number]> = {
+	opacity: [0, 1],
+	width: [0, Infinity],
+	height: [0, Infinity],
+	r: [0, Infinity],
+};
+
+const OUT = "0.23 1 0.32 1";
+
+/**
+ * SMIL attributes that tween one attribute over the transition's duration
+ * and ease. A spring, or a bezier that overshoots, cannot be a keySpline (the
+ * browser drops the animation), so it is spelled out as a list of values;
+ * colors do not overshoot and ease out instead.
+ */
+export function tweenAttributes(
+	t: Transition,
 	opts: TransitionOptions,
 ): Record<string, string> {
 	const ease = resolveEase(opts.ease ?? "out");
@@ -148,11 +169,37 @@ export function timingAttributes(
 		dur: `${opts.duration ?? 0.3}s`,
 		begin: "indefinite",
 		fill: "freeze",
-		keyTimes: "0;1",
 	};
-	if (ease.kind === "linear") return { ...timing, calcMode: "linear" };
-	if (ease.kind === "steps") return { ...timing, calcMode: "discrete" };
-	return { ...timing, calcMode: "spline", keySplines: ease.points.join(" ") };
+	const plain = { ...timing, values: `${t.from};${t.to}`, keyTimes: "0;1" };
+	if (ease.kind === "linear") return { ...plain, calcMode: "linear" };
+	if (ease.kind === "steps") return { ...plain, calcMode: "discrete" };
+	if (ease.kind === "bezier" && !overshoots(ease))
+		return { ...plain, calcMode: "spline", keySplines: ease.points.join(" ") };
+	const paint = t.attributeName === "fill" || t.attributeName === "stroke";
+	const range = RANGES[t.attributeName];
+	const [a, b] = [Number(t.from), Number(t.to)];
+	const window: readonly [number, number] =
+		range && Number.isFinite(a) && Number.isFinite(b) && a !== b
+			? ((range.map((r) => (r - a) / (b - a)) as [number, number]).sort(
+					(x, y) => x - y,
+				) as [number, number])
+			: [-Infinity, Infinity];
+	const shape = clampEase(
+		ease.kind === "stops" ? ease : stopsOf((x) => easeAt(ease, x)),
+		window,
+	);
+	const values =
+		shape.kind === "stops" && !paint
+			? shape.stops.map(([, y]) => mixNumbers(t.from, t.to, y))
+			: [];
+	if (shape.kind !== "stops" || paint || values.some((v) => v === undefined))
+		return { ...plain, calcMode: "spline", keySplines: OUT };
+	return {
+		...timing,
+		values: values.join(";"),
+		keyTimes: shape.stops.map(([x]) => x).join(";"),
+		calcMode: "linear",
+	};
 }
 
 /**

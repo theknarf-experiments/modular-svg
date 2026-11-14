@@ -2,7 +2,12 @@ import type { SvgDocument } from "@modular-svg/core";
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Graphic } from "../Graphic";
-import { diffTransitions, exiting, timingAttributes } from "../transitions";
+import {
+	diffTransitions,
+	exiting,
+	type Transition,
+	tweenAttributes,
+} from "../transitions";
 
 const doc = (children: SvgDocument["children"]): SvgDocument => ({
 	width: 100,
@@ -79,12 +84,77 @@ describe("diffTransitions", () => {
 	});
 
 	it("turns eases into SMIL timing", () => {
-		expect(timingAttributes({ duration: 0.5, ease: "linear" })).toMatchObject({
+		const cx: Transition = {
+			attributeName: "cx",
+			from: "10",
+			to: "40",
+			kind: "attribute",
+		};
+		expect(tweenAttributes(cx, { duration: 0.5, ease: "linear" })).toEqual({
 			dur: "0.5s",
+			begin: "indefinite",
+			fill: "freeze",
+			values: "10;40",
+			keyTimes: "0;1",
 			calcMode: "linear",
 		});
-		expect(timingAttributes({ ease: "hold" }).calcMode).toBe("discrete");
-		expect(timingAttributes({}).keySplines).toBe("0.23 1 0.32 1");
+		expect(tweenAttributes(cx, { ease: "hold" }).calcMode).toBe("discrete");
+		expect(tweenAttributes(cx, {}).keySplines).toBe("0.23 1 0.32 1");
+	});
+
+	it("spells a spring out as values, since a keySpline cannot overshoot", () => {
+		const tween = (attributeName: string, from: string, to: string) =>
+			tweenAttributes(
+				{ attributeName, from, to, kind: "attribute" },
+				{ ease: "spring" },
+			);
+		const cx = tween("cx", "10", "40");
+		const values = cx.values.split(";").map(Number);
+		expect(cx.calcMode).toBe("linear");
+		expect(cx.keySplines).toBeUndefined();
+		expect(values.length).toBeGreaterThan(8);
+		expect(cx.keyTimes.split(";")).toHaveLength(values.length);
+		expect(values[0]).toBe(10);
+		expect(values.at(-1)).toBe(40);
+		expect(Math.max(...values)).toBeGreaterThan(42);
+
+		// What the attribute cannot show is cut off
+		const fade = tween("opacity", "0", "1").values.split(";").map(Number);
+		expect(Math.max(...fade)).toBe(1);
+		const shrink = tween("r", "20", "0").values.split(";").map(Number);
+		expect(Math.min(...shrink)).toBe(0);
+
+		// Path data and a translate mix number by number
+		expect(tween("d", "M 0,0 L 10,0", "M 0,0 L 50,0").values).toMatch(
+			/^M 0,0 L 10,0;.*;M 0,0 L 50,0$/,
+		);
+		expect(
+			tweenAttributes(
+				{
+					attributeName: "transform",
+					from: "0 0",
+					to: "30 0",
+					kind: "translate",
+				},
+				{ ease: "bounce" },
+			).values.split(";").length,
+		).toBeGreaterThan(8);
+
+		// Colors do not spring
+		expect(tween("fill", "#f00", "#00f")).toMatchObject({
+			values: "#f00;#00f",
+			calcMode: "spline",
+			keySplines: "0.23 1 0.32 1",
+		});
+	});
+
+	it("no longer hands SMIL a pop keySpline it would drop", () => {
+		const pop = tweenAttributes(
+			{ attributeName: "x", from: "0", to: "100", kind: "attribute" },
+			{ ease: "pop" },
+		);
+		expect(pop.keySplines).toBeUndefined();
+		expect(Math.max(...pop.values.split(";").map(Number))).toBeGreaterThan(105);
 	});
 });
 

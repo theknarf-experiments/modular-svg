@@ -47,11 +47,21 @@ export function imageOf(c: Clock, span: Span): Span {
 	return { start: c.start + local * k, duration: span.duration * k };
 }
 
+// Stops carry four places; mirroring must not add a fifth
+const round = (v: number): number => Number(v.toFixed(4)) + 0;
+
 /** The ease that plays `e` backwards: at x it has 1 - e(1 - x) left to go. */
 export function reverseEase(e: ResolvedEase): ResolvedEase {
 	if (e.kind === "linear") return e;
 	if (e.kind === "steps")
 		return e.jump ? { kind: "steps", count: e.count } : { ...e, jump: "start" };
+	if (e.kind === "stops")
+		return {
+			kind: "stops",
+			stops: e.stops
+				.map(([x, y]) => [round(1 - x), round(1 - y)] as const)
+				.reverse(),
+		};
 	const [x1, y1, x2, y2] = e.points;
 	return { kind: "bezier", points: [1 - x2, 1 - y2, 1 - x1, 1 - y1] };
 }

@@ -4,6 +4,8 @@
 // `phrases`, every row's stagger plays inside a phrase of its own. With
 // `modulations`, the layout changes four times: the rows turn upside down,
 // two rows reverse, the first of them shuffles again, and all of it resolves.
+// With `springs`, every enter is a spring and a dot per row rides a smooth,
+// oriented route through the row's marks.
 const ref = (target: string, paint?: string) => ({
 	type: "Ref",
 	target,
@@ -12,7 +14,7 @@ const ref = (target: string, paint?: string) => ({
 
 export function scaleScene(
 	n: number,
-	opts: { phrases?: boolean; modulations?: boolean } = {},
+	opts: { phrases?: boolean; modulations?: boolean; springs?: boolean } = {},
 ): Record<string, unknown> {
 	const rows = Math.ceil(n / 10);
 	const ids = Array.from({ length: n }, (_, i) => `m${i}`);
@@ -59,9 +61,24 @@ export function scaleScene(
 		children.push({
 			type: "Enter",
 			id: `${id}In`,
-			props: { over: 0.3, from: { opacity: 0, y: 6 } },
+			props: {
+				over: 0.3,
+				from: { opacity: 0, y: 6 },
+				...(opts.springs ? { ease: "spring" } : {}),
+			},
 			children: [ref(id)],
 		});
+	if (opts.springs)
+		for (let r = 0; r < rows; r++)
+			children.push(
+				{ type: "Circle", id: `dot${r}`, props: { r: 3 } },
+				{
+					type: "Travel",
+					id: `trip${r}`,
+					props: { route: "smooth", orient: true, ease: "spring", over: 2 },
+					children: [ref(`dot${r}`), ...row(r).map((id) => ref(id))],
+				},
+			);
 	for (let r = 0; r < rows; r++) {
 		const stagger = {
 			type: "Stagger",

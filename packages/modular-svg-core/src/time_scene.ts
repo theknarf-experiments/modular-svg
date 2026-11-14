@@ -7,6 +7,7 @@ import {
 	passesOf,
 	resolveEase,
 	type SampleFn,
+	settleTime,
 	type Values,
 } from "./motion.ts";
 import type { LayoutOperator, NodeRecord } from "./solver/operators.ts";
@@ -132,7 +133,23 @@ function kindOf(type: string, props: Props): MotionSpec {
 			};
 		case "Travel":
 			// Waypoints are filled in by the parser once the children are known
-			return { kind: "travel", via: [], ease, loop };
+			return {
+				kind: "travel",
+				via: [],
+				ease,
+				loop,
+				...(props.route === "smooth" || props.route === "along"
+					? { route: props.route }
+					: {}),
+				...(props.pace === "leg" || props.pace === "trip"
+					? { pace: props.pace }
+					: {}),
+				...(props.orient === true
+					? { orient: 0 }
+					: typeof props.orient === "number" && Number.isFinite(props.orient)
+						? { orient: props.orient }
+						: {}),
+			};
 		case "Sampled":
 			if (typeof props.fn !== "function")
 				throw new Error("Sampled needs an fn prop: (t) => values");
@@ -247,7 +264,10 @@ export function buildTime(
 		} else if (t?.type === "Rest") {
 			timeSeed.push(num(t.props.at, 0), num(t.props.over, 0.5));
 		} else if (t && MODULATIONS.has(t.type)) {
-			timeSeed.push(num(t.props.at, 0), num(t.props.over, DEFAULT_OVER));
+			timeSeed.push(
+				num(t.props.at, 0),
+				num(t.props.over, settleTime(t.props.ease as Ease) ?? DEFAULT_OVER),
+			);
 		} else timeSeed.push(num(t?.props.at, 0), 0);
 	}
 
@@ -676,6 +696,13 @@ export function buildTime(
 			const ease =
 				props.ease !== undefined ? resolveEase(props.ease as Ease) : undefined;
 			const shape = ease && ((x: number) => easeAt(ease, x));
+			if (shape) {
+				const starts = members.map((_, i) => shape(i / (members.length - 1)));
+				if (starts.some((s, i) => s < 0 || s > 1 || s < (starts[i - 1] ?? 0)))
+					warnings.push(
+						`${name}: its ease overshoots, so members start out of order or outside its ${total}s; use an ease that stays within 0..1`,
+					);
+			}
 			ops.push(staggerOp(members.map(child), { total, anchor, shape }));
 		} else if (t.type === "At") {
 			ops.push(atOp(members.map(child), num(props.time, 0)));

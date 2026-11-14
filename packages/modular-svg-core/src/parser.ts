@@ -1,5 +1,6 @@
 import { parseRgba, rgbToOklch } from "./color.ts";
-import type { Ease } from "./motion.ts";
+import { type Ease, easeProblems } from "./motion.ts";
+import { flattenPath } from "./route.ts";
 import type {
 	AlignmentX,
 	AlignmentY,
@@ -145,6 +146,56 @@ function parseAlignments(
 		return [{ axis: "y", alignment: raw === "center" ? "centerY" : "top" }];
 	}
 	return [{ axis: "x", alignment: raw === "center" ? "centerX" : "left" }];
+}
+
+/** What a Travel's props and route marks say that it cannot do. */
+function travelWarnings(
+	id: string,
+	props: Record<string, unknown>,
+	via: readonly NodeRecord[],
+): string[] {
+	const out: string[] = [];
+	const name = `Travel(${id})`;
+	const { route, pace, orient } = props;
+	if (
+		route !== undefined &&
+		!["straight", "smooth", "along"].includes(route as string)
+	)
+		out.push(
+			`${name}: route must be "straight", "smooth" or "along", got ${JSON.stringify(route)}`,
+		);
+	if (pace !== undefined && pace !== "leg" && pace !== "trip")
+		out.push(
+			`${name}: pace must be "leg" or "trip", got ${JSON.stringify(pace)}`,
+		);
+	if (
+		orient !== undefined &&
+		typeof orient !== "boolean" &&
+		!(typeof orient === "number" && Number.isFinite(orient))
+	)
+		out.push(
+			`${name}: orient must be true or an angle in degrees, got ${JSON.stringify(orient)}`,
+		);
+	if (route !== "along") return out;
+	if (pace === "leg")
+		out.push(
+			`${name}: a route along marks has no legs, so pace="leg" is read as "trip"`,
+		);
+	for (const mark of via) {
+		if (mark.type === "path") {
+			const { unread } = flattenPath(mark.d ?? "");
+			if (unread.includes("M"))
+				out.push(`${name} follows only the first subpath of ${mark.id}`);
+			if (unread.includes("A"))
+				out.push(
+					`${name}: ${mark.id} draws an arc (A), which is followed as a straight line; use C or an Arc`,
+				);
+		} else if (!["line", "curve", "arrow", "arc"].includes(mark.type ?? ""))
+			out.push(
+				`${name} cannot follow ${mark.id}: a ${mark.type ?? "group"} has no path, so it is passed through its centre`,
+			);
+	}
+	return out;
 }
 
 // Bounds of an SVG path restricted to linear commands (M m L l H h V v Z z).
@@ -837,12 +888,24 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				releases: t.type === "Resolve" ? t.children.map((c) => c.id) : [],
 				...(t.props.ease !== undefined ? { ease: t.props.ease as Ease } : {}),
 			};
+		const eases = [
+			t.props.ease,
+			...(Array.isArray(t.props.steps)
+				? t.props.steps.map((s) => (s as { ease?: unknown } | null)?.ease)
+				: []),
+		];
+		for (const problem of eases.flatMap(easeProblems))
+			targetWarnings.push(
+				`${t.type}(${t.rec.id}): ${problem}; using the nearest allowed value`,
+			);
 		if (t.rec.type !== "motion") continue;
 		// Travel moves its first child through the rest, which stay put
 		const travel = t.rec.motion?.kind === "travel";
 		const [mover, ...via] = t.children;
-		if (t.rec.motion?.kind === "travel" && mover)
+		if (t.rec.motion?.kind === "travel" && mover) {
 			t.rec.motion = { ...t.rec.motion, via: via.map((v) => v.id) };
+			targetWarnings.push(...travelWarnings(t.rec.id, t.props, via));
+		}
 		t.rec.targets = (travel ? (mover ? [mover] : []) : t.children).map((c) => {
 			const under = nodesUnder(c);
 			return {
@@ -1724,7 +1787,19 @@ export function checkPhases(
 
 	for (const n of scene.nodes) {
 		if (n.motion?.kind !== "travel") continue;
-		const aims = [...(n.targets ?? []).map((t) => t.id), ...n.motion.via];
+		// A route along a connector also rests on where that connector's ends are
+		const ends =
+			n.motion.route === "along"
+				? n.motion.via.flatMap((id) => {
+						const mark = byId.get(id);
+						return [mark?.from, mark?.to].filter((e) => e !== undefined);
+					})
+				: [];
+		const aims = [
+			...(n.targets ?? []).map((t) => t.id),
+			...n.motion.via,
+			...ends,
+		];
 		const moving = aims.find((id) => movers.has(id));
 		if (moving !== undefined)
 			out.push(
