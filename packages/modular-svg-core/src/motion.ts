@@ -15,8 +15,8 @@ export type Ease =
 export type ResolvedEase =
 	| { kind: "linear" }
 	| { kind: "bezier"; points: readonly [number, number, number, number] }
-	/** `count` equal jumps, each at the end of its slice */
-	| { kind: "steps"; count: number };
+	/** `count` equal jumps, each at the end of its slice (or its start) */
+	| { kind: "steps"; count: number; jump?: "start" };
 
 const NAMED: Record<string, ResolvedEase> = {
 	linear: { kind: "linear" },
@@ -47,7 +47,11 @@ export function easeAt(ease: ResolvedEase, x: number): number {
 	if (x <= 0) return 0;
 	if (x >= 1) return 1;
 	if (ease.kind === "linear") return x;
-	if (ease.kind === "steps") return Math.floor(x * ease.count) / ease.count;
+	if (ease.kind === "steps")
+		return (
+			(ease.jump ? Math.ceil(x * ease.count) : Math.floor(x * ease.count)) /
+			ease.count
+		);
 	const [x1, y1, x2, y2] = ease.points;
 	const bez = (a: number, b: number, t: number) =>
 		3 * a * t * (1 - t) ** 2 + 3 * b * t ** 2 * (1 - t) + t ** 3;
@@ -201,7 +205,7 @@ const LINEAR = NAMED.linear;
 const HOLD = NAMED.hold;
 
 /** Most passes a looping motion may unroll into (each pass adds keyframes). */
-const MAX_PASSES = 2000;
+export const MAX_PASSES = 2000;
 
 /** Default length of a motion that no relation or `over` sizes. */
 export const DEFAULT_OVER = 0.5;

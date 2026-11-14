@@ -12,6 +12,7 @@ import {
 	holdOp,
 	lengthOp,
 	onBeatOp,
+	phraseOp,
 	polyrhythmOp,
 	sameTimeOp,
 	sequenceOp,
@@ -428,5 +429,21 @@ describe("more musical time", () => {
 			[holdOp([2], 0, 0.5)],
 		);
 		expect(r[0]).toEqual([1, 2.5]);
+	});
+
+	it("gives a phrase the length of what plays inside, per rate and repeat", () => {
+		const spans: [number, number][] = [
+			[5, 0],
+			[0, 1],
+			[0.5, 1.5],
+		];
+		const op = phraseOp([2, 4], 0, { rate: 2, repeat: 3 });
+		expect(solve(spans, [op])[0]).toEqual([5, 3]);
+		// only the duration: the start is placed like any leaf's
+		expect(op.writes).toEqual([1]);
+		// nothing inside, or only time before the phrase, is no length at all
+		expect(
+			solve([[1, 7]], [phraseOp([], 0, { rate: 1, repeat: 1 })])[0],
+		).toEqual([1, 0]);
 	});
 });

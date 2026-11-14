@@ -15,3 +15,12 @@ it("parses, solves, checks and compiles 2000 marks within budget", () => {
 	layoutToAst(layout, scene.nodes, 0, { animation: { loop: true } });
 	expect(performance.now() - t0).toBeLessThan(3000);
 });
+
+it("stays within budget when every row plays in a phrase of its own", () => {
+	const t0 = performance.now();
+	const scene = buildSceneFromJson(scaleScene(2000, { phrases: true }));
+	const layout = solveLayout(scene);
+	expect(checkSolution(scene, layout)).toEqual([]);
+	layoutToAst(layout, scene.nodes, 0, { animation: { loop: true } });
+	expect(performance.now() - t0).toBeLessThan(3000);
+});

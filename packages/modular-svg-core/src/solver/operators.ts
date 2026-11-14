@@ -57,6 +57,10 @@ export type NodeRecord = {
 	motion?: MotionSpec;
 	/** for motions: each targeted node and the marks it covers */
 	targets?: { id: string; marks: string[] }[];
+	/** the phrase whose time this node plays in; absent for scene time */
+	clock?: string;
+	/** for phrases: how the passes play; repeat is Infinity for "until the enclosing time ends" */
+	phrase?: { repeat: number; alternate: boolean; retrograde: boolean };
 	r?: number;
 	/** inner radius for arc marks (donut sectors); 0 = full pie slice */
 	innerR?: number;

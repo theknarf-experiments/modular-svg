@@ -443,3 +443,237 @@ describe("time relations over refs", () => {
 		);
 	});
 });
+
+describe("Phrase", () => {
+	const pair = [
+		dot("a"),
+		dot("b"),
+		motion("Enter", "aIn", "a", { over: 1 }),
+		motion("Enter", "bIn", "b", { over: 0.5 }),
+	];
+	const reveal: N = {
+		type: "Sequence",
+		id: "reveal",
+		props: { gap: 0.5 },
+		children: [ref("aIn"), ref("bIn")],
+	};
+	const phrase = (
+		id: string,
+		props: Record<string, unknown>,
+		children: N[] = [reveal],
+	): N => ({ type: "Phrase", id, props, children });
+
+	it("is as long as what plays inside it, in its own time", () => {
+		const { span, layout, warnings } = solve([...pair, phrase("p", { at: 3 })]);
+		expect(span("p")).toEqual([3, 2]);
+		expect(layout.p.length).toBe(2);
+		// inside: phrase seconds; outside: where the first pass lands
+		expect(layout.bIn.local).toEqual({ start: 1.5, duration: 0.5 });
+		expect(span("bIn")).toEqual([4.5, 0.5]);
+		expect(span("reveal")).toEqual([3, 2]);
+		expect(warnings).toEqual([]);
+	});
+
+	it("makes a sequence wait for every pass", () => {
+		const { span, warnings } = solve([
+			...pair,
+			dot("c"),
+			motion("Enter", "cIn", "c", { over: 1 }),
+			phrase("p", { repeat: 3 }),
+			{ type: "Sequence", children: [ref("p"), ref("cIn")] },
+		]);
+		expect(span("p")).toEqual([0, 6]);
+		expect(span("cIn")).toEqual([6, 1]);
+		expect(warnings).toEqual([]);
+	});
+
+	it("plays faster at a higher rate, and backwards under retrograde", () => {
+		const fast = solve([...pair, phrase("p", { rate: 2 })]);
+		expect(fast.span("p")).toEqual([0, 1]);
+		expect(fast.span("bIn")).toEqual([0.75, 0.25]);
+		const back = solve([...pair, phrase("p", { retrograde: true })]);
+		expect(back.span("bIn")).toEqual([0, 0.5]);
+		expect(back.span("aIn")).toEqual([1, 1]);
+	});
+
+	it("takes its whole span from over, shared by its passes", () => {
+		const { span, layout } = solve([
+			...pair,
+			phrase("p", { over: 3, repeat: 3 }),
+		]);
+		expect(span("p")).toEqual([0, 3]);
+		expect(layout.p.length).toBe(2);
+		expect(span("aIn")).toEqual([0, 0.5]);
+	});
+
+	it("is stretched as a unit: Stretch beats scales the gaps inside", () => {
+		const { span, warnings } = solve([
+			...pair,
+			{ type: "Beat", id: "beat", props: { bpm: 120 } },
+			phrase("p", {}),
+			{
+				type: "Stretch",
+				props: { beats: 8 },
+				children: [ref("beat"), ref("p")],
+			},
+		]);
+		expect(span("p")).toEqual([0, 4]);
+		expect(span("aIn")).toEqual([0, 2]);
+		expect(span("bIn")).toEqual([3, 1]);
+		expect(warnings).toEqual([]);
+	});
+
+	it("keeps a pin inside local: it does not pin the phrase", () => {
+		const { span, layout, warnings } = solve([
+			...pair,
+			dot("c"),
+			motion("Enter", "cIn", "c", { over: 1 }),
+			phrase("p", {}, [
+				{
+					type: "Sequence",
+					id: "late",
+					props: { at: 1 },
+					children: [ref("aIn"), ref("bIn")],
+				},
+			]),
+			{ type: "Sequence", children: [ref("cIn"), ref("p")] },
+		]);
+		expect(span("p")).toEqual([1, 2.5]);
+		expect(layout.aIn.local?.start).toBe(1);
+		expect(span("aIn")[0]).toBe(2);
+		expect(warnings).toEqual([]);
+	});
+
+	it("lets a later relation over one phrase's members play inside it", () => {
+		const { layout, span, warnings } = solve([
+			dot("a"),
+			dot("b"),
+			motion("Enter", "aIn", "a"),
+			motion("Enter", "bIn", "b"),
+			phrase("p", {}, [
+				{
+					type: "Stagger",
+					props: { spacing: 0.25 },
+					children: [ref("aIn"), ref("bIn")],
+				},
+			]),
+			{ type: "Legato", id: "tie", children: [ref("aIn"), ref("bIn")] },
+		]);
+		expect(layout.aIn.local).toEqual({ start: 0, duration: 0.25 });
+		expect(span("p")).toEqual([0, 0.75]);
+		expect(warnings).toEqual([]);
+	});
+
+	it("nests: the inner phrase is a leaf in the outer one's time", () => {
+		const { span, layout, warnings } = solve([
+			...pair,
+			phrase("outer", { rate: 2 }, [
+				phrase("inner", { repeat: 2 }, [ref("aIn")]),
+				{ type: "Sequence", children: [ref("inner"), ref("bIn")] },
+			]),
+		]);
+		expect(layout.inner.local).toEqual({ start: 0, duration: 2 });
+		expect(span("inner")).toEqual([0, 1]);
+		expect(span("outer")).toEqual([0, 1.25]);
+		expect(span("aIn")).toEqual([0, 0.5]);
+		expect(span("bIn")).toEqual([1, 0.25]);
+		expect(warnings).toEqual([]);
+	});
+
+	it("warns when two phrases take the same node; the first keeps it", () => {
+		const { scene, warnings } = solve([
+			...pair,
+			phrase("p", {}, [ref("aIn")]),
+			phrase("q", {}, [ref("aIn"), ref("bIn")]),
+		]);
+		expect(warnings).toContain(
+			"Phrase(q) takes aIn, which already plays in Phrase(p)'s time",
+		);
+		expect(scene.nodes.find((n) => n.id === "aIn")?.clock).toBe("p");
+	});
+
+	it("warns when a relation reaches across clocks, and drops it", () => {
+		const { span, warnings } = solve([
+			...pair,
+			phrase("p", {}, [ref("aIn")]),
+			{ type: "Sequence", id: "s", children: [ref("aIn"), ref("bIn")] },
+		]);
+		expect(warnings).toEqual([
+			"Sequence(s) relates bIn and aIn, which play in different time; relate Phrase(p) itself",
+		]);
+		expect(span("bIn")).toEqual([0, 0.5]);
+	});
+
+	it("warns when a member only moves inside a phrase", () => {
+		const { warnings } = solve([
+			...pair,
+			phrase("p", {}, [ref("aIn")]),
+			{ type: "Sequence", id: "s", children: [ref("a"), ref("b")] },
+		]);
+		expect(warnings).toEqual([
+			"Sequence(s): a only moves inside Phrase(p); relate the Phrase",
+		]);
+	});
+
+	it("warns about props that cannot apply", () => {
+		const w = (props: Record<string, unknown>) =>
+			solve([...pair, phrase("p", props)]).warnings;
+		expect(w({ rate: 2, over: 1 })).toEqual([
+			"Phrase(p): rate is overridden by its length",
+		]);
+		expect(w({ alternate: true })).toEqual([
+			"Phrase(p): alternate needs repeat",
+		]);
+		expect(w({ rate: 0 })).toEqual([
+			"Phrase(p): rate must be above 0; playing at 1",
+		]);
+		expect(w({ repeat: 0 })).toEqual([
+			"Phrase(p): repeat must be at least 1; playing it once",
+		]);
+		const claimed = solve([
+			...pair,
+			{ type: "Beat", id: "beat", props: { bpm: 60 } },
+			phrase("p", { rate: 2 }),
+			{
+				type: "Stretch",
+				props: { beats: 2 },
+				children: [ref("beat"), ref("p")],
+			},
+		]);
+		expect(claimed.warnings).toEqual([
+			"Phrase(p): rate is overridden by its length",
+		]);
+	});
+
+	it("points a stretched group at Phrase", () => {
+		const { warnings } = solve([
+			...pair,
+			{ type: "Beat", id: "beat", props: { bpm: 60 } },
+			reveal,
+			{
+				type: "Stretch",
+				id: "st",
+				props: { beats: 2 },
+				children: [ref("beat"), ref("reveal")],
+			},
+		]);
+		expect(warnings).toContain(
+			"Stretch(st): reveal is a group; wrap it in a Phrase to give it a length",
+		);
+	});
+
+	it("checks a phrase with nothing to play, and starts before the phrase", () => {
+		expect(solve([dot("a"), phrase("p", {}, [])]).warnings).toEqual([
+			"Phrase(p) has nothing to play",
+		]);
+		const early = solve([
+			...pair,
+			phrase("p", { at: 2 }, [
+				motion("Enter", "cIn", "a", { at: -0.5, over: 1 }),
+			]),
+		]);
+		expect(early.warnings).toEqual([
+			"Phrase(p) starts at -0.5s (cIn), before the phrase",
+		]);
+	});
+});

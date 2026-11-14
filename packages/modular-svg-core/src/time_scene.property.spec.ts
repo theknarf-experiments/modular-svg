@@ -23,6 +23,7 @@ const RELATIONS = [
 	"During",
 	"OnBeat",
 	"Legato",
+	"Phrase",
 ] as const;
 type Relation = {
 	type: (typeof RELATIONS)[number];
@@ -99,12 +100,19 @@ function sceneJson(s: TimeScene, k = 1): N {
 		children.push({
 			type: r.type,
 			id: `rel${j}`,
-			props: {
-				gap: r.gap * k,
-				spacing: r.spacing * k,
-				align: r.align,
-				division: r.division,
-			},
+			props:
+				r.type === "Phrase"
+					? {
+							repeat: r.division,
+							alternate: r.division > 1 && r.align === "end",
+							retrograde: r.gap > 0,
+						}
+					: {
+							gap: r.gap * k,
+							spacing: r.spacing * k,
+							align: r.align,
+							division: r.division,
+						},
 			children: r.type === "OnBeat" ? [ref("beat"), ...members] : members,
 		});
 	});
@@ -115,8 +123,10 @@ function solve(s: TimeScene, k = 1) {
 	const scene = buildSceneFromJson(sceneJson(s, k) as Record<string, unknown>);
 	const layout = solveLayout(scene);
 	const warnings = [...scene.warnings, ...checkSolution(scene, layout)];
-	const start = (i: number) => layout[`m${i}`].start ?? 0;
-	const length = (i: number) => layout[`m${i}`].duration ?? 0;
+	// Relations hold in the time their members play in
+	const own = (i: number) => layout[`m${i}`].local ?? layout[`m${i}`];
+	const start = (i: number) => own(i).start ?? 0;
+	const length = (i: number) => own(i).duration ?? 0;
 	return {
 		scene,
 		layout,
@@ -135,6 +145,12 @@ describe("time relations (properties)", () => {
 			fc.property(timeSceneArb, (s) => {
 				const { warnings, start, length, end, layout } = solve(s);
 				if (warnings.length > 0) return;
+				s.relations.forEach((r, j) => {
+					if (r.type !== "Phrase") return;
+					const p = layout[`rel${j}`];
+					expect(p.duration).toBeCloseTo((p.length ?? 0) * r.division, 3);
+					expect(p.length).toBeGreaterThan(0);
+				});
 				for (const r of s.relations) {
 					const m = r.members;
 					for (let j = 1; j < m.length; j++) {

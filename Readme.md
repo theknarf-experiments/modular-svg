@@ -82,6 +82,15 @@ relations (a relation spans its members), and moving one carries its contents:
 | `Bar beats count` | a span on bar lines lasting `count` bars, to sequence sections or fit things into |
 | `Rest over`, `Fermata hold` | an empty span; a span of its members plus a hold |
 | `Polyrhythm of` | `of={[3, 2]}`: three of the first beat in the time of two of the second |
+| `Phrase rate retrograde repeat alternate` | a clock: what it takes plays as a unit in the phrase's own time, faster or slower (`rate`, `over`, or stretched like a motion), backwards (`retrograde`), `repeat` times (`true`: until the enclosing time ends), every other pass reversed (`alternate`) |
+
+A `Phrase` is how a group gets a length: outside it is a leaf like a motion,
+so every relation above works on it; inside, its members are solved in the
+phrase's own seconds (an `at` inside is local). A relation only relates nodes
+in the same time, so to place a phrase's content from outside, relate the
+`Phrase`. Stretching a phrase changes its tape speed (a `Shake` inside keeps
+its number of shakes), and `over` is its whole span: `over={2} repeat={3}` is
+three passes in two seconds.
 
 A `Sequence` and a `Legato` over the same pair are circular (each sets the
 other's input), which warns: place legato members with `Stagger`, `OnBeat` or `At`.

@@ -14,6 +14,7 @@ import {
 	valueAt,
 } from "./motion.ts";
 import { defaultPaint } from "./parser.ts";
+import { type Clock, retime } from "./phrase.ts";
 import type { LayoutResult, NodeRecord } from "./solver/index.ts";
 
 export type AnimationOptions = {
@@ -69,7 +70,8 @@ const num = (v: number, places = 4): string => {
 
 function timing(ease: ResolvedEase): string {
 	if (ease.kind === "linear") return "linear";
-	if (ease.kind === "steps") return `steps(${ease.count})`;
+	if (ease.kind === "steps")
+		return `steps(${ease.count}${ease.jump ? ",start" : ""})`;
 	return `cubic-bezier(${ease.points.map((p) => num(p)).join(",")})`;
 }
 
@@ -129,8 +131,18 @@ function smil(lane: Lane, period: number, loop: boolean): SmilAnimate {
 		const next = lane.keys[i + 1];
 		if (next && moving(lane.keys, i) && k.ease.kind === "steps") {
 			// Path data cannot interpolate per step; hold, then jump at the end
+			// (or jump first, for a step played backwards)
+			const nudge = period * 1e-5;
 			points.push({ t: k.t, value, spline: "0 0 1 1" });
-			points.push({ t: next.t - period * 1e-5, value, spline: "0 0 1 1" });
+			points.push(
+				k.ease.jump
+					? {
+							t: k.t + nudge,
+							value: String(next.values[channel]),
+							spline: "0 0 1 1",
+						}
+					: { t: next.t - nudge, value, spline: "0 0 1 1" },
+			);
 			return;
 		}
 		const spline =
@@ -233,11 +245,12 @@ export function compileAnimation(
 		...motions.map((m) => {
 			const { start, duration } = span(m.id);
 			const loop = m.motion?.loop;
-			return (
-				start +
-				duration *
-					(typeof loop === "number" ? Math.max(1, Math.floor(loop)) : 1)
-			);
+			// Inside a phrase a loop stops where the phrase does
+			const passes =
+				typeof loop === "number" && m.clock === undefined
+					? Math.max(1, Math.floor(loop))
+					: 1;
+			return start + duration * passes;
 		}),
 		// Rests, bars and fermatas hold time too, so a trailing hold still plays
 		...Object.values(layout).map((b) =>
@@ -248,9 +261,41 @@ export function compileAnimation(
 	if (!(period > 0)) return undefined;
 
 	const byId = new Map(nodes.map((n) => [n.id, n]));
+	// The phrases a node plays in, innermost first
+	const clocksOf = (n: NodeRecord): Clock[] => {
+		const chain: Clock[] = [];
+		for (
+			let id = n.clock;
+			id !== undefined && chain.length < nodes.length;
+			id = byId.get(id)?.clock
+		) {
+			const box = layout[id];
+			const phrase = byId.get(id)?.phrase;
+			if (!box || !phrase) break;
+			const own = box.local ?? span(id);
+			chain.push({
+				start: own.start,
+				span: own.duration,
+				length: box.length ?? 0,
+				...phrase,
+			});
+		}
+		return chain;
+	};
+	const pastEnd = (id: string, expanded: Expanded): void => {
+		const last = Math.max(0, ...expanded.steps.map((s) => s.start + s.over));
+		if (last > period + 1e-6)
+			throw new Error(
+				`${id} runs until ${num(last)}s, past the ${num(period)}s scene`,
+			);
+	};
+
 	const contributions = new Map<string, Contribution[]>();
 	for (const m of motions) {
-		const { start, duration } = span(m.id);
+		const clocks = clocksOf(m);
+		// A phrase with nothing to play has no time to map onto the scene
+		if (clocks.some((c) => !(c.length > 0 && c.span > 0))) continue;
+		const { start, duration } = layout[m.id].local ?? span(m.id);
 		const expanded = expandMotion(
 			resolveColorRefs(resolveTravel(m, layout), (id, paint) => {
 				const node = byId.get(id);
@@ -260,13 +305,9 @@ export function compileAnimation(
 			}),
 			start,
 			duration,
-			period,
+			clocks[0]?.length ?? period,
 		);
-		const last = Math.max(0, ...expanded.steps.map((s) => s.start + s.over));
-		if (last > period + 1e-6)
-			throw new Error(
-				`${m.id} runs until ${num(last)}s, past the ${num(period)}s scene`,
-			);
+		if (clocks.length === 0) pastEnd(m.id, expanded);
 		for (const target of m.targets ?? []) {
 			const box = layout[target.id];
 			const pivot = {
@@ -274,9 +315,20 @@ export function compileAnimation(
 				y: box.y + box.height / 2 + offset.y,
 			};
 			for (const mark of target.marks) {
+				const node = byId.get(mark);
+				if (!node || !layout[mark]) continue;
+				// Each phrase plays the steps in the time of the one around it
+				const played = clocks.reduce(
+					(e, clock, i) =>
+						retime(e, clock, clocks[i + 1]?.length ?? period, (channel) =>
+							restValue(channel, node, layout[mark]),
+						),
+					expanded,
+				);
+				if (clocks.length > 0) pastEnd(m.id, played);
 				contributions.set(mark, [
 					...(contributions.get(mark) ?? []),
-					{ motion: m.id, expanded, pivot },
+					{ motion: m.id, expanded: played, pivot },
 				]);
 			}
 		}

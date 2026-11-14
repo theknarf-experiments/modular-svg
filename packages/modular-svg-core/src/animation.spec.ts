@@ -317,3 +317,189 @@ describe("reduced motion", () => {
 		expect(morph({ stillAt: false }).svg).not.toContain("p-still");
 	});
 });
+
+describe("Phrase", () => {
+	const phrase = (
+		props: Record<string, unknown>,
+		children: N[],
+		id = "p",
+	): N => ({ type: "Phrase", id, props, children });
+	const keyframesOf = (css: string | undefined) =>
+		[...(css ?? "").matchAll(/@keyframes [^{]+\{(.*)\}\n/g)].map((m) => m[1]);
+
+	it("plays an Enter backwards as the Exit it mirrors", () => {
+		const fade = { over: 1, ease: "linear" };
+		const back = render([
+			box("a"),
+			phrase({ retrograde: true }, [
+				on("Enter", "in", "a", { ...fade, from: { opacity: 0, y: 8 } }),
+			]),
+		]);
+		const exit = render([
+			box("a"),
+			on("Exit", "out", "a", { ...fade, to: { opacity: 0, y: 8 } }),
+		]);
+		expect(back.ast.css).toBe(exit.ast.css);
+		expect(back.svg).toBe(exit.svg);
+	});
+
+	it("reverses the ease with the motion", () => {
+		const { ast } = render([
+			box("a"),
+			phrase({ retrograde: true }, [
+				on("Enter", "in", "a", { over: 1, ease: "in" }),
+			]),
+		]);
+		expect(ast.css).toContain(
+			"0%{opacity:1;animation-timing-function:cubic-bezier(0.32,0.81,0.45,0.94)}100%{opacity:0}",
+		);
+	});
+
+	it("turns a ping-pong around without a cut", () => {
+		const { ast } = render([
+			box("a"),
+			phrase({ repeat: 2, alternate: true }, [
+				on("Motion", "rise", "a", {
+					steps: [{ to: { y: -20 }, over: 1, ease: "linear" }],
+				}),
+			]),
+		]);
+		expect(ast.duration).toBe(2);
+		expect(keyframesOf(ast.css)).toEqual([
+			"0%{translate:0px 0px;animation-timing-function:linear}50%{translate:0px -20px;animation-timing-function:linear}100%{translate:0px 0px}",
+		]);
+	});
+
+	it("cuts back between passes that run the same way", () => {
+		const { ast } = render([
+			box("a"),
+			phrase({ repeat: 2 }, [
+				on("Motion", "rise", "a", {
+					steps: [{ to: { y: -20 }, over: 1, ease: "linear" }],
+				}),
+			]),
+		]);
+		expect(keyframesOf(ast.css)[0]).toMatch(
+			/^0%\{translate:0px 0px;[^}]+\}50%\{translate:0px -20px;animation-timing-function:steps\(1\)\}50\.001%\{translate:0px 0px;/,
+		);
+	});
+
+	it("halves every keyframe time at rate 2", () => {
+		const scene = (wrap: (n: N[]) => N[]) =>
+			render(
+				[
+					box("a"),
+					box("b"),
+					...wrap([
+						on("Enter", "aIn", "a", { over: 1 }),
+						on("Enter", "bIn", "b", { over: 1 }),
+						{ type: "Sequence", children: [ref("aIn"), ref("bIn")] },
+					]),
+				],
+				{ duration: 4 },
+			);
+		const plain = scene((n) => n);
+		const fast = scene((n) => [phrase({ rate: 2 }, n)]);
+		const times = (css: string | undefined) =>
+			keyframesOf(css).map((k) =>
+				[...k.matchAll(/([\d.]+)%\{/g)].map((m) => Number(m[1])),
+			);
+		// b: fades in over 25%..50% of four seconds, or 12.5%..25% at double speed
+		expect(times(plain.ast.css)[1]).toEqual([0, 25, 50, 100]);
+		expect(times(fast.ast.css)[1]).toEqual([0, 12.5, 25, 100]);
+	});
+
+	it("nests: the inner phrase's passes play inside each outer pass", () => {
+		const { ast } = render([
+			box("a"),
+			phrase(
+				{ repeat: 2 },
+				[
+					phrase(
+						{ repeat: 2, alternate: true },
+						[
+							on("Motion", "rise", "a", {
+								steps: [{ to: { y: -20 }, over: 1, ease: "linear" }],
+							}),
+						],
+						"inner",
+					),
+				],
+				"outer",
+			),
+		]);
+		expect(ast.duration).toBe(4);
+		const at = [
+			...keyframesOf(ast.css)[0].matchAll(
+				/([\d.]+)%\{translate:0px (-?\d+)px/g,
+			),
+		];
+		expect(at.map((m) => [Math.round(Number(m[1])), Number(m[2])])).toEqual([
+			[0, 0],
+			[25, -20],
+			[50, 0],
+			// the outer phrase's cut back to the start, which is where it already is
+			[50, 0],
+			[75, -20],
+			[100, 0],
+		]);
+	});
+
+	it("jumps first when a stepped ease runs backwards", () => {
+		const { ast } = render([
+			box("a"),
+			phrase({ retrograde: true }, [
+				on("Motion", "tick", "a", {
+					steps: [{ to: { x: 30 }, over: 1, ease: "steps(3)" }],
+				}),
+			]),
+		]);
+		expect(ast.css).toContain(
+			"0%{translate:30px 0px;animation-timing-function:steps(3,start)}100%{translate:0px 0px}",
+		);
+	});
+
+	it("flips a morph: the path starts where it ended", () => {
+		const { svg } = render([
+			{ type: "Path", id: "p", props: { d: "M0 0 L10 0 L10 10" } },
+			phrase(
+				{ retrograde: true },
+				[
+					on("Motion", "m", "p", {
+						steps: [{ to: { d: "M0 0 L10 10 L0 10" }, over: 1, ease: "hold" }],
+					}),
+				],
+				"back",
+			),
+		]);
+		expect(svg).toMatch(
+			/values="M0 0 L10 10 L0 10;M0 0 L10 0 L10 10;M0 0 L10 0 L10 10" keyTimes="0;0.00001;1"/,
+		);
+	});
+
+	it("runs a loop inside a phrase until the phrase ends", () => {
+		const { ast } = render([
+			box("a"),
+			phrase({}, [
+				{ type: "Rest", id: "hold", props: { over: 2 } },
+				on("Shake", "shake", "a", { over: 0.5, loop: true, rate: 4 }),
+			]),
+			{ type: "Rest", props: { at: 2, over: 2 } },
+		]);
+		expect(ast.duration).toBe(4);
+		// four passes of two shakes each, then still for the second half
+		const body = keyframesOf(ast.css)[0];
+		expect(body.match(/translate:-3px 0px/g)).toHaveLength(4);
+		expect(body).toMatch(/50%\{translate:0px 0px\}100%\{translate:0px 0px\}$/);
+	});
+
+	it("skips the motions of a phrase with nothing to play", () => {
+		const { ast } = render([
+			box("a"),
+			box("b"),
+			on("Enter", "bIn", "b", { over: 1 }),
+			phrase({}, [on("Enter", "in", "a", { over: 0 })]),
+		]);
+		expect(ast.children.map((c) => c.type)).toEqual(["rect", "g"]);
+	});
+});

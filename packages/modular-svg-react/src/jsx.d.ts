@@ -260,6 +260,20 @@ declare module "react" {
 				count?: number;
 				children?: React.ReactNode;
 			};
+			/**
+			 * a clock: what it takes plays in the phrase's own time, as a unit that
+			 * can be stretched, reversed and repeated. `over` is the whole span
+			 */
+			phrase: Timed & {
+				/** speed, when nothing else sets the span */
+				rate?: number;
+				/** play backwards */
+				retrograde?: boolean;
+				/** passes; true repeats until the enclosing time ends */
+				repeat?: number | boolean;
+				/** every other pass runs the other way */
+				alternate?: boolean;
+			};
 			/** an empty span: a silence to sequence */
 			rest: { key?: React.Key; over?: number; at?: number };
 			/** spans its members plus a hold */

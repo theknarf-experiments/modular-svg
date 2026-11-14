@@ -7,6 +7,7 @@ const colorHex = (colors: Float64Array, base: number): string =>
 		colors[base + 3],
 	);
 
+import { type Clock, imageOf } from "../phrase.ts";
 import type { LayoutOperator, NodeRecord } from "./index.ts";
 
 export type Scene = {
@@ -41,6 +42,13 @@ export type LayoutResult = Record<
 		start?: number;
 		/** solved duration in seconds, for timed nodes */
 		duration?: number;
+		/**
+		 * for nodes inside a phrase: the span in the phrase's own time (start and
+		 * duration are then where its first pass lands in scene time)
+		 */
+		local?: { start: number; duration: number };
+		/** for phrases: how long one pass is in the phrase's own time */
+		length?: number;
 	}
 >;
 
@@ -172,6 +180,47 @@ export function solveLayout(
 	const timed = new Set(scene.timedIds ?? []);
 	const colored = new Set(scene.coloredPaints ?? []);
 
+	// Phrases: what plays inside holds the phrase's own seconds
+	const index = new Map(scene.nodes.map((n, i) => [n.id, i]));
+	const lengths = new Map<string, number>();
+	scene.nodes.forEach((n, i) => {
+		if (n.clock === undefined || !timed.has(n.id)) return;
+		const end = times[i * 2] + times[i * 2 + 1];
+		lengths.set(n.clock, Math.max(lengths.get(n.clock) ?? 0, end));
+	});
+	const clockAt = (id: string): Clock | undefined => {
+		const i = index.get(id);
+		const phrase = i === undefined ? undefined : scene.nodes[i].phrase;
+		if (i === undefined || !phrase) return undefined;
+		return {
+			start: times[i * 2],
+			span: times[i * 2 + 1],
+			length: lengths.get(id) ?? 0,
+			...phrase,
+		};
+	};
+	const spanOf = (n: NodeRecord, i: number) => {
+		const local = { start: times[i * 2], duration: times[i * 2 + 1] };
+		const rounded = {
+			start: roundTime(local.start),
+			duration: roundTime(local.duration),
+		};
+		if (n.clock === undefined) return rounded;
+		let span = local;
+		let node: NodeRecord | undefined = n;
+		for (let d = 0; node?.clock !== undefined && d < scene.nodes.length; d++) {
+			const clock = clockAt(node.clock);
+			if (!clock) break;
+			span = imageOf(clock, span);
+			node = scene.nodes[index.get(node.clock) as number];
+		}
+		return {
+			start: roundTime(span.start),
+			duration: roundTime(span.duration),
+			local: rounded,
+		};
+	};
+
 	const result: LayoutResult = {};
 	scene.nodes.forEach((n, i) => {
 		const base = indexMap.get(n.id) as number;
@@ -186,12 +235,8 @@ export function solveLayout(
 			...(colored.has(`${n.id}:stroke`)
 				? { stroke: colorHex(colors, i * COLOR_SLOTS * 2 + COLOR_SLOTS) }
 				: {}),
-			...(timed.has(n.id)
-				? {
-						start: roundTime(times[i * 2]),
-						duration: roundTime(times[i * 2 + 1]),
-					}
-				: {}),
+			...(timed.has(n.id) ? spanOf(n, i) : {}),
+			...(n.phrase ? { length: roundTime(lengths.get(n.id) ?? 0) } : {}),
 		};
 	});
 	return result;

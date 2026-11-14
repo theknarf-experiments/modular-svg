@@ -36,6 +36,7 @@ const sceneArb = fc.integer({ min: 2, max: 7 }).chain((n) =>
 					"Stagger",
 					"Before",
 					"Legato",
+					"Phrase",
 				),
 				members: fc.uniqueArray(fc.integer({ min: 0, max: n - 1 }), {
 					minLength: 2,
@@ -75,13 +76,15 @@ function json(s: S) {
 		});
 	}
 	s.relations.forEach((r, j) => {
-		const time = ["Sequence", "Stagger", "Before", "Legato"].includes(r.type);
+		const time = ["Sequence", "Stagger", "Before", "Legato", "Phrase"].includes(
+			r.type,
+		);
 		const members = r.members.map((i) => (time ? ref(`m${i}`) : ref(`r${i}`)));
 		if (r.type === "Darken") members[1] = ref(`r${r.members[1]}`, "stroke");
 		children.push({
 			type: r.type,
 			id: `rel${j}`,
-			props: { spacing: 7, gap: 0.1 },
+			props: { spacing: 7, gap: 0.1, repeat: 2, alternate: true },
 			children: members,
 		});
 	});

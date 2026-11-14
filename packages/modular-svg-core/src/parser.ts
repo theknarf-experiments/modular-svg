@@ -1088,6 +1088,12 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	}
 
 	const time = buildTime(nodes, timeNodes);
+	for (const n of nodes) {
+		const clock = time.clockOf.get(n.id);
+		if (clock !== undefined) n.clock = clock;
+		const phrase = time.phrases.get(n.id);
+		if (phrase) n.phrase = phrase;
+	}
 
 	return {
 		nodes,

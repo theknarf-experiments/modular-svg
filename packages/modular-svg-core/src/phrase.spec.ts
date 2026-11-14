@@ -1,0 +1,245 @@
+import fc from "fast-check";
+import { describe, expect, it } from "vitest";
+import {
+	type Channel,
+	type Expanded,
+	easeAt,
+	expandMotion,
+	type MotionSpec,
+	type ResolvedEase,
+	resolveEase,
+	type Values,
+} from "./motion.ts";
+import { type Clock, imageOf, retime, reverseEase } from "./phrase.ts";
+
+const once: Clock = {
+	start: 0,
+	span: 1,
+	length: 1,
+	repeat: 1,
+	alternate: false,
+	retrograde: false,
+};
+const noRest = (c: Channel): number => {
+	throw new Error(`${c} has no rest`);
+};
+
+/** The numeric state of an expanded motion at time t. */
+function stateAt(e: Expanded, t: number, rest: Values = {}): Values {
+	let state: Values = { ...rest, ...e.initial };
+	for (const s of [...e.steps].sort((a, b) => a.start - b.start)) {
+		if (s.start > t) break;
+		const p = s.over > 0 ? easeAt(s.ease, (t - s.start) / s.over) : 1;
+		const from = state;
+		state = {
+			...state,
+			...Object.fromEntries(
+				Object.entries(s.values).map(([c, v]) => {
+					const a = Number(from[c as Channel]);
+					return [c, a + (Number(v) - a) * p];
+				}),
+			),
+		};
+	}
+	return state;
+}
+
+const eases: ResolvedEase[] = [
+	resolveEase("linear"),
+	resolveEase("in"),
+	resolveEase("out"),
+	resolveEase("pop"),
+	resolveEase("hold"),
+	resolveEase("steps(3)"),
+];
+
+describe("reverseEase", () => {
+	it("is its own inverse", () => {
+		for (const e of eases) {
+			const back = reverseEase(reverseEase(e));
+			expect(back.kind).toBe(e.kind);
+			if (e.kind === "bezier" && back.kind === "bezier")
+				e.points.forEach((p, i) => {
+					expect(back.points[i]).toBeCloseTo(p, 12);
+				});
+			else expect(back).toEqual(e);
+		}
+	});
+
+	it("plays the ease backwards: at x it has 1 - e(1 - x) left", () => {
+		for (const e of eases)
+			for (const x of [0, 0.1, 0.25, 1 / 3, 0.5, 0.7, 0.9, 1])
+				expect(easeAt(reverseEase(e), x)).toBeCloseTo(1 - easeAt(e, 1 - x), 6);
+	});
+
+	it("turns end jumps into start jumps", () => {
+		expect(reverseEase(resolveEase("steps(3)"))).toEqual({
+			kind: "steps",
+			count: 3,
+			jump: "start",
+		});
+	});
+});
+
+describe("retime", () => {
+	const enter: MotionSpec = { kind: "enter", from: { opacity: 0, y: 8 } };
+	const shake: MotionSpec = { kind: "shake", amplitude: { x: 6 } };
+
+	it("leaves the steps alone under a clock that changes nothing", () => {
+		for (const spec of [enter, shake]) {
+			const e = expandMotion(spec, 0.25, 0.5, 1);
+			expect(retime(e, once, 1, noRest)).toEqual(e);
+		}
+	});
+
+	it("maps a span onto the first pass", () => {
+		const c = { ...once, start: 2, span: 6, length: 2, repeat: 3 };
+		expect(imageOf(c, { start: 0.5, duration: 1 })).toEqual({
+			start: 2.5,
+			duration: 1,
+		});
+		expect(
+			imageOf({ ...c, retrograde: true }, { start: 0.5, duration: 1 }),
+		).toEqual({ start: 2.5, duration: 1 });
+		expect(
+			imageOf({ ...c, span: 3, retrograde: true }, { start: 0, duration: 0.5 }),
+		).toEqual({ start: 2.75, duration: 0.25 });
+	});
+
+	it("repeats forwards exactly as a looping motion does", () => {
+		for (const spec of [enter, shake]) {
+			const looped = expandMotion({ ...spec, loop: 3 }, 0, 0.5, 10);
+			const phrased = retime(
+				expandMotion(spec, 0, 0.5, 0.5),
+				{ ...once, span: 1.5, length: 0.5, repeat: 3 },
+				10,
+				noRest,
+			);
+			expect(phrased).toEqual(looped);
+		}
+	});
+
+	it("turns without a cut when alternating", () => {
+		const e = retime(
+			expandMotion(enter, 0, 1, 1),
+			{ ...once, span: 2, repeat: 2, alternate: true },
+			2,
+			noRest,
+		);
+		expect(e.steps.map((s) => [s.start, s.over])).toEqual([
+			[0, 1],
+			[1, 1],
+		]);
+		expect(e.steps[1].values).toEqual({ opacity: 0, y: 8 });
+		expect(stateAt(e, 1)).toEqual({ opacity: 1, y: 0 });
+		expect(stateAt(e, 2)).toEqual({ opacity: 0, y: 8 });
+	});
+
+	it("starts a backward pass from the final state, completed from rest", () => {
+		const fade: Expanded = {
+			initial: {},
+			steps: [
+				{
+					start: 0,
+					over: 1,
+					ease: resolveEase("linear"),
+					values: { fill: "#f00", x: 4 },
+				},
+			],
+		};
+		const e = retime(fade, { ...once, retrograde: true }, 1, (c) =>
+			c === "fill" ? "#00f" : noRest(c),
+		);
+		expect(e.initial).toEqual({ fill: "#f00", x: 4 });
+		expect(e.steps[0].values).toEqual({ fill: "#00f", x: 0 });
+	});
+
+	it("keeps cuts as cuts, in mirrored order", () => {
+		const e: Expanded = {
+			initial: { x: 0 },
+			steps: [
+				{ start: 0, over: 1, ease: resolveEase("linear"), values: { x: 10 } },
+				{ start: 1, over: 0, ease: resolveEase("hold"), values: { x: 3 } },
+			],
+		};
+		const back = retime(e, { ...once, retrograde: true }, 1, noRest);
+		expect(back.initial).toEqual({ x: 3 });
+		expect(back.steps.map((s) => [s.start, s.over, s.values.x])).toEqual([
+			[0, 0, 10],
+			[0, 1, 0],
+		]);
+	});
+
+	it("repeats until the enclosing time ends, clipping the last pass", () => {
+		const e = retime(
+			expandMotion(enter, 0, 1, 1),
+			{ ...once, repeat: Infinity },
+			2.5,
+			noRest,
+		);
+		expect(e.steps.filter((s) => s.over > 0).map((s) => s.start)).toEqual([
+			0, 1, 2,
+		]);
+		expect(e.steps.at(-1)?.over).toBe(0.5);
+	});
+
+	it("refuses to unroll more passes than the cap", () => {
+		expect(() =>
+			retime(
+				expandMotion(enter, 0, 1, 1),
+				{ ...once, span: 0.001, length: 1, repeat: Infinity },
+				10,
+				noRest,
+			),
+		).toThrow(/cap is 2000/);
+	});
+
+	it("under retrograde shows at start + τk what the phrase shows at length - τ (property)", () => {
+		const stepArb = fc.record({
+			gap: fc.constantFrom(0, 0.25, 0.5),
+			over: fc.constantFrom(0.25, 0.5, 1),
+			ease: fc.constantFrom(...eases.filter((e) => e.kind !== "steps")),
+			x: fc.integer({ min: -20, max: 20 }),
+			opacity: fc.constantFrom(0, 0.5, 1),
+		});
+		fc.assert(
+			fc.property(
+				fc.array(stepArb, { minLength: 1, maxLength: 5 }),
+				fc.constantFrom(0.5, 1, 3),
+				fc.constantFrom(0, 2),
+				fc.double({ min: 0, max: 1, noNaN: true }),
+				(parts, speed, start, u) => {
+					let cursor = 0;
+					const local: Expanded = {
+						initial: { x: 0 },
+						steps: parts.map((p) => {
+							cursor += p.gap;
+							const step = {
+								start: cursor,
+								over: p.over,
+								ease: p.ease,
+								values: { x: p.x, opacity: p.opacity },
+							};
+							cursor += p.over;
+							return step;
+						}),
+					};
+					const length = cursor;
+					const k = 1 / speed;
+					const scene = retime(
+						local,
+						{ ...once, start, span: length * k, length, retrograde: true },
+						start + length * k,
+						noRest,
+					);
+					const tau = u * length;
+					const a = stateAt(scene, start + tau * k);
+					const b = stateAt(local, length - tau, { opacity: 1 });
+					expect(Number(a.x)).toBeCloseTo(Number(b.x), 4);
+					expect(Number(a.opacity)).toBeCloseTo(Number(b.opacity), 4);
+				},
+			),
+			{ numRuns: 300 },
+		);
+	});
+});

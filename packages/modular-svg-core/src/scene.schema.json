@@ -51,7 +51,8 @@
 				"Bar",
 				"Rest",
 				"Fermata",
-				"Polyrhythm"
+				"Polyrhythm",
+				"Phrase"
 			]
 		},
 		"id": { "type": "string" },

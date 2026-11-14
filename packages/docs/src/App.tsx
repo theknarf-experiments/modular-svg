@@ -20,8 +20,12 @@ import { PaletteExample } from "./examples/animation/PaletteExample";
 import paletteExampleCode from "./examples/animation/PaletteExample.tsx?raw";
 import { PhrasingExample } from "./examples/animation/PhrasingExample";
 import phrasingExampleCode from "./examples/animation/PhrasingExample.tsx?raw";
+import { PingPongExample } from "./examples/animation/PingPongExample";
+import pingPongExampleCode from "./examples/animation/PingPongExample.tsx?raw";
 import { PolyrhythmExample } from "./examples/animation/PolyrhythmExample";
 import polyrhythmExampleCode from "./examples/animation/PolyrhythmExample.tsx?raw";
+import { RetimeExample } from "./examples/animation/RetimeExample";
+import retimeExampleCode from "./examples/animation/RetimeExample.tsx?raw";
 import { ScrubberExample } from "./examples/animation/ScrubberExample";
 import scrubberExampleCode from "./examples/animation/ScrubberExample.tsx?raw";
 import { SoundExample } from "./examples/animation/SoundExample";
@@ -295,6 +299,20 @@ export const pages: Page[] = [
 					"onSolve hands out the solved schedule and a live clock; useCues calls back as the animation passes each ref. Here every hit plays a note through Web Audio - no audio in the solver or the React package, just the data and a hook",
 				code: soundExampleCode,
 				element: <SoundExample />,
+			},
+			{
+				title: "Ping-pong",
+				description:
+					"A Phrase is a clock: the motions inside play in its own time, and the phrase plays them as a unit. repeat + alternate runs every other pass backwards, eases and stepped jumps included, so the ball falls, bounces back up the same way, and never cuts",
+				code: pingPongExampleCode,
+				element: <PingPongExample />,
+			},
+			{
+				title: "Retiming a component",
+				description:
+					"Reveal is a component with a timeline of its own. A Phrase around it and a rest plays the whole thing there, holds, and back again (repeat={2} alternate), and Stretch beats fits all of that into eight beats without touching the component",
+				code: retimeExampleCode,
+				element: <RetimeExample />,
 			},
 		],
 	},

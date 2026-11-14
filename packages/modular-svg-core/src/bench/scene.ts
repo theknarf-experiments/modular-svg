@@ -1,13 +1,17 @@
 // A scene that grows with n and uses every solver domain: a grid of marks in
 // stacks, arrows between neighbours, distinct and copied fills with darker
-// borders, and an enter per mark staggered by row, rows in sequence.
+// borders, and an enter per mark staggered by row, rows in sequence. With
+// `phrases`, every row's stagger plays inside a phrase of its own.
 const ref = (target: string, paint?: string) => ({
 	type: "Ref",
 	target,
 	...(paint ? { paint } : {}),
 });
 
-export function scaleScene(n: number): Record<string, unknown> {
+export function scaleScene(
+	n: number,
+	opts: { phrases?: boolean } = {},
+): Record<string, unknown> {
 	const rows = Math.ceil(n / 10);
 	const ids = Array.from({ length: n }, (_, i) => `m${i}`);
 	const row = (r: number) => ids.slice(r * 10, r * 10 + 10);
@@ -56,17 +60,30 @@ export function scaleScene(n: number): Record<string, unknown> {
 			props: { over: 0.3, from: { opacity: 0, y: 6 } },
 			children: [ref(id)],
 		});
-	for (let r = 0; r < rows; r++)
-		children.push({
+	for (let r = 0; r < rows; r++) {
+		const stagger = {
 			type: "Stagger",
 			id: `st${r}`,
 			props: { spacing: 0.05 },
 			children: row(r).map((id) => ref(`${id}In`)),
-		});
+		};
+		children.push(
+			opts.phrases
+				? {
+						type: "Phrase",
+						id: `ph${r}`,
+						props: { repeat: 2, alternate: true },
+						children: [stagger],
+					}
+				: stagger,
+		);
+	}
 	children.push({
 		type: "Sequence",
 		props: { gap: 0.1 },
-		children: Array.from({ length: rows }, (_, r) => ref(`st${r}`)),
+		children: Array.from({ length: rows }, (_, r) =>
+			ref(opts.phrases ? `ph${r}` : `st${r}`),
+		),
 	});
 	return { type: "Group", id: "root", children };
 }

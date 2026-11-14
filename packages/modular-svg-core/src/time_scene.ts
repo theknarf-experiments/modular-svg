@@ -20,6 +20,7 @@ import {
 	holdOp,
 	lengthOp,
 	onBeatOp,
+	phraseOp,
 	polyrhythmOp,
 	sameTimeOp,
 	sequenceOp,
@@ -66,10 +67,14 @@ const TIME_CONSTRAINTS = new Set([
 	"Polyrhythm",
 ]);
 
+// Clocks: a leaf in the time around them, with a time of their own inside
+const TIME_CLOCKS = new Set(["Phrase"]);
+
 export const TIME_TYPES = new Set([
 	...TIME_GROUPS,
 	...TIME_CONSTRAINTS,
 	...TIME_LEAVES,
+	...TIME_CLOCKS,
 ]);
 
 type Props = Record<string, unknown>;
@@ -149,6 +154,17 @@ export type TimeScene = {
 	timedIds: string[];
 	timeChecks: TimeCheck[];
 	warnings: string[];
+	/** the phrase whose time each node plays in; absent for scene time */
+	clockOf: Map<string, string>;
+	/** how each phrase plays its passes */
+	phrases: Map<string, PhraseSpec>;
+};
+
+/** `repeat` is Infinity for a phrase that repeats until its enclosing time ends. */
+export type PhraseSpec = {
+	repeat: number;
+	alternate: boolean;
+	retrograde: boolean;
 };
 
 const num = (v: unknown, fallback: number): number =>
@@ -158,7 +174,8 @@ const num = (v: unknown, fallback: number): number =>
  * Compile time: each node gets (start, duration) slots. Motions are leaves,
  * marks and groups span the motions on them and their members, relations
  * become operators. `order` is the walk's post-order, so members precede the
- * relations over them, as Refs require.
+ * relations over them, as Refs require. What a Phrase takes is solved in the
+ * same array but in the phrase's own seconds, sealed from the time around it.
  */
 export function buildTime(
 	nodes: readonly NodeRecord[],
@@ -185,6 +202,8 @@ export function buildTime(
 					? 60 / num(t.props.bpm, 120)
 					: num(t.props.period, 0.5);
 			timeSeed.push(num(t.props.offset, 0), period);
+		} else if (t && TIME_CLOCKS.has(t.type)) {
+			timeSeed.push(num(t.props.at, 0), num(t.props.over, 0));
 		} else if (t?.type === "Rest") {
 			timeSeed.push(num(t.props.at, 0), num(t.props.over, 0.5));
 		} else timeSeed.push(num(t?.props.at, 0), 0);
@@ -199,17 +218,85 @@ export function buildTime(
 		}
 	}
 
-	// Time children: what a node spans and carries along when moved
-	const timeChildren = (n: NodeRecord): NodeRecord[] => {
+	const typeOf = (n: NodeRecord) => byId.get(n.id)?.type ?? "";
+	const isClock = (n: NodeRecord) => TIME_CLOCKS.has(typeOf(n));
+	const isLeaf = (n: NodeRecord) =>
+		!!n.motion || TIME_LEAVES.has(typeOf(n)) || isClock(n);
+
+	// What a node spans before clocks seal anything off
+	const rawChildren = (n: NodeRecord): NodeRecord[] => {
 		const t = byId.get(n.id);
-		if (
-			n.motion ||
-			(t && (TIME_LEAVES.has(t.type) || TIME_CONSTRAINTS.has(t.type)))
-		)
-			return [];
+		if (isLeaf(n) || (t && TIME_CONSTRAINTS.has(t.type))) return [];
 		const members =
 			t && TIME_GROUPS.has(t.type) ? t.children : (t?.structural ?? []);
 		return [...(motionsOn.get(n.id) ?? []), ...members];
+	};
+	const rawTimedCache = new Map<string, boolean>();
+	const rawTimed = (n: NodeRecord, seen = new Set<string>()): boolean => {
+		const known = rawTimedCache.get(n.id);
+		if (known !== undefined) return known;
+		if (seen.has(n.id)) return false;
+		seen.add(n.id);
+		const yes = isLeaf(n) || rawChildren(n).some((c) => rawTimed(c, seen));
+		if (yes) rawTimedCache.set(n.id, true);
+		return yes;
+	};
+
+	// Clocks: a phrase takes its children and all they span, down to the next
+	// phrase (whose own slot plays in this one's time)
+	const clockOf = new Map<string, string>();
+	const phraseNodes = order
+		.filter((t) => TIME_CLOCKS.has(t.type))
+		.sort((a, b) => base(a.rec.id) - base(b.rec.id));
+	for (const p of phraseNodes) {
+		const take = (n: NodeRecord, direct: boolean): void => {
+			const owner = clockOf.get(n.id);
+			if (owner !== undefined || n.id === p.rec.id) {
+				if (direct && owner !== undefined && owner !== p.rec.id)
+					warnings.push(
+						`Phrase(${p.rec.id}) takes ${n.id}, which already plays in Phrase(${owner})'s time`,
+					);
+				return;
+			}
+			clockOf.set(n.id, p.rec.id);
+			for (const c of rawChildren(n)) take(c, false);
+		};
+		for (const c of p.children) take(c, true);
+	}
+	// A relation declared outside over members of one phrase plays in it too
+	for (const t of order) {
+		if (
+			!TIME_TYPES.has(t.type) ||
+			TIME_CLOCKS.has(t.type) ||
+			clockOf.has(t.rec.id)
+		)
+			continue;
+		const members = t.children.filter((c) => rawTimed(c));
+		const clock = members[0] && clockOf.get(members[0].id);
+		if (clock && members.every((m) => clockOf.get(m.id) === clock))
+			clockOf.set(t.rec.id, clock);
+	}
+	// The phrase a node's content was taken into, when not its own
+	const takenInto = (
+		n: NodeRecord,
+		seen = new Set<string>(),
+	): string | undefined => {
+		if (seen.has(n.id)) return undefined;
+		seen.add(n.id);
+		for (const c of rawChildren(n)) {
+			const clock = clockOf.get(c.id);
+			if (clock !== clockOf.get(n.id)) return clock;
+			const deeper = takenInto(c, seen);
+			if (deeper) return deeper;
+		}
+		return undefined;
+	};
+
+	// Time children: what a node spans and carries along when moved; only what
+	// plays in its own clock
+	const timeChildren = (n: NodeRecord): NodeRecord[] => {
+		const own = clockOf.get(n.id);
+		return rawChildren(n).filter((c) => clockOf.get(c.id) === own);
 	};
 
 	const timed = new Set<string>();
@@ -217,11 +304,7 @@ export function buildTime(
 		if (timed.has(n.id)) return true;
 		if (seen.has(n.id)) return false;
 		seen.add(n.id);
-		const t = byId.get(n.id);
-		const yes =
-			!!n.motion ||
-			(t !== undefined && TIME_LEAVES.has(t.type)) ||
-			timeChildren(n).some((c) => isTimed(c, seen));
+		const yes = isLeaf(n) || timeChildren(n).some((c) => isTimed(c, seen));
 		if (yes) timed.add(n.id);
 		return yes;
 	};
@@ -293,7 +376,7 @@ export function buildTime(
 		for (const m of members) {
 			if (timeChildren(m).length > 0)
 				warnings.push(
-					`${relation}: ${m.id} is a group; only motions and beats take a length`,
+					`${relation}: ${m.id} is a group; wrap it in a Phrase to give it a length`,
 				);
 			else if (byId.get(m.id)?.props.over !== undefined)
 				warnings.push(
@@ -364,6 +447,31 @@ export function buildTime(
 		const { rec, props } = t;
 		const members = t.children.filter((c) => timed.has(c.id));
 		const name = `${t.type}(${rec.id})`;
+
+		if (TIME_TYPES.has(t.type) && !TIME_CLOCKS.has(t.type)) {
+			const own = clockOf.get(rec.id);
+			const related = t.children.filter((c) => rawTimed(c));
+			for (const m of related) {
+				if (clockOf.get(m.id) !== own || timed.has(m.id)) continue;
+				const phrase = takenInto(m);
+				if (phrase)
+					warnings.push(
+						`${name}: ${m.id} only moves inside Phrase(${phrase}); relate the Phrase`,
+					);
+			}
+			// A relation only relates nodes that play in the same time
+			const stranger = related.find((m) => clockOf.get(m.id) !== own);
+			if (stranger) {
+				const other =
+					related.find((m) => clockOf.get(m.id) !== clockOf.get(stranger.id)) ??
+					rec;
+				const phrase = clockOf.get(stranger.id) ?? clockOf.get(other.id);
+				warnings.push(
+					`${name} relates ${other.id} and ${stranger.id}, which play in different time; relate Phrase(${phrase}) itself`,
+				);
+				continue;
+			}
+		}
 
 		if (
 			t.type !== "Beat" &&
@@ -606,6 +714,62 @@ export function buildTime(
 		nameNewOps(`span(${n.id})`);
 	}
 
+	// Phrases: the span follows from what plays inside, unless something sets it.
+	// After the loop, since a later Stretch may claim the length
+	const playing = new Map<string, NodeRecord[]>();
+	for (const n of nodes) {
+		const clock = clockOf.get(n.id);
+		if (clock === undefined || !timed.has(n.id)) continue;
+		const members = playing.get(clock);
+		if (members) members.push(n);
+		else playing.set(clock, [n]);
+	}
+	const phrases = new Map<string, PhraseSpec>();
+	for (const { rec, props } of phraseNodes) {
+		const name = `Phrase(${rec.id})`;
+		const count =
+			props.repeat === true
+				? Infinity
+				: props.repeat === undefined || props.repeat === false
+					? 1
+					: Math.floor(num(props.repeat, 0));
+		if (!(count >= 1))
+			warnings.push(`${name}: repeat must be at least 1; playing it once`);
+		const repeat = count >= 1 ? count : 1;
+		if (props.rate !== undefined && !(num(props.rate, 0) > 0))
+			warnings.push(`${name}: rate must be above 0; playing at 1`);
+		const rate = num(props.rate, 0) > 0 ? num(props.rate, 1) : 1;
+		const alternate = props.alternate === true;
+		if (alternate && repeat === 1)
+			warnings.push(`${name}: alternate needs repeat`);
+		phrases.set(rec.id, {
+			repeat,
+			alternate,
+			retrograde: props.retrograde === true,
+		});
+		const members = playing.get(rec.id) ?? [];
+		const sized = props.over !== undefined || durationClaimed.has(rec.id);
+		if (sized && props.rate !== undefined)
+			warnings.push(`${name}: rate is overridden by its length`);
+		if (!sized)
+			ops.push(
+				phraseOp(
+					members.map((m) => base(m.id)),
+					base(rec.id),
+					{ rate, repeat: Number.isFinite(repeat) ? repeat : 1 },
+				),
+			);
+		nameNewOps(`span(${rec.id})`);
+
+		const ids = members.map((m) => m.id);
+		timeChecks.push((span) =>
+			ids.some((id) => span(id)[0] + span(id)[1] > TIME_EPSILON)
+				? undefined
+				: `${name} has nothing to play`,
+		);
+		timeChecks.push(earliestCheck(ids, `${name} starts`, "the phrase"));
+	}
+
 	// A Sequence sets b's start from a's length while Legato sets a's length
 	// from b's start: together they are circular and the length is arbitrary
 	for (const art of articulatedPairs) {
@@ -616,16 +780,13 @@ export function buildTime(
 			);
 	}
 
-	// One warning for the earliest start, not one per node under it
-	const timedList = [...timed];
-	timeChecks.push((span) => {
-		let first: string | undefined;
-		for (const id of timedList)
-			if (first === undefined || span(id)[0] < span(first)[0]) first = id;
-		if (first === undefined || span(first)[0] >= -TIME_EPSILON)
-			return undefined;
-		return `the schedule starts at ${Math.round(span(first)[0] * 1000) / 1000}s (${first}), before the scene`;
-	});
+	timeChecks.push(
+		earliestCheck(
+			[...timed].filter((id) => !clockOf.has(id)),
+			"the schedule starts",
+			"the scene",
+		),
+	);
 
 	return {
 		timeOperators: ops,
@@ -634,8 +795,22 @@ export function buildTime(
 		timedIds: nodes.filter((n) => timed.has(n.id)).map((n) => n.id),
 		timeChecks,
 		warnings,
+		clockOf,
+		phrases,
 	};
 }
+
+// One warning for the earliest start, not one per node under it
+const earliestCheck =
+	(ids: readonly string[], what: string, where: string): TimeCheck =>
+	(span) => {
+		let first: string | undefined;
+		for (const id of ids)
+			if (first === undefined || span(id)[0] < span(first)[0]) first = id;
+		if (first === undefined || span(first)[0] >= -TIME_EPSILON)
+			return undefined;
+		return `${what} at ${Math.round(span(first)[0] * 1000) / 1000}s (${first}), before ${where}`;
+	};
 
 /**
  * Relations that a solved state does not satisfy: apply each operator once
@@ -681,11 +856,20 @@ export function checkTime(
 		timeOperatorNames?: readonly string[];
 		timeSeed?: readonly number[];
 	},
-	layout: Record<string, { start?: number; duration?: number }>,
+	layout: Record<
+		string,
+		{
+			start?: number;
+			duration?: number;
+			local?: { start: number; duration: number };
+		}
+	>,
 ): string[] {
+	// Relations hold in the time their members play in
+	const own = (id: string) => layout[id]?.local ?? layout[id];
 	const span = (id: string): [number, number] => [
-		layout[id]?.start ?? 0,
-		layout[id]?.duration ?? 0,
+		own(id)?.start ?? 0,
+		own(id)?.duration ?? 0,
 	];
 	const warnings = (scene.timeChecks ?? [])
 		.map((check) => check(span))
@@ -702,7 +886,7 @@ export function checkTime(
 	if (scene.nodes && scene.timeOperators?.length && scene.timeSeed) {
 		const times = new Float64Array(scene.timeSeed);
 		scene.nodes.forEach((n, i) => {
-			const box = layout[n.id];
+			const box = own(n.id);
 			if (box?.start !== undefined) times[i * 2] = box.start;
 			if (box?.duration !== undefined) times[i * 2 + 1] = box.duration;
 		});

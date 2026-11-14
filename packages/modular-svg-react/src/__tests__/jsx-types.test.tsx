@@ -16,6 +16,12 @@ describe("shipped JSX types", () => {
 				<motion key="m" steps={[{ to: { fill: { ref: "a" } }, over: 1 }]}>
 					<ref target="a" />
 				</motion>
+				<phrase key="p" at={1} over={4} repeat={2} alternate retrograde>
+					<ref target="in" />
+				</phrase>
+				<phrase rate={2} repeat>
+					<ref target="m" />
+				</phrase>
 			</Graphic>
 		);
 		const wrong = (
@@ -24,6 +30,8 @@ describe("shipped JSX types", () => {
 				<sequence gap="soon" />
 				{/* @ts-expect-error not an ease */}
 				<enter ease="wobbly" />
+				{/* @ts-expect-error repeat is a count or a boolean */}
+				<phrase repeat="twice" />
 				{/* @ts-expect-error align is start or end */}
 				<onBeat align="middle" />
 			</Graphic>

@@ -1,5 +1,6 @@
 import { render, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { Solution } from "../cues";
 import { Graphic } from "../Graphic";
 
 describe("Graphic animation", () => {
@@ -60,5 +61,40 @@ describe("Graphic animation", () => {
 		);
 		await waitFor(() => expect(container.querySelector("circle")).toBeTruthy());
 		expect(container.querySelector("style")).toBeNull();
+	});
+
+	it("plays a component's timeline as a phrase: there and back, with its spans in scene time", async () => {
+		const Reveal = () => (
+			<>
+				<circle key="a" r={10} />
+				<enter key="aIn" over={1} ease="linear">
+					<ref target="a" />
+				</enter>
+			</>
+		);
+		const solved: Solution[] = [];
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const { container } = render(
+			<Graphic onSolve={(s) => solved.push(s)}>
+				<Reveal />
+				<phrase key="thereAndBack" repeat={2} alternate at={1}>
+					<ref target="aIn" />
+				</phrase>
+			</Graphic>,
+		);
+		await waitFor(() => expect(container.querySelector("style")).toBeTruthy());
+		const css = container.querySelector("style")?.textContent ?? "";
+		expect(css).toContain("animation-duration:3s");
+		expect(css).toMatch(
+			/33\.333%\{opacity:0;[^}]+\}66\.667%\{opacity:1;[^}]+\}100%\{opacity:0\}/,
+		);
+		expect(solved.at(-1)?.spans.thereAndBack).toEqual({
+			start: 1,
+			duration: 2,
+		});
+		expect(solved.at(-1)?.spans.aIn).toEqual({ start: 1, duration: 1 });
+		expect(solved.at(-1)?.warnings).toEqual([]);
+		expect(warn).not.toHaveBeenCalled();
+		warn.mockRestore();
 	});
 });
