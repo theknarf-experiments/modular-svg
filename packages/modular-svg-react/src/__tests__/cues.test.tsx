@@ -56,6 +56,34 @@ describe("onSolve", () => {
 	});
 });
 
+describe("cues inside a phrase", () => {
+	it("fire on every pass of the solved phrase", async () => {
+		let solved: Solution | undefined;
+		render(
+			<Graphic onSolve={(s) => (solved = s)}>
+				<circle key="a" r={5} />
+				<phrase key="p" at={1} repeat={2} alternate>
+					<enter key="hit" at={0.25} over={0.5}>
+						<ref target="a" />
+					</enter>
+				</phrase>
+			</Graphic>,
+		);
+		await waitFor(() => expect(solved).toBeDefined());
+		const s = solved as Solution;
+		expect(s.spans.hit).toEqual({ start: 1.25, duration: 0.5 });
+		expect(s.local.hit).toEqual({ start: 0.25, duration: 0.5, clock: "p" });
+		const cues = cuesBetween(s, ["hit", "hit:end"], 0, 5);
+		expect(cues.map((c) => [c.edge, c.at])).toEqual([
+			["start", 1.25],
+			// the turn: one instant, in the order the handlers are keyed
+			["start", 1.75],
+			["end", 1.75],
+			["end", 2.25],
+		]);
+	});
+});
+
 describe("onSolve feeding parent state", () => {
 	it("settles instead of re-solving forever", async () => {
 		const { useState } = await import("react");

@@ -228,7 +228,10 @@ held clock) and `onSolve`, which hands out the solved spans of every timed ref,
 the layout boxes, warnings and a live animation clock. `useCues(solution,
 { hit3: () => ..., "hit3:end": () => ... })` calls back as the animation
 passes those refs, so sound or anything else can follow the solved schedule
-without the solver knowing about it:
+without the solver knowing about it. Inside a `Phrase` a cue fires on every
+pass, nested phrases and a looping scene included: the plain cue when the ref
+starts to play and `:end` when it stops, whichever way the pass runs (a
+repeating phrase cut by the end of its time ends its cues there):
 
 ```tsx
 const [solution, onSolve] = useSolution();

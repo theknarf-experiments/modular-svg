@@ -1,15 +1,24 @@
 import {
 	type Cue,
+	type CueClock,
 	cuesBetween,
 	type LayoutResult,
+	type LocalSpan,
 	type Span,
 } from "@modular-svg/core";
 import * as React from "react";
 
 /** What the solver decided for a scene, handed out by Graphic's onSolve. */
 export type Solution = {
-	/** solved time spans of every timed node (motions, marks, relations, beats), by id */
+	/**
+	 * solved time spans of every timed node (motions, marks, relations, beats),
+	 * by id; for what plays inside a phrase, its first pass
+	 */
 	spans: Record<string, Span>;
+	/** what plays inside a phrase: its span in the phrase's own time */
+	local: Record<string, LocalSpan>;
+	/** those phrases, by id: how each plays its passes */
+	clocks: Record<string, CueClock>;
 	/** solved layout boxes, by id */
 	boxes: LayoutResult;
 	/** seconds one pass of the animation lasts (0 when nothing animates) */
@@ -25,7 +34,10 @@ export type Solution = {
 	time: () => number | undefined;
 };
 
-/** Handlers by ref id: "hit3" fires as hit3 starts, "hit3:end" as it ends. */
+/**
+ * Handlers by ref id: "hit3" fires as hit3 starts to play, "hit3:end" as it
+ * stops, on every pass of a phrase it is in (and of a looping scene).
+ */
 export type CueHandlers = Record<string, (cue: Cue) => void>;
 
 /**

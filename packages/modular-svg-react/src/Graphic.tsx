@@ -1,6 +1,7 @@
 import {
 	type AnimationOptions,
 	checkSolution,
+	cueSchedule,
 	layoutToAst,
 	type SvgDocument,
 	type SvgElement,
@@ -394,13 +395,8 @@ function GraphicImpl({
 			if (scene.nodes.length > 0) {
 				const layout = solveLayout(scene);
 				const svgAst = layoutToAst(layout, scene.nodes, margin, { animation });
-				const spans: Solution["spans"] = {};
-				for (const id of scene.timedIds) {
-					const box = layout[id];
-					spans[id] = { start: box.start ?? 0, duration: box.duration ?? 0 };
-				}
 				const solved = {
-					spans,
+					...cueSchedule(layout, scene.nodes),
 					boxes: layout,
 					duration: svgAst.duration ?? 0,
 					loop: animation !== false && !!animation?.loop,

@@ -10,6 +10,7 @@ import {
 	resolveEase,
 	sampleAt,
 } from "./motion.ts";
+import { retime } from "./phrase.ts";
 import { beatWarp, snapToGrid } from "./solver/time.ts";
 
 const easeArb = fc.oneof(
@@ -325,6 +326,105 @@ describe("cues (properties)", () => {
 					expect(later.map((c) => c.id)).toEqual(once.map((c) => c.id));
 				},
 			),
+		);
+	});
+});
+
+describe("cues inside phrases (properties)", () => {
+	const clockArb = fc.record({
+		start: centis(1),
+		pass: fc.constantFrom(0.5, 1, 1.5),
+		repeat: fc.constantFrom(1, 2, 3, Number.POSITIVE_INFINITY),
+		alternate: fc.boolean(),
+		retrograde: fc.boolean(),
+	});
+	// A span inside one or two phrases; each phrase is as long as it needs
+	const phrasedArb = fc
+		.record({
+			local: fc.record({ start: centis(1), duration: centis(1) }),
+			inner: clockArb,
+			outer: fc.option(clockArb, { nil: undefined }),
+			loop: fc.boolean(),
+		})
+		.map(({ local, inner, outer, loop }) => {
+			const length = 2;
+			const span = (c: typeof inner) =>
+				Number.isFinite(c.repeat) ? c.pass * c.repeat : c.pass;
+			const outerLength = inner.start + span(inner) + 1;
+			const clocks = {
+				inner: {
+					...inner,
+					span: span(inner),
+					length,
+					...(outer ? { clock: "outer" } : {}),
+				},
+				...(outer
+					? { outer: { ...outer, span: span(outer), length: outerLength } }
+					: {}),
+			};
+			return {
+				spans: { a: { start: 0, duration: 0 } },
+				local: { a: { ...local, clock: "inner" } },
+				clocks,
+				duration: 12,
+				loop,
+			};
+		});
+
+	it("firing over (a, b] then (b, c] is the same as over (a, c]", () => {
+		fc.assert(
+			fc.property(
+				phrasedArb,
+				fc
+					.tuple(centis(30), centis(30), centis(30))
+					.map((xs) => xs.sort((x, y) => x - y)),
+				(solution, [a, b, c]) => {
+					const split = [
+						...cuesBetween(solution, ["a", "a:end"], a, b),
+						...cuesBetween(solution, ["a", "a:end"], b, c),
+					];
+					const whole = cuesBetween(solution, ["a", "a:end"], a, c);
+					const sorted = (cues: typeof whole) =>
+						cues.map((cue) => `${cue.at.toFixed(9)} ${cue.edge}`).sort();
+					expect(sorted(split)).toEqual(sorted(whole));
+				},
+			),
+		);
+	});
+
+	it("fire where the phrase plays a step over the same span", () => {
+		fc.assert(
+			fc.property(phrasedArb, (solution) => {
+				const local = solution.local.a;
+				fc.pre(local.duration > 0);
+				const { inner, outer } = solution.clocks;
+				const step = {
+					start: local.start,
+					over: local.duration,
+					ease: resolveEase("linear"),
+					values: { x: 1 },
+				};
+				const rest = () => 0;
+				const inOuter = retime(
+					{ initial: { x: 0 }, steps: [step] },
+					inner,
+					outer?.length ?? solution.duration,
+					rest,
+				);
+				const played = outer
+					? retime(inOuter, outer, solution.duration, rest)
+					: inOuter;
+				const moves = played.steps.filter((s) => s.over > 0);
+				const once = { ...solution, loop: false };
+				const micro = (t: number) => Math.round(t * 1e6);
+				const ascending = (ts: number[]) => ts.map(micro).sort((x, y) => x - y);
+				const at = (key: string) =>
+					ascending(cuesBetween(once, [key], -1, 1e3).map((c) => c.at));
+				expect(at("a")).toEqual(ascending(moves.map((s) => s.start)));
+				expect(at("a:end")).toEqual(
+					ascending(moves.map((s) => s.start + s.over)),
+				);
+			}),
 		);
 	});
 });
