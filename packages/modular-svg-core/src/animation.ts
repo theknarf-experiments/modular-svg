@@ -2,7 +2,6 @@ import {
 	CHANNELS,
 	type Channel,
 	type Expanded,
-	easeAt,
 	expandMotion,
 	type Key,
 	keysOf,
@@ -13,6 +12,7 @@ import {
 	resolveColorRefs,
 	resolveEase,
 	type Step,
+	sampleAt,
 	type Values,
 	valueAt,
 } from "./motion.ts";
@@ -22,7 +22,7 @@ import type { LayoutResult, NodeRecord } from "./solver/index.ts";
 import {
 	foldPhases,
 	type LayoutBox,
-	lerpBoxes,
+	type PhaseEvent,
 	phaseBoxes,
 } from "./solver/phases.ts";
 
@@ -61,11 +61,13 @@ export type MarkAnimation = {
 	still?: { d: string; movingClass: string; stillClass: string };
 	/**
 	 * For connectors whose ends a Modulate moves apart: each element (by id)
-	 * becomes a path whose `d` follows the ends, with a still copy like above
+	 * becomes a path whose `d` follows the ends, with a still copy like above.
+	 * `class` replaces the mark's own on that path: it also moves `d` in CSS
 	 */
 	paths?: Record<
 		string,
 		{
+			class: string;
 			smil: SmilAnimate;
 			still?: { d: string; movingClass: string; stillClass: string };
 		}
@@ -87,7 +89,13 @@ export type CompiledAnimation = {
 	marks: Map<string, MarkAnimation>;
 };
 
-type Lane = { name: string; channels: Channel[]; keys: Key[] };
+type Lane = {
+	name: string;
+	channels: Channel[];
+	keys: Key[];
+	/** for lanes whose declaration is not a channel's own */
+	declare?: (values: Values) => string;
+};
 
 // Every class and keyframe name carries this until the CSS is hashed
 const TOKEN = "§";
@@ -125,6 +133,8 @@ function declarations(lane: string, values: Values): string {
 		case "width":
 		case "height":
 			return `${lane}:${num(n(lane))}px`;
+		case "d":
+			return `d:path("${String(values.d)}")`;
 		default:
 			return `${lane}:${String(values[lane as Channel])}`;
 	}
@@ -147,7 +157,9 @@ function keyframes(lane: Lane, period: number): string {
 			const ease = moving(lane.keys, i)
 				? `;animation-timing-function:${timing(k.ease)}`
 				: "";
-			return `${at[i]}{${declarations(lane.name, k.values)}${ease}}`;
+			const declared =
+				lane.declare?.(k.values) ?? declarations(lane.name, k.values);
+			return `${at[i]}{${declared}${ease}}`;
 		})
 		.join("");
 }
@@ -234,7 +246,91 @@ type Contribution = {
 	motion: string;
 	expanded: Expanded;
 	pivot: { x: number; y: number };
+	/** how far the pivot is from `pivot` as layout moves the target, in scene time */
+	origin?: Expanded;
+	/** a mark following its box: the innermost shell, inside every motion's */
+	layout?: boolean;
 };
+
+/** One clock's changes of layout. */
+type Change = {
+	index: number;
+	events: readonly PhaseEvent[];
+	eases: ResolvedEase[];
+	clocks: Phrase[];
+	/** its last event, to name what runs past the scene */
+	last: string;
+};
+
+/** One lane's keys in scene time. */
+type Track = { channels: Channel[]; keys: Key[] };
+/** What holds at `at` is reached over [start, start + over]. */
+type Piece = { start: number; over: number; ease: ResolvedEase; at: number };
+
+const SIZES = ["width", "height"] as const;
+
+/**
+ * The stretches over which any of the tracks moves, cut into pieces short
+ * enough to cross in a straight line: tracks from different clocks ease
+ * differently, so what they add up to is sampled.
+ */
+function piecesOf(tracks: readonly Track[]): Piece[] {
+	const times: number[] = [];
+	for (const t of tracks
+		.flatMap((track) => track.keys.map((k) => k.t))
+		.sort((a, b) => a - b))
+		if (times.length === 0 || t - times[times.length - 1] > 1e-9) times.push(t);
+	const pieces: Piece[] = [];
+	const at = tracks.map(() => 0);
+	for (let i = 0; i + 1 < times.length; i++) {
+		const [t0, t1] = [times[i], times[i + 1]];
+		const movers = tracks.flatMap(({ keys }, j) => {
+			while (at[j] + 1 < keys.length && keys[at[j] + 1].t <= t0 + 1e-9) at[j]++;
+			return moving(keys, at[j]) ? [[keys[at[j]], keys[at[j] + 1]]] : [];
+		});
+		if (movers.length === 0) continue;
+		if (movers.every(([k]) => k.ease.kind === "steps")) {
+			// Only jumps: each is a cut, not a ramp. One at t0 that jumps at the
+			// end of its step belongs to the stretch before
+			const jumps = new Set<number>();
+			for (const [k, next] of movers) {
+				if (k.ease.kind !== "steps") continue;
+				const first = k.ease.jump ? 0 : 1;
+				for (let j = first; j < first + k.ease.count; j++) {
+					const jump = k.t + ((next.t - k.t) * j) / k.ease.count;
+					const here = k.ease.jump
+						? jump >= t0 - 1e-9 && jump < t1 - 1e-9
+						: jump > t0 + 1e-9 && jump <= t1 + 1e-9;
+					if (here) jumps.add(jump);
+				}
+			}
+			for (const jump of [...jumps].sort((a, b) => a - b))
+				pieces.push({ start: jump, over: 0, ease: CUT, at: jump });
+			continue;
+		}
+		const over = (t1 - t0) / SAMPLES;
+		for (let j = 1; j <= SAMPLES; j++)
+			pieces.push({
+				start: t0 + over * (j - 1),
+				over,
+				ease: LINEAR,
+				at: j === SAMPLES ? t1 : t0 + over * j,
+			});
+	}
+	return pieces;
+}
+
+/** `rest` plus what every track adds to it at t. */
+function totalAt(tracks: readonly Track[], rest: Values, t: number): Values {
+	const total: Values = { ...rest };
+	for (const { channels, keys } of tracks) {
+		const values = sampleAt(keys, t);
+		for (const c of channels)
+			if (c in rest)
+				total[c] = Number(total[c]) + Number(values[c]) - Number(rest[c]);
+	}
+	return total;
+}
 
 const lanesOf = (values: Values): Map<string, Channel[]> => {
 	const lanes = new Map<string, Channel[]>();
@@ -529,84 +625,156 @@ export function compileAnimation(
 	 */
 	const perform = (
 		mark: NodeRecord,
-		motion: string,
 		clocks: readonly Phrase[],
-		expanded: Expanded,
-		pivot: { x: number; y: number },
+		c: Contribution,
 	): void => {
 		if (clocks.length === 0) {
-			contribute(mark.id, { motion, expanded, pivot });
+			contribute(mark.id, c);
 			return;
 		}
-		const nesting = only(expanded, (c) => !!CHANNELS[c].nest);
+		const nesting = only(c.expanded, (ch) => !!CHANNELS[ch].nest);
 		if (nesting) {
-			const played = through(clocks, nesting, (c) =>
-				restValue(c, mark, layout[mark.id]),
+			const played = through(clocks, nesting, (ch) =>
+				restValue(ch, mark, layout[mark.id]),
 			);
-			pastEnd(motion, played);
-			contribute(mark.id, { motion, expanded: played, pivot });
+			pastEnd(c.motion, played);
+			contribute(mark.id, { ...c, expanded: played });
 		}
-		const replaced = only(expanded, (c) => !CHANNELS[c].nest);
+		const replaced = only(c.expanded, (ch) => !CHANNELS[ch].nest);
 		if (!replaced) return;
 		const byClock = phrased.get(mark.id) ?? new Map<string, Performed[]>();
 		const list = byClock.get(clocks[0].id) ?? [];
-		list.push({ motion, expanded: replaced });
+		list.push({ motion: c.motion, expanded: replaced });
 		byClock.set(clocks[0].id, list);
 		phrased.set(mark.id, byClock);
 	};
 
-	// Layout in time. Every mark a clock's modulations move follows its box in
-	// an outermost shell, so the motions on it keep their pivots
-	const morphs = new Map<string, Map<string, Expanded[]>>();
-	for (const { events } of phases) {
-		const last = byId.get(events[events.length - 1].id);
-		const clocks = last ? clocksOf(last) : [];
-		if (clocks.some((c) => !(c.length > 0 && c.span > 0))) continue;
+	// Layout in time. Each clock's changes of layout are followed on their own;
+	// what several clocks do to one thing adds up
+	const changeOf = new Map<string, Change>();
+	phases.forEach(({ events }, index) => {
+		const last = events[events.length - 1].id;
+		const node = byId.get(last);
+		const clocks = node ? clocksOf(node) : [];
+		if (clocks.some((c) => !(c.length > 0 && c.span > 0))) return;
 		const eases = events.map((e) =>
 			resolveEase(byId.get(e.id)?.modulation?.ease),
 		);
-		const mine = new Set(events.map((e) => e.id));
-		const moved = (id: string | undefined): boolean => {
-			const moves = id === undefined ? undefined : layout[id]?.phases;
-			return moves !== undefined && Object.keys(moves).some((e) => mine.has(e));
-		};
-		const follow = (mark: NodeRecord, e: Expanded | undefined): void => {
-			if (!e) return;
-			const by = events.find((x) => x.start === e.steps[0].start)?.id ?? "";
-			if (clocks.length === 0) pastEnd(by, e);
-			perform(mark, by, clocks, e, { x: 0, y: 0 });
-		};
-		for (const mark of nodes) {
-			const box = layout[mark.id];
-			if (
-				!box ||
-				!mark.type ||
-				mark.type === "motion" ||
-				mark.type === "timing"
-			)
-				continue;
-			if (!isConnector(mark)) {
-				if (!moved(mark.id)) continue;
-				const sized = mark.type === "rect" || mark.type === "image";
-				const grow = mark.type === "rect" ? (mark.strokeWidth ?? 0) : 0;
-				follow(
-					mark,
-					followBox(
-						box,
-						phaseBoxes(box, events),
-						events,
-						eases,
-						sized ? grow : undefined,
-					),
-				);
+		const change = { index, events, eases, clocks, last };
+		for (const e of events) changeOf.set(e.id, change);
+	});
+	const changesOf = (...ids: (string | undefined)[]): Change[] => {
+		const found = new Set<Change>();
+		for (const id of ids)
+			for (const event of Object.keys(
+				(id === undefined ? undefined : layout[id]?.phases) ?? {},
+			)) {
+				const change = changeOf.get(event);
+				if (change) found.add(change);
+			}
+		return [...found].sort((a, b) => a.index - b.index);
+	};
+	const boxesIn = (change: Change, box: LayoutResult[string]): LayoutBox[] =>
+		phaseBoxes(box, change.events);
+	// A clock's steps in scene time
+	const played = (change: Change, e: Expanded): Expanded => {
+		const out = through(change.clocks, e, (c) => e.initial[c] ?? 0);
+		pastEnd(change.last, out);
+		return out;
+	};
+	const tracksOf = (e: Expanded): Track[] =>
+		[...lanesOf(touched(e)).values()].map((channels) => ({
+			channels,
+			keys: keysOf(
+				Object.fromEntries(channels.map((c) => [c, e.initial[c] ?? 0])),
+				e.steps
+					.filter((s) => channels.some((c) => c in s.values))
+					.map((s) => ({ ...s, values: pick(s.values, channels) })),
+				period,
+			),
+		}));
+	const sampled = (tracks: readonly Track[], rest: Values): Expanded => ({
+		initial: totalAt(tracks, rest, 0),
+		steps: piecesOf(tracks).map(({ at, ...piece }) => ({
+			...piece,
+			values: totalAt(tracks, rest, at),
+		})),
+	});
+	// The mark follows its box in a shell inside those of the motions on it
+	const follow = (
+		mark: NodeRecord,
+		change: Change,
+		e: Expanded | undefined,
+	): void => {
+		if (!e) return;
+		const motion =
+			change.events.find((x) => x.start === e.steps[0].start)?.id ?? "";
+		if (change.clocks.length === 0) pastEnd(motion, e);
+		perform(mark, change.clocks, {
+			motion,
+			expanded: e,
+			pivot: { x: 0, y: 0 },
+			layout: true,
+		});
+	};
+
+	const morphs = new Map<string, Map<string, Expanded>>();
+	for (const mark of nodes) {
+		const box = layout[mark.id];
+		if (!box || !mark.type || mark.type === "motion" || mark.type === "timing")
+			continue;
+		if (!isConnector(mark)) {
+			const by = changesOf(mark.id);
+			if (by.length === 0) continue;
+			const sized = mark.type === "rect" || mark.type === "image";
+			const grow = mark.type === "rect" ? (mark.strokeWidth ?? 0) : 0;
+			const moves = by.map((change) => ({
+				change,
+				e: followBox(
+					box,
+					boxesIn(change, box),
+					change.events,
+					change.eases,
+					sized ? grow : undefined,
+				),
+			}));
+			const resizing = moves.flatMap(({ change, e }) => {
+				const sizes = e && only(e, (c) => !CHANNELS[c].nest);
+				return sizes ? [{ change, sizes }] : [];
+			});
+			if (resizing.length < 2) {
+				for (const { change, e } of moves) follow(mark, change, e);
 				continue;
 			}
-			const [from, to] = [mark.from, mark.to];
-			if (from === undefined || to === undefined) continue;
-			const [a, b] = [layout[from], layout[to]];
-			if (!a || !b || !(moved(from) || moved(to))) continue;
-			const [as, bs] = [phaseBoxes(a, events), phaseBoxes(b, events)];
-			const rigid = as.every(
+			// Sizes from several clocks only add up in the time they share
+			for (const { change, e } of moves)
+				follow(mark, change, e && only(e, (c) => !!CHANNELS[c].nest));
+			const tracks = resizing.flatMap(({ change, sizes }) =>
+				tracksOf(played(change, sizes)),
+			);
+			for (const side of SIZES) {
+				const mine = tracks.filter((t) => t.channels.includes(side));
+				if (mine.length === 0) continue;
+				contribute(mark.id, {
+					motion: resizing.map(({ change }) => change.last).join(", "),
+					expanded: sampled(mine, { [side]: box[side] + grow }),
+					pivot: { x: 0, y: 0 },
+				});
+			}
+			continue;
+		}
+		const [from, to] = [mark.from, mark.to];
+		if (from === undefined || to === undefined) continue;
+		const [a, b] = [layout[from], layout[to]];
+		if (!a || !b) continue;
+		const by = changesOf(from, to).map((change) => ({
+			change,
+			as: boxesIn(change, a),
+			bs: boxesIn(change, b),
+		}));
+		if (by.length === 0) continue;
+		const rigid = by.every(({ as, bs }) =>
+			as.every(
 				(ai, i) =>
 					Math.abs(ai.x - a.x - (bs[i].x - b.x)) < RIGID &&
 					Math.abs(ai.y - a.y - (bs[i].y - b.y)) < RIGID &&
@@ -614,54 +782,95 @@ export function compileAnimation(
 					Math.abs(ai.height - a.height) < RIGID &&
 					Math.abs(bs[i].width - b.width) < RIGID &&
 					Math.abs(bs[i].height - b.height) < RIGID,
-			);
-			if (rigid) {
+			),
+		);
+		if (rigid) {
+			for (const { change, as } of by) {
 				const carried = as.map((ai) => ({
 					...box,
 					x: box.x + ai.x - a.x,
 					y: box.y + ai.y - a.y,
 				}));
-				follow(mark, followBox(box, carried, events, eases));
-				continue;
-			}
-			if (!pathsOf) continue;
-			// Its ends move apart, so it is redrawn: each element's path is
-			// sampled between the two layouts along the ease
-			const draw = (fa: LayoutBox, tb: LayoutBox) =>
-				pathsOf(mark, { [from]: fa, [to]: tb });
-			const rest = draw(a, b);
-			const steps: Step[][] = rest.map(() => []);
-			let [pa, pb] = [a as LayoutBox, b as LayoutBox];
-			events.forEach((e, i) => {
-				const [na, nb] = [as[i], bs[i]];
-				if (na === pa && nb === pb) return;
-				const pieces = e.over > 0 ? SAMPLES : 1;
-				for (let j = 1; j <= pieces; j++) {
-					const p = j === pieces ? 1 : easeAt(eases[i], j / pieces);
-					draw(lerpBoxes(pa, na, p), lerpBoxes(pb, nb, p)).forEach((el, k) => {
-						steps[k]?.push({
-							start: e.start + (e.over * (j - 1)) / pieces,
-							over: e.over / pieces,
-							ease: e.over > 0 ? LINEAR : CUT,
-							values: { d: el.d },
-						});
-					});
-				}
-				[pa, pb] = [na, nb];
-			});
-			const elements = morphs.get(mark.id) ?? new Map<string, Expanded[]>();
-			rest.forEach((el, k) => {
-				const played = through(
-					clocks,
-					{ initial: { d: el.d }, steps: steps[k] },
-					() => el.d,
+				follow(
+					mark,
+					change,
+					followBox(box, carried, change.events, change.eases),
 				);
-				pastEnd(events[events.length - 1].id, played);
-				elements.set(el.id, [...(elements.get(el.id) ?? []), played]);
-			});
-			morphs.set(mark.id, elements);
+			}
+			continue;
 		}
+		if (!pathsOf) continue;
+		// Its ends move apart, so it is redrawn between wherever they are
+		const end = (home: LayoutBox, side: "as" | "bs") => {
+			const tracks = by.flatMap((moved) => {
+				const e = followBox(
+					home,
+					moved[side],
+					moved.change.events,
+					moved.change.eases,
+					0,
+				);
+				return e ? tracksOf(played(moved.change, e)) : [];
+			});
+			const rest = { x: 0, y: 0, width: home.width, height: home.height };
+			const at = (t: number): LayoutBox => {
+				const now = totalAt(tracks, rest, t);
+				return {
+					x: home.x + Number(now.x),
+					y: home.y + Number(now.y),
+					width: Number(now.width),
+					height: Number(now.height),
+				};
+			};
+			return { tracks, at };
+		};
+		const [endA, endB] = [end(a, "as"), end(b, "bs")];
+		const draw = (t: number) =>
+			pathsOf(mark, { [from]: endA.at(t), [to]: endB.at(t) });
+		const start = draw(0);
+		const steps: Step[][] = start.map(() => []);
+		for (const { at, ...piece } of piecesOf([...endA.tracks, ...endB.tracks]))
+			draw(at).forEach((el, k) => {
+				steps[k]?.push({ ...piece, values: { d: el.d } });
+			});
+		morphs.set(
+			mark.id,
+			new Map(
+				start.map((el, k) => [
+					el.id,
+					{ initial: { d: el.d }, steps: steps[k] },
+				]),
+			),
+		);
 	}
+
+	// Where layout takes a motion's pivot: the centre of its target
+	const origins = new Map<string, Expanded | undefined>();
+	const centre = (b: LayoutBox): LayoutBox => ({
+		x: b.x + b.width / 2,
+		y: b.y + b.height / 2,
+		width: 0,
+		height: 0,
+	});
+	const originOf = (id: string): Expanded | undefined => {
+		if (origins.has(id)) return origins.get(id);
+		const box = layout[id];
+		const moves = changesOf(id).flatMap((change) => {
+			const e = followBox(
+				centre(box),
+				boxesIn(change, box).map(centre),
+				change.events,
+				change.eases,
+			);
+			return e ? [played(change, e)] : [];
+		});
+		const origin =
+			moves.length < 2
+				? moves[0]
+				: sampled(moves.flatMap(tracksOf), { x: 0, y: 0 });
+		origins.set(id, origin);
+		return origin;
+	};
 
 	for (const m of motions) {
 		const clocks = clocksOf(m);
@@ -686,10 +895,16 @@ export function compileAnimation(
 				x: box.x + box.width / 2 + offset.x,
 				y: box.y + box.height / 2 + offset.y,
 			};
+			const origin = originOf(target.id);
 			for (const mark of target.marks) {
 				const node = byId.get(mark);
 				if (!node || !layout[mark]) continue;
-				perform(node, m.id, clocks, expanded, pivot);
+				perform(node, clocks, {
+					motion: m.id,
+					expanded,
+					pivot,
+					...(origin ? { origin } : {}),
+				});
 			}
 		}
 	}
@@ -775,6 +990,7 @@ export function compileAnimation(
 	let twins = false;
 
 	const marks = new Map<string, MarkAnimation>();
+	const ownLanes = new Map<string, Lane[]>();
 	for (const [markId, list] of contributions) {
 		const mark = byId.get(markId);
 		const box = layout[markId];
@@ -785,9 +1001,14 @@ export function compileAnimation(
 				throw new Error(`A ${mark.type} (${markId}) cannot animate ${c}`);
 		};
 
-		// Nesting lanes: one wrapper per motion, so stacked motions compose
+		// Nesting lanes: one wrapper per motion, so stacked motions compose. The
+		// one following the layout is innermost: a motion on a group then turns
+		// or scales its members from where the layout has them
 		const shells: { class: string }[] = [];
-		for (const { expanded, pivot } of list) {
+		for (const { expanded, pivot, origin } of [
+			...list.filter((c) => !c.layout),
+			...list.filter((c) => c.layout),
+		]) {
 			const lanes: Lane[] = [];
 			for (const [name, channels] of lanesOf(touched(expanded))) {
 				if (!CHANNELS[channels[0]].nest) continue;
@@ -810,10 +1031,25 @@ export function compileAnimation(
 			const pivots = lanes.some(
 				(l) => l.name === "scale" || l.name === "rotate",
 			);
-			const origin = pivots
-				? `;transform-box:view-box;transform-origin:${num(pivot.x)}px ${num(pivot.y)}px`
-				: "";
-			shells.push({ class: classFor(lanes, origin) });
+			const at = (v: Values) =>
+				`transform-origin:${num(pivot.x + Number(v.x ?? 0))}px ${num(pivot.y + Number(v.y ?? 0))}px`;
+			if (pivots && origin)
+				lanes.push({
+					name: "transform-origin",
+					channels: ["x", "y"],
+					keys: keysOf(
+						{ x: origin.initial.x ?? 0, y: origin.initial.y ?? 0 },
+						origin.steps,
+						period,
+					),
+					declare: at,
+				});
+			shells.push({
+				class: classFor(
+					lanes,
+					pivots ? `;transform-box:view-box;${at(origin?.initial ?? {})}` : "",
+				),
+			});
 		}
 
 		// Replacing lanes: merged across motions on the element itself
@@ -842,9 +1078,11 @@ export function compileAnimation(
 					throw new Error(
 						`d on ${markId} moves between paths with different commands, so it would jump`,
 					);
+				// SMIL reaches every browser, but runs on a clock of its own. The
+				// same lane in CSS wins where the browser animates `d`, and keeps
+				// time with everything else
 				smils.push(smil(lane, period, !!opts.loop));
 				if (still !== undefined) stillD = String(valueAt(lane.keys, still).d);
-				continue;
 			}
 			if (name === "draw") {
 				attrs.pathLength = 1;
@@ -853,6 +1091,7 @@ export function compileAnimation(
 			cssLanes.push(lane);
 		}
 		if (cssLanes.length > 0) attrs.class = classFor(cssLanes);
+		ownLanes.set(markId, cssLanes);
 		if (stillD !== undefined) twins = true;
 		marks.set(markId, {
 			attrs,
@@ -870,21 +1109,19 @@ export function compileAnimation(
 		});
 	}
 
-	// Connectors redrawn between layouts: SMIL on each element's path
+	// Connectors redrawn between layouts: each element's path moves in CSS,
+	// and in SMIL for browsers that do not animate `d`
 	for (const [markId, elements] of morphs) {
 		const paths: NonNullable<MarkAnimation["paths"]> = {};
-		for (const [elementId, played] of elements) {
+		for (const [elementId, drawn] of elements) {
 			const lane: Lane = {
 				name: "d",
 				channels: ["d"],
-				keys: keysOf(
-					played[0].initial,
-					played.flatMap((e) => e.steps),
-					period,
-				),
+				keys: keysOf(drawn.initial, drawn.steps, period),
 			};
 			if (still !== undefined) twins = true;
 			paths[elementId] = {
+				class: classFor([...(ownLanes.get(markId) ?? []), lane]),
 				smil: smil(lane, period, !!opts.loop),
 				...(still !== undefined
 					? {
@@ -920,6 +1157,8 @@ export function compileAnimation(
 	for (const m of marks.values()) {
 		if (m.attrs.class) m.attrs.class = named(String(m.attrs.class));
 		for (const s of m.shells) s.class = named(s.class);
+		for (const path of Object.values(m.paths ?? {}))
+			path.class = named(path.class);
 		for (const twin of [m, ...Object.values(m.paths ?? {})])
 			if (twin.still)
 				twin.still = {

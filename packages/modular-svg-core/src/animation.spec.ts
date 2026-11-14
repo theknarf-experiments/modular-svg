@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import type { AnimationOptions } from "./animation.ts";
 import { serializeToSvg } from "./output.ts";
@@ -136,6 +137,22 @@ describe("animated SVG output", () => {
 				}),
 			]),
 		).toThrow(/different commands/);
+	});
+
+	it("morphs path data on the CSS clock as well, for browsers that animate d", () => {
+		const { ast } = render([
+			{ type: "Path", id: "p", props: { d: "M 0 0 L 10 0" } },
+			on("Motion", "m", "p", {
+				steps: [{ to: { d: "M 0 0 L 10 10" }, over: 1, ease: "linear" }],
+			}),
+		]);
+		expect(ast.css).toContain(
+			'0%{d:path("M 0 0 L 10 0");animation-timing-function:linear}100%{d:path("M 0 0 L 10 10")}',
+		);
+		const [moving, still] = ast.children;
+		expect(moving.type === "path" && moving.animate).toHaveLength(1);
+		expect(String(moving.attrs?.class)).toMatch(/^ms\w+-a ms\w+-c\d ms\w+-dm$/);
+		expect(String(still.attrs?.class)).toMatch(/^ms\w+-a ms\w+-c\d ms\w+-ds$/);
 	});
 
 	it("checks the channel against the mark", () => {
@@ -771,7 +788,7 @@ describe("layout in time", () => {
 		expect(svg(scene)).toBe(svg(plain));
 	});
 
-	it("moves a modulated mark in a shell outside the shells of its motions", () => {
+	it("moves a modulated mark in a shell inside those of its motions, whose pivot follows it", () => {
 		const { ast } = render([
 			row(["a", "b"]),
 			on("Enter", "in", "a", { over: 1, from: { scale: 0 } }),
@@ -779,20 +796,25 @@ describe("layout in time", () => {
 		]);
 		const [outer] = ast.children;
 		const inner = outer.type === "g" ? outer.children[0] : undefined;
-		const classOf = (el: typeof inner) =>
-			String(el?.attrs?.class).split(" ")[1];
+		const ruleOf = (el: typeof inner) =>
+			new RegExp(
+				`\\.${String(el?.attrs?.class).split(" ")[1]}\\{animation-name:([\\w,-]+)([^}]*)\\}`,
+			).exec(ast.css ?? "");
+		const framesOf = (name: string | undefined) =>
+			new RegExp(`@keyframes ${name}\\{(.*)\\}\n`).exec(ast.css ?? "")?.[1];
 		expect(inner?.type).toBe("g");
-		expect(ast.css).toMatch(
-			new RegExp(`\\.${classOf(outer)}\\{animation-name:[\\w-]+\\}`),
+		// the outer shell scales, about a's centre wherever the swap has it
+		const [scale, origin] = ruleOf(outer)?.[1].split(",") ?? [];
+		expect(framesOf(scale)).toContain("0%{scale:0");
+		expect(ruleOf(outer)?.[2]).toBe(
+			";transform-box:view-box;transform-origin:10px 10px",
 		);
-		expect(ast.css).toMatch(
-			new RegExp(`\\.${classOf(inner)}\\{animation-name:[\\w-]+;transform-box`),
+		expect(framesOf(origin)).toBe(
+			"0%{transform-origin:10px 10px;animation-timing-function:linear}100%{transform-origin:40px 10px}",
 		);
-		// the outer shell is the translate
-		const name = new RegExp(
-			`\\.${classOf(outer)}\\{animation-name:([\\w-]+)\\}`,
-		).exec(ast.css ?? "")?.[1];
-		expect(ast.css).toContain(`@keyframes ${name}{0%{translate:0px 0px`);
+		// the inner one is the translate
+		expect(ruleOf(inner)?.[2]).toBe("");
+		expect(framesOf(ruleOf(inner)?.[1])).toContain("0%{translate:0px 0px");
 	});
 
 	it("resizes a background with width and height keyframes", () => {
@@ -937,6 +959,253 @@ describe("layout in time", () => {
 		).toThrow(/one and grow both move height on bg/);
 	});
 
+	/** The keyframes of each shell around a mark, outermost first, and its rule. */
+	const shellsOf = (
+		ast: ReturnType<typeof render>["ast"],
+		id: string,
+	): { rule: string; frames: string[] }[] => {
+		const frames = new Map(
+			[...(ast.css ?? "").matchAll(/@keyframes ([^{]+)\{(.*)\}\n/g)].map(
+				(m) => [m[1], m[2]],
+			),
+		);
+		const find = (
+			els: typeof ast.children,
+			path: string[],
+		): string[] | undefined => {
+			for (const el of els) {
+				if (el.id === id) return path;
+				if (el.type !== "g") continue;
+				const cls = String(el.attrs?.class);
+				const found = find(el.children, [...path, cls]);
+				if (found) return found;
+			}
+			return undefined;
+		};
+		return (find(ast.children, []) ?? []).map((cls) => {
+			const rule =
+				new RegExp(`\\.${cls.split(" ")[1]}\\{([^}]*)\\}`).exec(
+					ast.css ?? "",
+				)?.[1] ?? "";
+			const names = /animation-name:([^;]+)/.exec(rule)?.[1].split(",") ?? [];
+			return { rule, frames: names.map((n) => frames.get(n) ?? "") };
+		});
+	};
+	const lanes = (shell: { frames: string[] } | undefined) =>
+		(shell?.frames ?? []).map((f) => /\{([a-z-]+):/.exec(f)?.[1]);
+	const list = (ids: string[]): N => ({
+		type: "StackV",
+		id: "list",
+		props: { spacing: 8 },
+		children: ids.map((i) =>
+			box(i, { width: 40, height: 10, "stroke-width": 0 }),
+		),
+	});
+
+	it("turns a reordered list about the list as it then looks", () => {
+		const { ast } = render([
+			list(["a", "b", "c"]),
+			modulate("m", [rel("StackV", ["c", "a", "b"], { spacing: 8 }, "o")], {
+				at: 1,
+				over: 1,
+				ease: "linear",
+			}),
+			on("Motion", "spin", "list", {
+				at: 2.5,
+				steps: [{ to: { rotate: 180 }, over: 1, ease: "linear" }],
+			}),
+		]);
+		// each mark first goes where the layout puts it, and the list turns as one
+		const [outer, inner] = shellsOf(ast, "c");
+		expect(lanes(outer)).toEqual(["rotate"]);
+		expect(outer.rule).toContain("transform-origin:20px 23px");
+		expect(lanes(inner)).toEqual(["translate"]);
+		expect(inner.frames[0]).toContain("{translate:0px -36px}");
+	});
+
+	it("moves the pivot with a mark that a Modulate moves and resizes", () => {
+		const scene = [
+			{
+				type: "StackV",
+				id: "col",
+				props: { spacing: 10 },
+				children: ["a", "b"].map((id) => ({
+					type: "Rect",
+					id,
+					props: { height: 10, "stroke-width": 0 },
+				})),
+			},
+			modulate(
+				"m",
+				[rel("StackH", ["a", "b"], { spacing: 10, total: 130 }, "o")],
+				{ at: 1, over: 1, ease: "linear" },
+			),
+			on("Motion", "spin", "b", {
+				at: 2.5,
+				steps: [{ to: { rotate: 180 }, over: 1, ease: "linear" }],
+			}),
+		];
+		const { ast } = render(scene);
+		const built = buildSceneFromJson({
+			type: "Group",
+			id: "root",
+			children: scene,
+		});
+		const b = solveLayout(built).b;
+		const to = b.phases?.m ?? b;
+		const centre = (r: typeof to) => [r.x + r.width / 2, r.y + r.height / 2];
+		const [outer] = shellsOf(ast, "b");
+		expect(lanes(outer)).toEqual(["rotate", "transform-origin"]);
+		const origins = [
+			...outer.frames[1].matchAll(
+				/transform-origin:(-?[\d.]+)px (-?[\d.]+)px/g,
+			),
+		].map((m) => [Number(m[1]), Number(m[2])]);
+		const [first, last] = [origins[0], origins[origins.length - 1]];
+		expect(to.width).toBeGreaterThan(10);
+		expect(last[0] - first[0]).toBeCloseTo(centre(to)[0] - centre(b)[0], 2);
+		expect(last[1] - first[1]).toBeCloseTo(centre(to)[1] - centre(b)[1], 2);
+		expect(outer.rule).toContain(
+			`transform-origin:${first[0]}px ${first[1]}px`,
+		);
+	});
+
+	const numbers = (list: string | undefined) =>
+		(list ?? "").split(";").map(Number);
+	const increasing = (times: number[]) =>
+		times.every((t, i) => i === 0 || t > times[i - 1]);
+
+	it("redraws a connector between ends that modulations in two clocks move", () => {
+		const pair = (id: string, ids: string[]): N => ({
+			type: "StackH",
+			id,
+			props: { spacing: 20 },
+			children: ids.map((i) => box(i, { "stroke-width": 0 })),
+		});
+		const { ast } = render([
+			{
+				type: "StackV",
+				id: "col",
+				props: { spacing: 40 },
+				children: [pair("r1", ["a", "a2"]), pair("r2", ["b", "b2"])],
+			},
+			{ type: "Line", id: "k", children: [ref("a"), ref("b")] },
+			modulate("m", [rel("StackH", ["a2", "a"], { spacing: 20 })], {
+				at: 1,
+				over: 1,
+			}),
+			{
+				type: "Phrase",
+				id: "ph",
+				props: { at: 1 },
+				children: [
+					modulate("n", [rel("StackH", ["b2", "b"], { spacing: 20 })], {
+						at: 0,
+						over: 1,
+					}),
+				],
+			},
+		]);
+		const wire = ast.children.find((c) => c.id === "k");
+		const smil = wire?.type === "path" ? wire.animate?.[0] : undefined;
+		expect(increasing(numbers(smil?.keyTimes))).toBe(true);
+		const values = smil?.values.split(";") ?? [];
+		const ends = (d: string) =>
+			[...(/M (-?[\d.]+),(-?[\d.]+) L (-?[\d.]+),(-?[\d.]+)/.exec(d) ?? [])]
+				.slice(1)
+				.map(Number);
+		// both ends moved 40 to the right, so the line is upright again
+		const [x1, y1, x2, y2] = ends(values[0]);
+		expect(ends(values[values.length - 1])).toEqual([x1 + 40, y1, x2 + 40, y2]);
+		// half way both are half way: neither clock's path alone
+		const mid = ends(values[Math.floor(values.length / 2)]);
+		expect(mid[0]).toBeCloseTo(mid[2], 1);
+		expect(mid[0]).toBeGreaterThan(x1);
+		expect(mid[0]).toBeLessThan(x1 + 40);
+	});
+
+	it("adds up the sizes modulations in two clocks give one box", () => {
+		const scene = [
+			{
+				type: "Background",
+				id: "bg",
+				props: { padding: 6, "stroke-width": 0 },
+				children: [
+					{
+						type: "StackH",
+						id: "row",
+						props: { spacing: 5 },
+						children: ["a", "b", "c"].map((i) => box(i, { "stroke-width": 0 })),
+					},
+				],
+			},
+			modulate("m", [rel("StackV", ["a", "b"], { spacing: 5 })], {
+				at: 1,
+				over: 1,
+				ease: "linear",
+			}),
+			{
+				type: "Phrase",
+				id: "ph",
+				props: { at: 1.5 },
+				children: [
+					modulate("n", [rel("StackV", ["b", "c"], { spacing: 5 })], {
+						at: 0,
+						over: 1,
+						ease: "linear",
+					}),
+				],
+			},
+		];
+		const built = buildSceneFromJson({
+			type: "Group",
+			id: "root",
+			children: scene,
+		});
+		const bg = solveLayout(built).bg;
+		const [m, n] = [bg.phases?.m ?? bg, bg.phases?.n ?? bg];
+		const { ast } = render(scene);
+		for (const side of ["width", "height"] as const) {
+			const frames = keyframesOf(ast.css).find((f) =>
+				f.startsWith(`0%{${side}:`),
+			);
+			const sizes = [
+				...(frames ?? "").matchAll(/([\d.]+)%\{[a-z]+:(-?[\d.]+)px/g),
+			].map((f) => [Number(f[1]), Number(f[2])]);
+			expect(increasing(sizes.map(([t]) => t))).toBe(true);
+			const at = (percent: number) =>
+				sizes.find(([t]) => Math.abs(t - percent) < 0.01)?.[1];
+			expect(at(0)).toBeCloseTo(bg[side], 2);
+			// m is half done when n starts, and both have played by the end
+			expect(at(60)).toBeCloseTo(bg[side] + (m[side] - bg[side]) / 2, 2);
+			expect(at(100)).toBeCloseTo(
+				bg[side] + (m[side] - bg[side]) + (n[side] - bg[side]),
+				2,
+			);
+		}
+	});
+
+	it("moves a redrawn connector on the CSS clock too, where the browser can", () => {
+		const { ast } = attached();
+		const arrow = ast.children.find((c) => c.id === "arrow");
+		const smil = arrow?.type === "path" ? arrow.animate?.[0] : undefined;
+		const cls = String(arrow?.attrs?.class).split(" ");
+		const rule = new RegExp(`\\.${cls[1]}\\{animation-name:([\\w-]+)\\}`).exec(
+			ast.css ?? "",
+		);
+		const frames = new RegExp(`@keyframes ${rule?.[1]}\\{(.*)\\}\n`).exec(
+			ast.css ?? "",
+		)?.[1];
+		const paths = [...(frames ?? "").matchAll(/d:path\("([^"]+)"\)/g)].map(
+			(m) => m[1],
+		);
+		expect(paths.length).toBeGreaterThan(2);
+		expect(paths).toEqual(smil?.values.split(";"));
+		// the still twin holds its frame without the animation
+		const still = ast.children.find((c) => c.id === "arrow-still");
+		expect(String(still?.attrs?.class)).not.toContain(cls[1]);
+	});
+
 	describe("inside a phrase", () => {
 		const there = (props: Record<string, unknown>) =>
 			render([
@@ -1006,5 +1275,80 @@ describe("layout in time", () => {
 			expect(values.at(-1)).toBe(wire?.type === "path" && wire.d);
 			expect(values[0]).not.toBe(values.at(-1));
 		});
+	});
+});
+
+describe("replaced lanes (properties)", () => {
+	const hex = (n: number) => `#${n.toString(16).padStart(6, "0")}`;
+	it("shows a later motion's colors only once it has started, in or out of a phrase", () => {
+		fc.assert(
+			fc.property(
+				fc.array(
+					fc.record({
+						gap: fc.constantFrom(0, 0.5, 1),
+						from: fc.boolean(),
+						phrase: fc.constantFrom("none", "forward", "retrograde", "pong"),
+					}),
+					{ minLength: 1, maxLength: 5 },
+				),
+				(parts) => {
+					let at = 0;
+					const starts: number[] = [];
+					const children: N[] = [box("a", { fill: "#ffffff" })];
+					parts.forEach((part, i) => {
+						const start = at + part.gap;
+						const passes = part.phrase === "pong" ? 2 : 1;
+						starts.push(start);
+						at = start + passes;
+						// colors no other motion uses: 0x10000 * (i + 1) + 1 or 2
+						const motion = on("Motion", `m${i}`, "a", {
+							...(part.phrase === "none" ? { at: start } : {}),
+							...(part.from
+								? { from: { fill: hex((i + 1) * 65536 + 1) } }
+								: {}),
+							steps: [
+								{
+									to: { fill: hex((i + 1) * 65536 + 2) },
+									over: 1,
+									ease: "linear",
+								},
+							],
+						});
+						children.push(
+							part.phrase === "none"
+								? motion
+								: {
+										type: "Phrase",
+										id: `p${i}`,
+										props: {
+											at: start,
+											...(part.phrase === "retrograde"
+												? { retrograde: true }
+												: {}),
+											...(part.phrase === "pong"
+												? { repeat: 2, alternate: true }
+												: {}),
+										},
+										children: [motion],
+									},
+						);
+					});
+					const { ast } = render(children);
+					const period = ast.duration ?? 0;
+					const frames = [
+						...(ast.css ?? "").matchAll(/([\d.]+)%\{fill:(#[0-9a-f]+)/g),
+					].map((m) => ({ t: (Number(m[1]) / 100) * period, fill: m[2] }));
+					for (const { t, fill } of frames) {
+						if (fill === "#ffffff") continue;
+						const owner = Math.floor(
+							Number.parseInt(fill.slice(1), 16) / 65536,
+						);
+						// the first to move the lane also says where it starts
+						if (owner === 1) continue;
+						expect(t).toBeGreaterThanOrEqual(starts[owner - 1] - period * 2e-5);
+					}
+				},
+			),
+		);
 	});
 });

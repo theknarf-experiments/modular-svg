@@ -7,6 +7,7 @@ import {
 	keysOf,
 	type MotionSpec,
 	resolveEase,
+	sampleAt,
 } from "./motion.ts";
 import { beatWarp, snapToGrid } from "./solver/time.ts";
 
@@ -118,6 +119,88 @@ describe("motions (properties)", () => {
 					expect(keys.at(-1)?.t).toBeCloseTo(period, 9);
 					for (let i = 1; i < keys.length; i++)
 						expect(keys[i].t).toBeGreaterThanOrEqual(keys[i - 1].t);
+				},
+			),
+		);
+	});
+
+	it("a loop that ends on a pass boundary plays every pass alike", () => {
+		const stepsArb = fc.array(
+			fc.oneof(
+				fc.record({
+					to: fc.record({ x: fc.integer({ min: -9, max: 9 }) }),
+					over: fc.constantFrom(0.25, 0.5, 1),
+				}),
+				fc.record({ wait: fc.constantFrom(0.25, 0.5) }),
+				fc.record({ set: fc.record({ x: fc.integer({ min: -9, max: 9 }) }) }),
+			),
+			{ minLength: 1, maxLength: 5 },
+		);
+		fc.assert(
+			fc.property(
+				stepsArb,
+				fc.integer({ min: 1, max: 4 }),
+				fc.constantFrom(0.5, 1, 3),
+				fc.boolean(),
+				(steps, passes, duration, counted) => {
+					const spec: MotionSpec = { kind: "motion", steps };
+					const one = expandMotion(spec, 0, duration, duration).steps;
+					const all = expandMotion(
+						{ ...spec, loop: counted ? passes : true },
+						0,
+						duration,
+						duration * passes,
+					).steps;
+					// every pass, and the cut back to the start between two of them
+					expect(all).toHaveLength(one.length * passes + passes - 1);
+					const last = all.slice(all.length - one.length);
+					expect(last.map((s) => s.values)).toEqual(one.map((s) => s.values));
+				},
+			),
+		);
+	});
+
+	it("sampling passes through every key and stays between its neighbours", () => {
+		fc.assert(
+			fc.property(
+				fc.array(
+					fc.record({
+						over: fc.constantFrom(0, 0.25, 1),
+						gap: fc.constantFrom(0, 0.5),
+						x: fc.integer({ min: -50, max: 50 }),
+						ease: easeArb,
+					}),
+					{ minLength: 1, maxLength: 6 },
+				),
+				fc.double({ min: 0, max: 1, noNaN: true }),
+				(moves, u) => {
+					let at = 0;
+					const segments = moves.map((m) => {
+						const start = at + m.gap;
+						at = start + m.over;
+						return {
+							start,
+							over: m.over,
+							ease: resolveEase(m.ease),
+							values: { x: m.x },
+						};
+					});
+					const period = at + 1;
+					const keys = keysOf({ x: 0 }, segments, period);
+					keys.forEach((k, i) => {
+						// two keys a cut apart share a time; the later one holds
+						if (keys[i + 1] && keys[i + 1].t - k.t <= 1e-9) return;
+						expect(sampleAt(keys, k.t).x).toBeCloseTo(Number(k.values.x), 9);
+					});
+					const t = u * period;
+					const i = keys.reduce((at, k, j) => (k.t <= t + 1e-9 ? j : at), 0);
+					const [a, b] = [keys[i], keys[i + 1] ?? keys[i]];
+					const [lo, hi] = [Number(a.values.x), Number(b.values.x)].sort(
+						(p, q) => p - q,
+					);
+					const x = Number(sampleAt(keys, t).x);
+					expect(x).toBeGreaterThanOrEqual(lo - 1e-9);
+					expect(x).toBeLessThanOrEqual(hi + 1e-9);
 				},
 			),
 		);

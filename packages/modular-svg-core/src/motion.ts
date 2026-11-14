@@ -736,6 +736,37 @@ export function keysOf(
 	return keys;
 }
 
+/**
+ * A lane's values at t, eased between its keys (valueAt holds instead). At a
+ * jump of a stepped ease this is the value after it.
+ */
+export function sampleAt(keys: readonly Key[], t: number): Values {
+	let lo = 0;
+	let hi = keys.length - 1;
+	while (lo < hi) {
+		const mid = (lo + hi + 1) >> 1;
+		if (keys[mid].t <= t + 1e-9) lo = mid;
+		else hi = mid - 1;
+	}
+	const [a, b] = [keys[lo], keys[lo + 1]];
+	if (!b || !moving(keys, lo)) return a.values;
+	const x = (t - a.t) / (b.t - a.t);
+	const p = easeAt(a.ease, a.ease.kind === "steps" ? x + 1e-9 : x);
+	return Object.fromEntries(
+		Object.entries(a.values).map(([c, from]) => {
+			const to = b.values[c as Channel];
+			return [
+				c,
+				typeof from === "number" && typeof to === "number"
+					? from + (to - from) * p
+					: p >= 1
+						? to
+						: from,
+			];
+		}),
+	);
+}
+
 export function valueAt(keys: readonly Key[], t: number): Values {
 	let found = keys[0];
 	for (const k of keys) if (k.t <= t + 1e-9) found = k;

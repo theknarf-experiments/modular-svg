@@ -665,10 +665,12 @@ function animateElements(
 	elements: SvgElement[],
 	animation: MarkAnimation,
 ): SvgElement[] {
-	const withClass = (el: SvgElement, extra?: string) => {
-		const cls = [el.attrs?.class, animation.attrs.class, extra]
-			.filter(Boolean)
-			.join(" ");
+	const withClass = (
+		el: SvgElement,
+		extra?: string,
+		own = animation.attrs.class,
+	) => {
+		const cls = [el.attrs?.class, own, extra].filter(Boolean).join(" ");
 		return { ...el.attrs, ...animation.attrs, ...(cls ? { class: cls } : {}) };
 	};
 	const own = elements.flatMap((el): SvgElement[] => {
@@ -679,7 +681,7 @@ function animateElements(
 		if (morph && path) {
 			const redrawn: PathElement = {
 				...path,
-				attrs: withClass(path, morph.still?.movingClass),
+				attrs: withClass(path, morph.still?.movingClass, morph.class),
 				animate: [morph.smil],
 			};
 			if (!morph.still) return [redrawn];

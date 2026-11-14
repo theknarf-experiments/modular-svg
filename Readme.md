@@ -91,7 +91,15 @@ phrase's own seconds (an `at` inside is local). A relation only relates nodes
 in the same time, so to place a phrase's content from outside, relate the
 `Phrase`. Stretching a phrase changes its tape speed (a `Shake` inside keeps
 its number of shakes), and `over` is its whole span: `over={2} repeat={3}` is
-three passes in two seconds.
+three passes in two seconds (it must be above 0; a phrase left with no time
+warns, since nothing in it plays).
+
+Lanes that hold one value (`fill`, `stroke`, `width`, `height`, `d`, `draw`)
+are shared by the motions on a mark. The one that moves a lane first decides
+where it starts; where a later one starts from (its `from`, or the last frame
+of a phrase played backwards) is a cut at the moment it starts. A phrase picks
+a lane up where the time around it left it, so its passes repeat from there
+and a backward phrase hands back what it found.
 
 **Layout in time.** The layout relations outside any `Modulate` are *home*:
 what a static render shows. A `Modulate` is a time leaf holding layout
@@ -112,16 +120,24 @@ what they moved returns to wherever the remaining relations put it.
 Each distinct set of active modulations is one more solve, and the browser
 tweens between them: boxes translate (rects and images also resize), and a
 line, curve or arrow whose ends move apart is redrawn between wherever its
-ends are, so an arrow stays attached without extra markup. Inside a
+ends are, so an arrow stays attached without extra markup. The redrawn path
+is written twice: as CSS keyframes on `d`, which keep time with the boxes,
+and as SMIL for browsers that do not animate `d` in CSS (there the path runs
+on SMIL's own clock, which `Graphic` lines up after the first frame). Inside a
 `Modulate`, put what stays first: a member anchors the relation only if you
 pinned it, an earlier relation of the same `Modulate` placed it, or a home
 relation that this one does not restate did; with no anchor a stack packs
 from where its members' box already is, so a reorder happens in place.
 `Modulate` and `Resolve` are placed like motions (`Sequence`, `OnBeat`, ...),
 and a `Phrase` that takes them plays the layout change faster, backwards or
-there and back. Frames between two layouts are interpolated, not solved, so
-boxes that swap places pass through each other; and motions still aim at home
-positions, so a `Travel` towards something a modulation moves warns.
+there and back. Modulations in different clocks that move the same thing add
+up (positions, sizes and redrawn connectors alike), which warns, since it is
+rarely meant. Frames between two layouts are interpolated, not solved, so
+boxes that swap places pass through each other. A motion plays on things where
+the layout has them: a mark follows its box innermost, and `scale` and
+`rotate` pivot on the centre of their target as it then is, so a reordered
+list turns as the list it has become. Offsets are still measured from home, so
+a `Travel` towards something a modulation moves warns.
 
 A `Sequence` and a `Legato` over the same pair are circular (each sets the
 other's input), which warns: place legato members with `Stagger`, `OnBeat` or `At`.
@@ -143,7 +159,8 @@ logs these warnings outside production builds, and the CLI prints them.
 
 In React, `Graphic` takes `transition` (tween marks from their previous solved
 geometry and color whenever state changes the solution), `playhead` (hold every motion at a time, for
-scrubbing) and `onSolve`, which hands out the solved spans of every timed ref,
+scrubbing; while it holds, changes apply at once, since the tweens share the
+held clock) and `onSolve`, which hands out the solved spans of every timed ref,
 the layout boxes, warnings and a live animation clock. `useCues(solution,
 { hit3: () => ..., "hit3:end": () => ... })` calls back as the animation
 passes those refs, so sound or anything else can follow the solved schedule

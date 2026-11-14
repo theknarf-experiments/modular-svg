@@ -31,6 +31,7 @@ export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
 	/**
 	 * Hold the animation at this many seconds (scrubbing); undefined plays.
 	 * Applies to the live DOM only; the scene's SVG output is unchanged.
+	 * While it holds, `transition` changes apply at once.
 	 */
 	playhead?: number;
 	/**
