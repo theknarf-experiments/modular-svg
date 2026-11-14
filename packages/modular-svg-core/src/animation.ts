@@ -9,6 +9,7 @@ import {
 	moving,
 	passesOf,
 	type ResolvedEase,
+	ramerDouglasPeucker,
 	resolveColorRefs,
 	resolveEase,
 	type Step,
@@ -272,9 +273,13 @@ const SIZES = ["width", "height"] as const;
 /**
  * The stretches over which any of the tracks moves, cut into pieces short
  * enough to cross in a straight line: tracks from different clocks ease
- * differently, so what they add up to is sampled.
+ * differently, so what they add up to is sampled, `fine(t0, t1)` times over
+ * a stretch.
  */
-function piecesOf(tracks: readonly Track[]): Piece[] {
+function piecesOf(
+	tracks: readonly Track[],
+	fine: (t0: number, t1: number) => number = () => SAMPLES,
+): Piece[] {
 	const times: number[] = [];
 	for (const t of tracks
 		.flatMap((track) => track.keys.map((k) => k.t))
@@ -308,13 +313,14 @@ function piecesOf(tracks: readonly Track[]): Piece[] {
 				pieces.push({ start: jump, over: 0, ease: CUT, at: jump });
 			continue;
 		}
-		const over = (t1 - t0) / SAMPLES;
-		for (let j = 1; j <= SAMPLES; j++)
+		const count = fine(t0, t1);
+		const over = (t1 - t0) / count;
+		for (let j = 1; j <= count; j++)
 			pieces.push({
 				start: t0 + over * (j - 1),
 				over,
 				ease: LINEAR,
-				at: j === SAMPLES ? t1 : t0 + over * j,
+				at: j === count ? t1 : t0 + over * j,
 			});
 	}
 	return pieces;
@@ -352,6 +358,28 @@ const INSTANT = 1;
 const SAMPLES = 16;
 // Ends that move within this of each other carry their connector along whole
 const RIGID = 1e-2;
+// How far a path redrawn after a motion may stray from its samples, in px
+const SLACK = 0.5;
+// The most pieces one stretch of a motion is sampled into
+const FINEST = 32;
+
+/**
+ * How many straight pieces draw a stretch over which the tracks move `far`
+ * px between them. A piece's miss grows with the distance and falls with the
+ * square of the count, so this keeps the miss SAMPLES pieces leave over 64px.
+ */
+const piecesFor = (far: number): number =>
+	Math.min(FINEST, Math.max(2, Math.ceil(2 * Math.sqrt(far))));
+
+/** How far the tracks move between two times, summed. */
+function farBetween(tracks: readonly Track[], t0: number, t1: number): number {
+	let far = 0;
+	for (const { channels, keys } of tracks) {
+		const [a, b] = [sampleAt(keys, t0), sampleAt(keys, t1)];
+		far += Math.hypot(...channels.map((c) => Number(b[c]) - Number(a[c])));
+	}
+	return far;
+}
 
 // A recorded move carries the solver's residue on the sides that stayed put
 const differs = (a: number, b: number): boolean => Math.abs(a - b) > 1e-3;
@@ -417,7 +445,70 @@ function only(
 	};
 }
 
+const numbersOf = (d: string): number[] =>
+	(d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) ?? []).map(Number);
+
+/**
+ * The straight pieces of a sampled path without those its neighbours already
+ * draw: runs of pieces that follow on from each other are thinned to within
+ * SLACK. `initial` is the path before the first piece.
+ */
+function thinned(initial: string, pieces: readonly Step[]): Step[] {
+	const out: Step[] = [];
+	let before = initial;
+	for (let i = 0; i < pieces.length; ) {
+		const straight = (s: Step) => s.over > 0 && s.ease.kind === "linear";
+		let j = i + 1;
+		if (straight(pieces[i]))
+			while (
+				j < pieces.length &&
+				straight(pieces[j]) &&
+				Math.abs(pieces[j].start - pieces[j - 1].start - pieces[j - 1].over) <
+					1e-9
+			)
+				j++;
+		const run = pieces.slice(i, j);
+		const paths = [before, ...run.map((s) => String(s.values.d))];
+		const points = paths.map(numbersOf);
+		before = paths[paths.length - 1];
+		i = j;
+		if (run.length < 2 || points.some((p) => p.length !== points[0].length)) {
+			out.push(...run);
+			continue;
+		}
+		const times = [run[0].start, ...run.map((s) => s.start + s.over)];
+		const kept = ramerDouglasPeucker(points, SLACK, times);
+		for (let k = 1; k < kept.length; k++)
+			out.push({
+				start: times[kept[k - 1]],
+				over: times[kept[k]] - times[kept[k - 1]],
+				ease: LINEAR,
+				values: { d: paths[kept[k]] },
+			});
+	}
+	return out;
+}
+
+const TRANSLATE = (c: Channel): boolean => c === "x" || c === "y";
+
+const opposite = (e: Expanded): Expanded => {
+	const flip = (values: Values): Values =>
+		Object.fromEntries(Object.entries(values).map(([c, v]) => [c, -Number(v)]));
+	return {
+		initial: flip(e.initial),
+		steps: e.steps.map((s) => ({ ...s, values: flip(s.values) })),
+	};
+};
+
 type Performed = { motion: string; expanded: Expanded };
+/** How the motions around a connector move it and its ends, in scene time. */
+type Carried = {
+	/** moves both ends alike: the connector rides along in a shell */
+	both: Performed[];
+	/** moves one end against the connector */
+	from: Expanded[];
+	to: Expanded[];
+};
 type ReplacedLane = {
 	channels: Channel[];
 	initial: Values;
@@ -609,6 +700,11 @@ export function compileAnimation(
 			);
 	};
 
+	const still =
+		opts.stillAt === false
+			? undefined
+			: Math.min(opts.stillAt ?? (opts.loop ? period * 0.85 : period), period);
+
 	const contributions = new Map<string, Contribution[]>();
 	const contribute = (mark: string, c: Contribution): void => {
 		const list = contributions.get(mark);
@@ -718,7 +814,106 @@ export function compileAnimation(
 		});
 	};
 
-	const morphs = new Map<string, Map<string, Expanded>>();
+	// Each motion once, in the time of its innermost phrase. A phrase with
+	// nothing to play has no time to map onto the scene
+	const expansions = new Map<
+		string,
+		{ clocks: Phrase[]; expanded: Expanded } | undefined
+	>();
+	const expansionOf = (m: NodeRecord) => {
+		if (expansions.has(m.id)) return expansions.get(m.id);
+		const clocks = clocksOf(m);
+		const { start, duration } = layout[m.id].local ?? span(m.id);
+		const found = clocks.some((c) => !(c.length > 0 && c.span > 0))
+			? undefined
+			: {
+					clocks,
+					expanded: expandMotion(
+						resolveColorRefs(resolveTravel(m, layout), (id, paint) => {
+							const node = byId.get(id);
+							if (!node) return undefined;
+							const which = paint ?? defaultPaint(node);
+							return layout[id]?.[which] ?? node[which];
+						}),
+						start,
+						duration,
+						clocks[0]?.length ?? period,
+					),
+				};
+		expansions.set(m.id, found);
+		return found;
+	};
+	// The motions that translate, by what they move. Built for the first
+	// connector, and each one's steps are played into scene time only when a
+	// connector needs them
+	type Carrier = {
+		motion: string;
+		order: number;
+		marks: Set<string>;
+		targets: Set<string>;
+		played: () => Expanded;
+	};
+	let carriers: Map<string, Carrier[]> | undefined;
+	const carriersOf = (): Map<string, Carrier[]> => {
+		const moving = new Map<string, Carrier[]>();
+		motions.forEach((m, order) => {
+			const found = expansionOf(m);
+			const moved = found && only(found.expanded, TRANSLATE);
+			if (!found || !moved) return;
+			let e: Expanded | undefined;
+			const carrier: Carrier = {
+				motion: m.id,
+				order,
+				marks: new Set(m.targets?.flatMap((t) => t.marks)),
+				targets: new Set(m.targets?.map((t) => t.id)),
+				played: () => {
+					e ??= through(found.clocks, moved, () => 0);
+					return e;
+				},
+			};
+			const under = m.targets?.flatMap((t) => [t.id, ...(t.under ?? [])]);
+			for (const id of new Set(under)) {
+				const list = moving.get(id);
+				if (list) list.push(carrier);
+				else moving.set(id, [carrier]);
+			}
+		});
+		return moving;
+	};
+	/**
+	 * What motions do to a connector's ends that they do not do to it. One on
+	 * the connector itself is its own; one on a group around it and one end
+	 * holds the other end back.
+	 */
+	const carriedOf = (id: string, from: string, to: string): Carried => {
+		carriers ??= carriersOf();
+		const [onFrom, onTo] = [carriers.get(from) ?? [], carriers.get(to) ?? []];
+		const carried: Carried = { both: [], from: [], to: [] };
+		for (const carrier of [...new Set([...onFrom, ...onTo])].sort(
+			(x, y) => x.order - y.order,
+		)) {
+			const [a, b] = [onFrom.includes(carrier), onTo.includes(carrier)];
+			if (!carrier.marks.has(id)) {
+				const expanded = carrier.played();
+				if (a && b) carried.both.push({ motion: carrier.motion, expanded });
+				else carried[a ? "from" : "to"].push(expanded);
+			} else if (a !== b && !carrier.targets.has(id))
+				carried[a ? "to" : "from"].push(opposite(carrier.played()));
+		}
+		// Two motions that move the ends alike carry it as one would
+		const keys = carried.to.map((e) => JSON.stringify(e));
+		carried.from = carried.from.filter((e) => {
+			const twin = keys.indexOf(JSON.stringify(e));
+			if (twin < 0) return true;
+			keys.splice(twin, 1);
+			carried.both.push({ motion: "", expanded: carried.to[twin] });
+			carried.to.splice(twin, 1);
+			return false;
+		});
+		return carried;
+	};
+
+	const morphs = new Map<string, Map<string, Expanded & { still?: string }>>();
 	for (const mark of nodes) {
 		const box = layout[mark.id];
 		if (!box || !mark.type || mark.type === "motion" || mark.type === "timing")
@@ -772,7 +967,11 @@ export function compileAnimation(
 			as: boxesIn(change, a),
 			bs: boxesIn(change, b),
 		}));
-		if (by.length === 0) continue;
+		const carried = carriedOf(mark.id, from, to);
+		const apart = carried.from.length + carried.to.length > 0;
+		if (by.length === 0 && !apart && carried.both.length === 0) continue;
+		for (const c of carried.both)
+			contribute(mark.id, { ...c, pivot: { x: 0, y: 0 } });
 		const rigid = by.every(({ as, bs }) =>
 			as.every(
 				(ai, i) =>
@@ -784,6 +983,7 @@ export function compileAnimation(
 					Math.abs(bs[i].height - b.height) < RIGID,
 			),
 		);
+		// Carried whole by the layout; what motions do to one end is drawn on top
 		if (rigid) {
 			for (const { change, as } of by) {
 				const carried = as.map((ai) => ({
@@ -797,21 +997,27 @@ export function compileAnimation(
 					followBox(box, carried, change.events, change.eases),
 				);
 			}
-			continue;
+			if (!apart) continue;
 		}
 		if (!pathsOf) continue;
 		// Its ends move apart, so it is redrawn between wherever they are
-		const end = (home: LayoutBox, side: "as" | "bs") => {
-			const tracks = by.flatMap((moved) => {
-				const e = followBox(
-					home,
-					moved[side],
-					moved.change.events,
-					moved.change.eases,
-					0,
-				);
-				return e ? tracksOf(played(moved.change, e)) : [];
-			});
+		const end = (
+			home: LayoutBox,
+			side: "as" | "bs",
+			overlays: readonly Expanded[],
+		) => {
+			const tracks = (rigid ? [] : by)
+				.flatMap((moved) => {
+					const e = followBox(
+						home,
+						moved[side],
+						moved.change.events,
+						moved.change.eases,
+						0,
+					);
+					return e ? tracksOf(played(moved.change, e)) : [];
+				})
+				.concat(overlays.flatMap(tracksOf));
 			const rest = { x: 0, y: 0, width: home.width, height: home.height };
 			const at = (t: number): LayoutBox => {
 				const now = totalAt(tracks, rest, t);
@@ -824,21 +1030,33 @@ export function compileAnimation(
 			};
 			return { tracks, at };
 		};
-		const [endA, endB] = [end(a, "as"), end(b, "bs")];
+		const [endA, endB] = [end(a, "as", carried.from), end(b, "bs", carried.to)];
 		const draw = (t: number) =>
 			pathsOf(mark, { [from]: endA.at(t), [to]: endB.at(t) });
 		const start = draw(0);
 		const steps: Step[][] = start.map(() => []);
-		for (const { at, ...piece } of piecesOf([...endA.tracks, ...endB.tracks]))
+		const tracks = [...endA.tracks, ...endB.tracks];
+		// A motion can be short or long, so it is sampled as finely as it is far
+		const pieces = apart
+			? piecesOf(tracks, (t0, t1) => piecesFor(farBetween(tracks, t0, t1)))
+			: piecesOf(tracks);
+		for (const { at, ...piece } of pieces)
 			draw(at).forEach((el, k) => {
 				steps[k]?.push({ ...piece, values: { d: el.d } });
 			});
+		// Motions bring as many keys as they have steps, so only the pieces the
+		// path needs are kept; the still is then drawn rather than read off them
+		const held = apart && still !== undefined ? draw(still) : undefined;
 		morphs.set(
 			mark.id,
 			new Map(
 				start.map((el, k) => [
 					el.id,
-					{ initial: { d: el.d }, steps: steps[k] },
+					{
+						initial: { d: el.d },
+						steps: apart ? thinned(el.d, steps[k]) : steps[k],
+						...(held?.[k] ? { still: held[k].d } : {}),
+					},
 				]),
 			),
 		);
@@ -873,21 +1091,9 @@ export function compileAnimation(
 	};
 
 	for (const m of motions) {
-		const clocks = clocksOf(m);
-		// A phrase with nothing to play has no time to map onto the scene
-		if (clocks.some((c) => !(c.length > 0 && c.span > 0))) continue;
-		const { start, duration } = layout[m.id].local ?? span(m.id);
-		const expanded = expandMotion(
-			resolveColorRefs(resolveTravel(m, layout), (id, paint) => {
-				const node = byId.get(id);
-				if (!node) return undefined;
-				const which = paint ?? defaultPaint(node);
-				return layout[id]?.[which] ?? node[which];
-			}),
-			start,
-			duration,
-			clocks[0]?.length ?? period,
-		);
+		const found = expansionOf(m);
+		if (!found) continue;
+		const { clocks, expanded } = found;
 		if (clocks.length === 0) pastEnd(m.id, expanded);
 		for (const target of m.targets ?? []) {
 			const box = layout[target.id];
@@ -983,10 +1189,6 @@ export function compileAnimation(
 	const classFor = (lanes: readonly Lane[], extra = ""): string =>
 		`${TOKEN}a ${nameClass(`animation-name:${lanes.map((l) => nameKeyframes(keyframes(l, period))).join(",")}${extra}`)}`;
 
-	const still =
-		opts.stillAt === false
-			? undefined
-			: Math.min(opts.stillAt ?? (opts.loop ? period * 0.85 : period), period);
 	let twins = false;
 
 	const marks = new Map<string, MarkAnimation>();
@@ -1126,7 +1328,7 @@ export function compileAnimation(
 				...(still !== undefined
 					? {
 							still: {
-								d: String(valueAt(lane.keys, still).d),
+								d: drawn.still ?? String(valueAt(lane.keys, still).d),
 								movingClass: `${TOKEN}dm`,
 								stillClass: `${TOKEN}ds`,
 							},

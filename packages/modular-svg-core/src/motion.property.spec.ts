@@ -6,6 +6,7 @@ import {
 	expandMotion,
 	keysOf,
 	type MotionSpec,
+	ramerDouglasPeucker,
 	resolveEase,
 	sampleAt,
 } from "./motion.ts";
@@ -348,5 +349,71 @@ describe("diverged inputs", () => {
 		expect(() =>
 			expandMotion({ kind: "draw", loop: true }, 0, 1e-4, 10),
 		).toThrow(/would repeat \d+ times/);
+	});
+});
+
+describe("ramerDouglasPeucker (properties)", () => {
+	const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
+
+	it("keeps samples that straight runs in time would miss, and no others", () => {
+		fc.assert(
+			fc.property(
+				fc.array(
+					fc.record({
+						gap: fc.double({ min: 0.01, max: 2, noNaN: true }),
+						x: fc.double({ min: -100, max: 100, noNaN: true }),
+						y: fc.double({ min: -100, max: 100, noNaN: true }),
+					}),
+					{ minLength: 2, maxLength: 30 },
+				),
+				fc.double({ min: 0.01, max: 20, noNaN: true }),
+				(points, tolerance) => {
+					let t = 0;
+					const times = points.map((p) => {
+						t += p.gap;
+						return t;
+					});
+					const samples = points.map((p) => [p.x, p.y]);
+					const kept = ramerDouglasPeucker(samples, tolerance, times);
+					expect(kept[0]).toBe(0);
+					expect(kept.at(-1)).toBe(samples.length - 1);
+					for (let k = 1; k < kept.length; k++) {
+						const [a, b] = [kept[k - 1], kept[k]];
+						expect(b).toBeGreaterThan(a);
+						for (let i = a + 1; i < b; i++) {
+							const u = (times[i] - times[a]) / (times[b] - times[a]);
+							const miss = Math.hypot(
+								samples[i][0] - lerp(samples[a][0], samples[b][0], u),
+								samples[i][1] - lerp(samples[a][1], samples[b][1], u),
+							);
+							expect(miss).toBeLessThanOrEqual(tolerance + 1e-9);
+						}
+					}
+				},
+			),
+		);
+	});
+
+	it("drops every sample on a line crossed at even speed, however they are spaced", () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.double({ min: 0.01, max: 2, noNaN: true }), {
+					minLength: 2,
+					maxLength: 20,
+				}),
+				(gaps) => {
+					let t = 0;
+					const times = gaps.map((g) => {
+						t += g;
+						return t;
+					});
+					const samples = times.map((at) => [3 * at, -2 * at]);
+					expect(ramerDouglasPeucker(samples, 1e-6, times)).toEqual([
+						0,
+						samples.length - 1,
+					]);
+				},
+			),
+		);
 	});
 });

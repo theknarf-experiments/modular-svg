@@ -762,20 +762,21 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 
 	const targetWarnings: string[] = [];
 	// A motion animates the marks under each target (a container's descendants)
-	const marksUnder = (rec: NodeRecord, seen = new Set<string>()): string[] => {
+	const nodesUnder = (
+		rec: NodeRecord,
+		seen = new Set<string>(),
+	): NodeRecord[] => {
 		if (seen.has(rec.id)) return [];
 		seen.add(rec.id);
-		const own =
-			rec.type && rec.type !== "motion" && rec.type !== "timing"
-				? [rec.id]
-				: [];
 		return [
-			...own,
+			rec,
 			...(structuralChildren.get(rec.id) ?? []).flatMap((c) =>
-				marksUnder(c, seen),
+				nodesUnder(c, seen),
 			),
 		];
 	};
+	const isMark = (rec: NodeRecord): boolean =>
+		!!rec.type && rec.type !== "motion" && rec.type !== "timing";
 	for (const t of timeNodes) {
 		if (t.type === "Modulate" || t.type === "Resolve")
 			t.rec.modulation = {
@@ -789,10 +790,14 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		const [mover, ...via] = t.children;
 		if (t.rec.motion?.kind === "travel" && mover)
 			t.rec.motion = { ...t.rec.motion, via: via.map((v) => v.id) };
-		t.rec.targets = (travel ? (mover ? [mover] : []) : t.children).map((c) => ({
-			id: c.id,
-			marks: marksUnder(c),
-		}));
+		t.rec.targets = (travel ? (mover ? [mover] : []) : t.children).map((c) => {
+			const under = nodesUnder(c);
+			return {
+				id: c.id,
+				marks: under.filter(isMark).map((n) => n.id),
+				under: under.map((n) => n.id),
+			};
+		});
 		if (t.children.length === 0)
 			targetWarnings.push(`${t.type}(${t.rec.id}) has no target`);
 	}

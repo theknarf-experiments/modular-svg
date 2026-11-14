@@ -4,6 +4,8 @@ import { BeatExample } from "./examples/animation/BeatExample";
 import beatExampleCode from "./examples/animation/BeatExample.tsx?raw";
 import { ClickRouteExample } from "./examples/animation/ClickRouteExample";
 import clickRouteExampleCode from "./examples/animation/ClickRouteExample.tsx?raw";
+import { CourierExample } from "./examples/animation/CourierExample";
+import courierExampleCode from "./examples/animation/CourierExample.tsx?raw";
 import { DeployFlowExample } from "./examples/animation/DeployFlowExample";
 import deployFlowExampleCode from "./examples/animation/DeployFlowExample.tsx?raw";
 import { EasingExample } from "./examples/animation/EasingExample";
@@ -342,6 +344,13 @@ export const pages: Page[] = [
 					"Each Modulate re-seats the job under the next worker, and the arrow to the log follows because it is drawn between wherever its ends are. The hops land on the beat, and the Phrase around them plays the whole hand-off there and back",
 				code: handoffExampleCode,
 				element: <HandoffExample />,
+			},
+			{
+				title: "A travelling box keeps its arrows",
+				description:
+					"A Travel carries the parcel from dock to dock. Its two arrows are drawn between their ends, so they follow the parcel through the trip, and back again when the Phrase around it plays in reverse",
+				code: courierExampleCode,
+				element: <CourierExample />,
 			},
 			{
 				title: "Sorting, step by step",

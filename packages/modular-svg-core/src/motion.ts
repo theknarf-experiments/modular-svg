@@ -536,16 +536,23 @@ type Point = { t: number; values: number[] };
 const distance = (a: Point, b: Point): number =>
 	Math.hypot(...a.values.map((v, c) => v - b.values[c]));
 
-function ramerDouglasPeucker(
+/**
+ * The samples to keep so that straight runs between them miss none of the
+ * rest by more than `tolerance`. Samples are evenly spaced unless `times` says
+ * when each was taken.
+ */
+export function ramerDouglasPeucker(
 	samples: readonly number[][],
 	tolerance: number,
+	times?: readonly number[],
 ): number[] {
 	const kept = [0, samples.length - 1];
+	const when = (i: number): number => times?.[i] ?? i;
 	const split = (a: number, b: number): void => {
 		let worst = -1;
 		let error = tolerance;
 		for (let i = a + 1; i < b; i++) {
-			const u = (i - a) / (b - a);
+			const u = (when(i) - when(a)) / (when(b) - when(a));
 			const miss = Math.hypot(
 				...samples[i].map(
 					(v, c) => v - (samples[a][c] + (samples[b][c] - samples[a][c]) * u),

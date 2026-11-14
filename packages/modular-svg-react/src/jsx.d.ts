@@ -135,6 +135,10 @@ declare module "react" {
 				onMouseLeave?: React.MouseEventHandler<SVGElement>;
 				children?: string;
 			};
+			/**
+			 * drawn between its two refs, and redrawn between wherever they are
+			 * while a `modulate` or a motion's `x`/`y` (a `travel` too) moves one
+			 */
 			arrow: {
 				key?: React.Key;
 				fill?: string;

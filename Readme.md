@@ -139,6 +139,20 @@ the layout has them: a mark follows its box innermost, and `scale` and
 list turns as the list it has become. Offsets are still measured from home, so
 a `Travel` towards something a modulation moves warns.
 
+**Connectors follow their ends.** The same holds for motions: a line, curve
+or arrow whose end a motion moves (`Travel`, `x`/`y` in `Enter`, `Exit`,
+`Motion`, `Shake`, `Wiggle`, `Sampled`), on the end itself or on a group around
+it, is redrawn between wherever its ends are, in or out of a `Phrase` and
+together with any modulation of the same end. When its ends move alike (one
+motion on both, or on a group holding both) it rides along in that motion's
+shell instead, and a motion on the connector itself (`Draw`, a fade, a slide)
+stays its own. A motion on a group that holds the connector and one end keeps
+the other end where it is. The redrawn path keeps only the keys it needs
+(within half a pixel), and the reduced-motion still shows it attached.
+Only the translate is followed: an end that a motion scales or rotates keeps
+its connector at the unscaled box, and an end inside a group that turns or
+scales is not followed around the pivot.
+
 A `Sequence` and a `Legato` over the same pair are circular (each sets the
 other's input), which warns: place legato members with `Stagger`, `OnBeat` or `At`.
 

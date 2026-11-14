@@ -55,8 +55,11 @@ export type NodeRecord = {
 		/** a time relation or beat: constrains time, renders nothing */
 		| "timing";
 	motion?: MotionSpec;
-	/** for motions: each targeted node and the marks it covers */
-	targets?: { id: string; marks: string[] }[];
+	/**
+	 * for motions: each targeted node, the marks it covers and (for connectors
+	 * to find their ends in) every node under it, itself included
+	 */
+	targets?: { id: string; marks: string[]; under?: string[] }[];
 	/** the phrase whose time this node plays in; absent for scene time */
 	clock?: string;
 	/** for phrases: how the passes play; repeat is Infinity for "until the enclosing time ends" */

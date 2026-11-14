@@ -429,3 +429,229 @@ test("every animation example mounts without a warning from the solver", async (
 	await page.waitForTimeout(500);
 	expect(warnings).toEqual([]);
 });
+
+// --- connectors and the motions on their ends --------------------------------
+
+/**
+ * How far the shown path of a connector ends from the edge of a box (0 when
+ * it ends inside), and how far its arrowhead is from that end.
+ */
+const reach = (
+	page: Page,
+	arrow: string,
+	box: string,
+	end: "start" | "end",
+	root = "svg",
+) =>
+	page.evaluate(
+		([arrowId, boxId, which, within]) => {
+			const svg = document.querySelector(within) as SVGSVGElement;
+			const shown = (id: string) => {
+				const paths = [
+					...svg.querySelectorAll<SVGGraphicsElement>(
+						`[id="${id}"], [id="${id}-still"]`,
+					),
+				];
+				return (
+					paths.find((p) => getComputedStyle(p).display !== "none") ?? paths[0]
+				);
+			};
+			const path = shown(arrowId) as SVGGeometryElement;
+			const local = path.getPointAtLength(
+				which === "start" ? 0 : path.getTotalLength(),
+			);
+			const p = new DOMPoint(local.x, local.y).matrixTransform(
+				path.getScreenCTM() as DOMMatrix,
+			);
+			const r = (
+				svg.querySelector(`[id="${boxId}"]`) as Element
+			).getBoundingClientRect();
+			const dx = Math.max(r.left - p.x, 0, p.x - r.right);
+			const dy = Math.max(r.top - p.y, 0, p.y - r.bottom);
+			const head = shown(`${arrowId}-head`)?.getBoundingClientRect();
+			return {
+				gap: Math.hypot(dx, dy),
+				head: head
+					? Math.hypot(
+							head.x + head.width / 2 - p.x,
+							head.y + head.height / 2 - p.y,
+						)
+					: 0,
+				x: r.x + r.width / 2,
+				y: r.y + r.height / 2,
+			};
+		},
+		[arrow, box, end, root],
+	);
+
+// An arrow stops up to 11px short of the box it points at
+const TOUCHING = 14;
+const HEAD = 5;
+
+const pad = (id: string, x: number, y: number): N =>
+	rect(id, { x, y, width: 30, height: 20 });
+const arrowTo = (id: string, from: string, to: string): N => ({
+	type: "Arrow",
+	id,
+	props: { "stroke-width": 1.5 },
+	children: [ref(from), ref(to)],
+});
+const slide = (id: string, target: string, to: N, props: N = {}): N => ({
+	type: "Motion",
+	id,
+	props: { steps: [{ to, over: 1 }], ...props },
+	children: [ref(target)],
+});
+
+test("an arrow stays on a box that a motion moves", async ({ page }) => {
+	await page.setContent(
+		svgOf([
+			pad("base", 0, 0),
+			pad("box", 0, 80),
+			pad("far", 200, 160),
+			arrowTo("in", "base", "box"),
+			arrowTo("out", "box", "far"),
+			{
+				type: "Travel",
+				id: "trip",
+				props: { at: 0.5, over: 2, ease: "inOut" },
+				children: [ref("box"), ref("far")],
+			},
+		]),
+	);
+	const seen: number[] = [];
+	for (const t of [0, 0.5, 0.9, 1.3, 1.5, 1.9, 2.2, 2.5]) {
+		await seek(page, t);
+		const [into, out, at] = [
+			await reach(page, "in", "box", "end"),
+			await reach(page, "out", "box", "start"),
+			await reach(page, "out", "far", "end"),
+		];
+		expect(into.gap, `in at ${t}s`).toBeLessThan(TOUCHING);
+		expect(into.head, `head at ${t}s`).toBeLessThan(HEAD);
+		expect(out.gap, `out at ${t}s`).toBeLessThan(TOUCHING);
+		if (t < 2.2) expect(at.gap, `far end at ${t}s`).toBeLessThan(TOUCHING);
+		seen.push(Math.round(into.x));
+	}
+	expect(new Set(seen).size).toBeGreaterThan(4);
+});
+
+test("it follows a phrase played backwards, a modulation and a group's motion at once", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			pad("base", 0, 0),
+			pad("a", 0, 120),
+			pad("b", 120, 120),
+			{ type: "Group", id: "crate", children: [pad("box", 0, 60)] },
+			{
+				type: "Align",
+				props: { alignment: "centerX" },
+				children: [ref("a"), ref("box")],
+			},
+			arrowTo("in", "base", "box"),
+			{
+				type: "Modulate",
+				id: "hop",
+				props: { at: 0.5, over: 1, ease: "inOut" },
+				children: [
+					{
+						type: "Align",
+						props: { alignment: "centerX" },
+						children: [ref("b"), ref("box")],
+					},
+				],
+			},
+			{
+				type: "Phrase",
+				id: "p",
+				props: { at: 0, repeat: 2, alternate: true, retrograde: true },
+				children: [slide("lift", "crate", { y: -30, x: 40 })],
+			},
+			{ type: "Rest", props: { at: 0, over: 2.5 } },
+		]),
+	);
+	const seen: number[] = [];
+	for (const t of [0, 0.3, 0.7, 1, 1.2, 1.6, 2, 2.5]) {
+		await seek(page, t);
+		const into = await reach(page, "in", "box", "end");
+		expect(into.gap, `at ${t}s`).toBeLessThan(TOUCHING);
+		expect(into.head, `head at ${t}s`).toBeLessThan(HEAD);
+		seen.push(Math.round(into.x));
+	}
+	expect(new Set(seen).size).toBeGreaterThan(4);
+});
+
+test("an arrow rides along when one motion moves both its ends", async ({
+	page,
+}) => {
+	const svg = svgOf([
+		{
+			type: "Group",
+			id: "pair",
+			children: [pad("base", 0, 0), pad("box", 100, 60)],
+		},
+		arrowTo("in", "base", "box"),
+		slide("go", "pair", { x: 80, y: 20 }),
+	]);
+	expect(svg).not.toContain("<animate");
+	await page.setContent(svg);
+	for (const t of [0, 0.3, 0.6, 1]) {
+		await seek(page, t);
+		expect((await reach(page, "in", "box", "end")).gap).toBeLessThan(TOUCHING);
+		expect((await reach(page, "in", "base", "start")).gap).toBeLessThan(
+			TOUCHING,
+		);
+	}
+});
+
+test("reduced motion shows the arrow on the box where the still frame has it", async ({
+	page,
+}) => {
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await page.setContent(
+		svgOf([
+			pad("base", 0, 0),
+			pad("box", 0, 80),
+			arrowTo("in", "base", "box"),
+			slide("go", "box", { x: 150 }),
+			{ type: "Draw", id: "ink", props: { over: 1 }, children: [ref("in")] },
+		]),
+	);
+	const into = await reach(page, "in", "box", "end");
+	expect(into.gap).toBeLessThan(TOUCHING);
+	expect(into.head).toBeLessThan(HEAD);
+	expect(into.x).toBeGreaterThan(150);
+});
+
+test("the Courier example keeps both arrows on the parcel", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/animation/");
+	const graphic = page.locator("svg:has(#parcel)");
+	await graphic.scrollIntoViewIfNeeded();
+	await graphic.evaluate((svg) => svg.setAttribute("data-courier", ""));
+	const seen: number[] = [];
+	for (const t of [0, 0.4, 0.8, 1.2, 1.6, 2, 2.4, 3, 3.6, 4.2, 4.8]) {
+		await graphic.evaluate((svg: SVGSVGElement, at) => {
+			for (const a of svg.getAnimations({ subtree: true })) {
+				a.pause();
+				a.currentTime = at * 1000;
+			}
+			svg.pauseAnimations();
+			svg.setCurrentTime(at);
+		}, t);
+		const [sent, due] = [
+			await reach(page, "sent", "parcel", "end", "svg[data-courier]"),
+			await reach(page, "due", "parcel", "start", "svg[data-courier]"),
+		];
+		expect(sent.gap, `sent at ${t}s`).toBeLessThan(TOUCHING);
+		expect(sent.head, `sent head at ${t}s`).toBeLessThan(HEAD);
+		expect(due.gap, `due at ${t}s`).toBeLessThan(TOUCHING);
+		seen.push(Math.round(sent.x));
+	}
+	// out over two docks and back again
+	expect(new Set(seen).size).toBeGreaterThan(5);
+	expect(seen[0]).toBe(seen.at(-1));
+});

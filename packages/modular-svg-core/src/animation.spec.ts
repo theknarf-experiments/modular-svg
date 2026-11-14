@@ -1352,3 +1352,285 @@ describe("replaced lanes (properties)", () => {
 		);
 	});
 });
+
+describe("connectors follow motions", () => {
+	type El = ReturnType<typeof render>["ast"]["children"][number];
+	const flat = (els: readonly El[]): El[] =>
+		els.flatMap((el) => (el.type === "g" ? [el, ...flat(el.children)] : [el]));
+	const shellOf = (els: readonly El[], id: string): El | undefined =>
+		flat(els).find(
+			(el) => el.type === "g" && el.children.some((c) => c.id === id),
+		);
+	const slide = (
+		id: string,
+		targets: string[],
+		props: Record<string, unknown> = {},
+		to: Record<string, unknown> = { x: 100 },
+	): N => ({
+		type: "Motion",
+		id,
+		props: { steps: [{ to, over: 1, ease: "linear" }], ...props },
+		children: targets.map(ref),
+	});
+	const wire: N = {
+		type: "Line",
+		id: "wire",
+		children: [ref("a"), ref("job")],
+	};
+	const scene = (extra: N[], job: Record<string, unknown> = {}): N[] => [
+		box("a"),
+		box("job", { x: 0, y: 60, ...job }),
+		wire,
+		...extra,
+	];
+	/** The wire of a static scene with the job at an offset, as path data. */
+	const drawn = (dx = 0, dy = 0): string => {
+		const line = render(scene([], { x: dx, y: 60 + dy })).ast.children.find(
+			(c) => c.id === "wire",
+		);
+		if (line?.type !== "line") throw new Error("expected a line");
+		return `M ${line.x1},${line.y1} L ${line.x2},${line.y2}`;
+	};
+	const valuesOf = (els: readonly El[], id = "wire"): string[] => {
+		const path = flat(els).find((c) => c.id === id);
+		return (path?.type === "path" && path.animate?.[0].values.split(";")) || [];
+	};
+
+	const ends = (values: string[]) => [values[0], values.at(-1)];
+
+	it("redraws a connector between where a motion has its end", () => {
+		const { ast } = render(scene([slide("go", ["job"])]));
+		expect(ends(valuesOf(ast.children))).toEqual([drawn(), drawn(100)]);
+	});
+
+	it("draws a slide that keeps the path straight in time with two keys", () => {
+		const { ast } = render(scene([slide("go", ["job"], {}, { y: 40 })]));
+		expect(valuesOf(ast.children)).toEqual([drawn(), drawn(0, 40)]);
+	});
+
+	it("keeps an eased slide to a bounded number of keys", () => {
+		const eased = render(
+			scene([
+				{
+					type: "Motion",
+					id: "go",
+					props: { steps: [{ to: { x: 100, y: 40 }, over: 1 }] },
+					children: [ref("job")],
+				},
+			]),
+		);
+		const values = valuesOf(eased.ast.children);
+		expect(values.length).toBeGreaterThan(3);
+		expect(values.length).toBeLessThanOrEqual(17);
+		expect(values.at(-1)).toBe(drawn(100, 40));
+	});
+
+	it("shows the connector attached in the reduced-motion still", () => {
+		const { ast } = render(scene([slide("go", ["job"])]), { stillAt: 0.5 });
+		const still = flat(ast.children).find((c) => c.id === "wire-still");
+		expect(still?.type === "path" && still.d).toBe(drawn(50));
+	});
+
+	it("carries a connector in the shell of a motion that moves both ends", () => {
+		const { ast, svg } = render(scene([slide("go", ["a", "job"])]));
+		expect(svg).not.toContain("<animate");
+		const [mine, theirs] = [
+			shellOf(ast.children, "wire"),
+			shellOf(ast.children, "job"),
+		];
+		expect(mine?.type === "g" && mine.children.map((c) => c.type)).toEqual([
+			"line",
+		]);
+		expect(mine?.attrs?.class).toBe(theirs?.attrs?.class);
+	});
+
+	it("carries it the same when two motions move the ends alike", () => {
+		const { ast, svg } = render(
+			scene([slide("one", ["a"]), slide("two", ["job"])]),
+		);
+		expect(svg).not.toContain("<animate");
+		expect(shellOf(ast.children, "wire")?.attrs?.class).toBe(
+			shellOf(ast.children, "job")?.attrs?.class,
+		);
+	});
+
+	it("follows a motion on a group its end is in", () => {
+		const { ast } = render([
+			box("a"),
+			{
+				type: "Group",
+				id: "crate",
+				children: [box("job", { x: 0, y: 60 })],
+			},
+			wire,
+			slide("go", ["crate"]),
+		]);
+		expect(ends(valuesOf(ast.children))).toEqual([drawn(), drawn(100)]);
+	});
+
+	it("follows an end that is itself a group", () => {
+		const { ast } = render([
+			box("a"),
+			{
+				type: "Group",
+				id: "crate",
+				children: [box("job", { x: 0, y: 60 })],
+			},
+			{ type: "Line", id: "wire", children: [ref("a"), ref("crate")] },
+			slide("go", ["crate"]),
+		]);
+		expect(ends(valuesOf(ast.children))).toEqual([drawn(), drawn(100)]);
+	});
+
+	it("keeps the far end in place when a group carries the connector and one end", () => {
+		const { ast } = render([
+			box("job", { x: 0, y: 60 }),
+			{ type: "Group", id: "crate", children: [box("a"), wire] },
+			slide("go", ["crate"]),
+		]);
+		// drawn inside the crate's shell, so the job's end leans back by as much
+		expect(shellOf(ast.children, "wire")?.attrs?.class).toBe(
+			shellOf(ast.children, "a")?.attrs?.class,
+		);
+		expect(ends(valuesOf(ast.children))).toEqual([
+			drawn(),
+			// the static scene shifts right by as much to fit the job
+			drawn(-100).replace(/(-?[\d.]+),/g, (_, x) => `${Number(x) - 100},`),
+		]);
+	});
+
+	it("leaves a motion on the connector itself alone", () => {
+		const { ast, svg } = render(scene([slide("go", ["wire"])]));
+		expect(svg).not.toContain("<animate");
+		expect(shellOf(ast.children, "wire")).toBeDefined();
+		expect(flat(ast.children).find((c) => c.id === "wire")?.type).toBe("line");
+	});
+
+	it("still draws a connector on while its end moves", () => {
+		const { ast, svg } = render(
+			scene([slide("go", ["job"]), on("Draw", "ink", "wire", { over: 1 })]),
+		);
+		const path = flat(ast.children).find((c) => c.id === "wire");
+		expect(path?.attrs?.pathLength).toBe(1);
+		expect(ends(valuesOf(ast.children))).toEqual([drawn(), drawn(100)]);
+		const cls = String(path?.attrs?.class).split(" ")[1];
+		expect(svg).toMatch(
+			new RegExp(`\\.${cls}\\{animation-name:ms\\w+-k\\d+,ms\\w+-k\\d+\\}`),
+		);
+	});
+
+	it("leaves the connector a line when only scale or opacity play on its end", () => {
+		const { ast } = render(
+			scene([on("Enter", "in", "job", { from: { opacity: 0, scale: 0.5 } })]),
+		);
+		expect(ast.children.find((c) => c.id === "wire")?.type).toBe("line");
+	});
+
+	it("adds the motion to a modulation of the same end", () => {
+		const { ast } = render([
+			{
+				type: "StackH",
+				id: "row",
+				props: { spacing: 10 },
+				children: [box("a"), box("b")],
+			},
+			box("job", { y: 60 }),
+			{
+				type: "Align",
+				children: [ref("a"), ref("job")],
+				props: { alignment: "centerX" },
+			},
+			wire,
+			{
+				type: "Modulate",
+				id: "hop",
+				props: { over: 1, ease: "linear" },
+				children: [
+					{
+						type: "Align",
+						props: { alignment: "centerX" },
+						children: [ref("b"), ref("job")],
+					},
+				],
+			},
+			slide("go", ["job"], {}, { y: 50 }),
+		]);
+		const values = valuesOf(ast.children);
+		const end = (d: string) =>
+			d
+				.match(/L (-?[\d.]+),(-?[\d.]+)/)
+				?.slice(1)
+				.map(Number) ?? [];
+		const [home, last] = [end(values[0]), end(values.at(-1) ?? "")];
+		expect(last[0] - home[0]).toBeGreaterThan(10);
+		expect(last[1] - home[1]).toBeCloseTo(50, 1);
+	});
+
+	describe("in a phrase", () => {
+		const phrase = (props: Record<string, unknown>, children: N[]): N => ({
+			type: "Phrase",
+			id: "p",
+			props,
+			children,
+		});
+
+		it("starts moved and ends home in retrograde", () => {
+			const { ast } = render(
+				scene([phrase({ retrograde: true }, [slide("go", ["job"])])]),
+			);
+			expect(ends(valuesOf(ast.children))).toEqual([drawn(100), drawn()]);
+		});
+
+		it("goes there and back with the mark", () => {
+			const { ast } = render(
+				scene([phrase({ repeat: 2, alternate: true }, [slide("go", ["job"])])]),
+			);
+			expect(ast.duration).toBe(2);
+			const values = valuesOf(ast.children);
+			expect(ends(values)).toEqual([drawn(), drawn()]);
+			expect(values[(values.length - 1) / 2]).toBe(drawn(100));
+		});
+
+		it("is at the mark's place at both ends, whatever the phrase (property)", () => {
+			fc.assert(
+				fc.property(
+					fc.integer({ min: 0, max: 80 }),
+					fc.integer({ min: -30, max: 80 }),
+					fc.constantFrom("none", "forward", "retrograde", "pong", "fast"),
+					fc.constantFrom("linear", "inOut", "out"),
+					(dx, dy, kind, ease) => {
+						fc.pre(dx !== 0 || dy !== 0);
+						const go: N = {
+							type: "Motion",
+							id: "go",
+							props: { steps: [{ to: { x: dx, y: dy }, over: 1, ease }] },
+							children: [ref("job")],
+						};
+						const props = {
+							forward: {},
+							retrograde: { retrograde: true },
+							pong: { repeat: 2, alternate: true },
+							fast: { rate: 2 },
+						}[kind as "forward"];
+						const { ast } = render(
+							scene([kind === "none" ? go : phrase(props, [go])]),
+						);
+						const values = valuesOf(ast.children);
+						const [first, last] = {
+							none: [drawn(), drawn(dx, dy)],
+							forward: [drawn(), drawn(dx, dy)],
+							fast: [drawn(), drawn(dx, dy)],
+							retrograde: [drawn(dx, dy), drawn()],
+							pong: [drawn(), drawn()],
+						}[kind as "none"];
+						expect(values[0]).toBe(first);
+						expect(values.at(-1)).toBe(last);
+						if (kind === "pong") expect(values).toContain(drawn(dx, dy));
+						expect(values.length).toBeLessThanOrEqual(34);
+					},
+				),
+				{ numRuns: 40 },
+			);
+		});
+	});
+});
