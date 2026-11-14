@@ -43,4 +43,22 @@ describe("CLI", () => {
 		expect(svg.trim()).toBe(expected);
 		unlinkSync(out);
 	});
+
+	it("fits the canvas into --width and --height", () => {
+		const json = readFileSync(example, "utf8");
+		const { status, stdout } = spawnSync(
+			bin,
+			["-", "-", "--margin", "0", "--width", "640", "--height", "360"],
+			{ input: json, encoding: "utf8" },
+		);
+		expect(status).toBe(0);
+		const scene = buildSceneFromJson(JSON.parse(json));
+		const layout = solveLayout(scene);
+		expect(stdout).toBe(
+			layoutToSvg(layout, scene.nodes, 0, {
+				view: { width: 640, height: 360 },
+			}),
+		);
+		expect(stdout).toContain('width="640" height="360" viewBox="0 0 640 360"');
+	});
 });

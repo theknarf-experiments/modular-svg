@@ -73,6 +73,18 @@ export type NodeRecord = {
 		releases: string[];
 		ease?: Ease;
 	};
+	/** for a Camera: the view frames these marks from the node's start on */
+	camera?: {
+		/** every mark under its children; none frames the whole canvas */
+		frames: string[];
+		/** it has children to frame, so framing nothing is a mistake */
+		aimed: boolean;
+		padding: number;
+		fit: "contain" | "cover";
+		/** also follow where motions take the marks, not only layout */
+		follow: boolean;
+		ease?: Ease;
+	};
 	r?: number;
 	/** inner radius for arc marks (donut sectors); 0 = full pie slice */
 	innerR?: number;

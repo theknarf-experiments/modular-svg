@@ -5,7 +5,8 @@
 // `modulations`, the layout changes four times: the rows turn upside down,
 // two rows reverse, the first of them shuffles again, and all of it resolves.
 // With `springs`, every enter is a spring and a dot per row rides a smooth,
-// oriented route through the row's marks.
+// oriented route through the row's marks. With `cameras`, the view pushes in
+// on every row in turn, following its marks, and pulls back at the end.
 const ref = (target: string, paint?: string) => ({
 	type: "Ref",
 	target,
@@ -14,7 +15,12 @@ const ref = (target: string, paint?: string) => ({
 
 export function scaleScene(
 	n: number,
-	opts: { phrases?: boolean; modulations?: boolean; springs?: boolean } = {},
+	opts: {
+		phrases?: boolean;
+		modulations?: boolean;
+		springs?: boolean;
+		cameras?: boolean;
+	} = {},
 ): Record<string, unknown> {
 	const rows = Math.ceil(n / 10);
 	const ids = Array.from({ length: n }, (_, i) => `m${i}`);
@@ -131,6 +137,23 @@ export function scaleScene(
 			{ type: "Resolve", id: "settle", props: { at: 4, over: 0.4 } },
 		);
 	}
+	if (opts.cameras)
+		children.push(
+			...Array.from({ length: rows }, (_, r) => ({
+				type: "Camera",
+				id: `cam${r}`,
+				props: { over: 0.2, padding: 10, follow: true },
+				children: [ref(`row${r}`)],
+			})),
+			{ type: "Camera", id: "wide", props: { over: 0.2 } },
+			{
+				type: "Sequence",
+				children: [
+					...Array.from({ length: rows }, (_, r) => ref(`cam${r}`)),
+					ref("wide"),
+				],
+			},
+		);
 	return { type: "Group", id: "root", children };
 }
 

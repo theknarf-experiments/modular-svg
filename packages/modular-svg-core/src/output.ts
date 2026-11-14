@@ -1,4 +1,5 @@
 import type { AnimationOptions } from "./animation.ts";
+import type { ViewOptions } from "./camera.ts";
 import type { LayoutResult, NodeRecord } from "./solver/index.ts";
 import { layoutToAst, type SvgDocument, type SvgElement } from "./svg_ast.ts";
 
@@ -156,6 +157,7 @@ export function serializeToSvg(ast: SvgDocument): string {
 			xmlns: "http://www.w3.org/2000/svg",
 			width: ast.width,
 			height: ast.height,
+			viewBox: ast.viewBox,
 		},
 		body,
 	);
@@ -166,7 +168,7 @@ export function layoutToSvg(
 	layout: LayoutResult,
 	nodes?: NodeRecord[],
 	margin = 0,
-	opts: { animation?: AnimationOptions | false } = {},
+	opts: { animation?: AnimationOptions | false; view?: ViewOptions } = {},
 ): string {
 	const ast = layoutToAst(layout, nodes, margin, opts);
 	return serializeToSvg(ast);

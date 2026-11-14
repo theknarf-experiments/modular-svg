@@ -54,7 +54,8 @@
 				"Polyrhythm",
 				"Phrase",
 				"Modulate",
-				"Resolve"
+				"Resolve",
+				"Camera"
 			]
 		},
 		"id": { "type": "string" },
@@ -138,7 +139,9 @@
 					"enum": ["straight", "smooth", "along"]
 				},
 				"pace": { "type": "string", "enum": ["leg", "trip"] },
-				"orient": { "type": ["boolean", "number"] }
+				"orient": { "type": ["boolean", "number"] },
+				"fit": { "type": "string", "enum": ["contain", "cover"] },
+				"follow": { "type": "boolean" }
 			},
 			"additionalProperties": true
 		},

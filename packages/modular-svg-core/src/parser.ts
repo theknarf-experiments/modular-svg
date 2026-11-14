@@ -881,6 +881,50 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	};
 	const isMark = (rec: NodeRecord): boolean =>
 		!!rec.type && rec.type !== "motion" && rec.type !== "timing";
+	// What a camera frames reaches through refs as well: a relation over refs
+	// is framed as the marks it relates
+	const related = new Map(timeNodes.map((t) => [t.rec.id, t.children]));
+	const reached = (rec: NodeRecord, seen: Set<string>): NodeRecord[] => {
+		if (seen.has(rec.id) || rec.type === "motion" || rec.type === "timing")
+			return [];
+		seen.add(rec.id);
+		return [
+			rec,
+			...(related.get(rec.id) ?? []).flatMap((c) => reached(c, seen)),
+		];
+	};
+	// Cameras first: a motion on one moves the view
+	for (const t of timeNodes) {
+		if (t.type !== "Camera") continue;
+		const seen = new Set<string>();
+		const name = `Camera(${t.rec.id})`;
+		const framed = t.children.filter((c) => {
+			if (c.type !== "motion" && c.type !== "timing") return true;
+			targetWarnings.push(
+				`${name} frames ${c.id}, which takes no space; ref a mark or a group`,
+			);
+			return false;
+		});
+		const { fit } = t.props;
+		if (fit !== undefined && fit !== "contain" && fit !== "cover")
+			targetWarnings.push(
+				`${name}: fit must be "contain" or "cover"; using contain`,
+			);
+		t.rec.camera = {
+			frames: framed
+				.flatMap((c) => reached(c, seen))
+				.filter(isMark)
+				.map((n) => n.id),
+			aimed: framed.length > 0,
+			padding:
+				typeof t.props.padding === "number" && Number.isFinite(t.props.padding)
+					? t.props.padding
+					: 0,
+			fit: fit === "cover" ? "cover" : "contain",
+			follow: t.props.follow === true,
+			...(t.props.ease !== undefined ? { ease: t.props.ease as Ease } : {}),
+		};
+	}
 	for (const t of timeNodes) {
 		if (t.type === "Modulate" || t.type === "Resolve")
 			t.rec.modulation = {
@@ -910,7 +954,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			const under = nodesUnder(c);
 			return {
 				id: c.id,
-				marks: under.filter(isMark).map((n) => n.id),
+				marks: c.camera ? [c.id] : under.filter(isMark).map((n) => n.id),
 				under: under.map((n) => n.id),
 			};
 		});
@@ -1821,6 +1865,47 @@ export function checkPhases(
 	return out;
 }
 
+/** The marks a camera frames at home, strokes included; undefined when there are none. */
+export function framedBox(
+	frames: readonly string[],
+	boxOf: (id: string) => LayoutBox | undefined,
+	byId: ReadonlyMap<string, NodeRecord>,
+): LayoutBox | undefined {
+	let [left, top, right, bottom] = [Infinity, Infinity, -Infinity, -Infinity];
+	for (const id of frames) {
+		const box = boxOf(id);
+		if (!box) continue;
+		const grow = strokeOf(byId.get(id)) / 2;
+		left = Math.min(left, box.x - grow);
+		top = Math.min(top, box.y - grow);
+		right = Math.max(right, box.x + box.width + grow);
+		bottom = Math.max(bottom, box.y + box.height + grow);
+	}
+	return left <= right
+		? { x: left, y: top, width: right - left, height: bottom - top }
+		: undefined;
+}
+
+/** The stroke a mark's box grows by, as the canvas bounds count it. */
+export const strokeOf = (n: NodeRecord | undefined): number =>
+	n?.strokeWidth ?? (n?.type === "arrow" ? 3 : 0);
+
+/** Cameras that have something to frame and frame nothing. */
+export function checkCamera(
+	scene: { nodes: readonly NodeRecord[] },
+	layout: Record<string, LayoutBox>,
+): string[] {
+	const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+	return scene.nodes.flatMap((n) => {
+		if (!n.camera?.aimed) return [];
+		const box = framedBox(n.camera.frames, (id) => layout[id], byId);
+		const pad = n.camera.padding * 2;
+		return box && (box.width + pad > 0 || box.height + pad > 0)
+			? []
+			: [`Camera(${n.id}) frames an empty box; showing everything instead`];
+	});
+}
+
 /** Everything wrong with a solution: unsatisfied layout, color and time relations, schedule checks. */
 export function checkSolution(
 	scene: JsonScene,
@@ -1829,6 +1914,7 @@ export function checkSolution(
 	return [
 		...checkLayout(scene, layout),
 		...checkPhases(scene, layout),
+		...checkCamera(scene, layout),
 		...checkColor(scene),
 		...checkTime(scene, layout),
 	];

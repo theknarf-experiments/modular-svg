@@ -1,4 +1,14 @@
 import {
+	everything,
+	type Framing,
+	fitView,
+	foldCameras,
+	INHERIT,
+	mergeCameraSteps,
+	type Stage,
+	viewKeys,
+} from "./camera.ts";
+import {
 	CHANNELS,
 	type Channel,
 	clampEase,
@@ -24,7 +34,7 @@ import {
 	type Values,
 	valueAt,
 } from "./motion.ts";
-import { defaultPaint } from "./parser.ts";
+import { defaultPaint, framedBox } from "./parser.ts";
 import { type Clock, retime } from "./phrase.ts";
 import {
 	arcPoints,
@@ -103,6 +113,11 @@ export type CompiledAnimation = {
 	duration: number;
 	css: string;
 	marks: Map<string, MarkAnimation>;
+	/**
+	 * The view: the class of the group round every mark, and the shells of the
+	 * motions on cameras, which wrap that group
+	 */
+	camera?: { class: string; shells: { class: string }[] };
 };
 
 type Lane = {
@@ -121,7 +136,8 @@ const num = (v: number, places = 4): string => {
 	return String(Object.is(r, -0) ? 0 : r);
 };
 
-function timing(ease: ResolvedEase): string {
+/** An ease as a CSS timing function. */
+export function cssEase(ease: ResolvedEase): string {
 	if (ease.kind === "linear") return "linear";
 	if (ease.kind === "steps")
 		return `steps(${ease.count}${ease.jump ? ",start" : ""})`;
@@ -180,7 +196,7 @@ function keyframes(lane: Lane, period: number): string {
 	return lane.keys
 		.map((k, i) => {
 			const ease = moving(lane.keys, i)
-				? `;animation-timing-function:${timing(
+				? `;animation-timing-function:${cssEase(
 						clampEase(
 							k.ease,
 							progressWindow(lane.channels, k.values, lane.keys[i + 1].values),
@@ -573,6 +589,17 @@ function thinned(initial: string, pieces: readonly Step[]): Step[] {
 	return out;
 }
 
+/** The box round two boxes. */
+const around = (a: LayoutBox, b: LayoutBox): LayoutBox => {
+	const [x, y] = [Math.min(a.x, b.x), Math.min(a.y, b.y)];
+	return {
+		x,
+		y,
+		width: Math.max(a.x + a.width, b.x + b.width) - x,
+		height: Math.max(a.y + a.height, b.y + b.height) - y,
+	};
+};
+
 const TRANSLATE = (c: Channel): boolean => c === "x" || c === "y";
 
 const opposite = (e: Expanded): Expanded => {
@@ -708,6 +735,8 @@ export function compileAnimation(
 	offset: { x: number; y: number },
 	opts: AnimationOptions = {},
 	pathsOf?: PathsOf,
+	/** the viewport; without one the scene's cameras are not compiled */
+	stage?: Stage,
 ): CompiledAnimation | undefined {
 	const motions = nodes.filter(
 		(n) => n.type === "motion" && n.motion && layout[n.id]?.start !== undefined,
@@ -721,7 +750,11 @@ export function compileAnimation(
 			? undefined
 			: (layout[id].local ?? span(id)),
 	);
-	if (motions.length === 0 && phases.length === 0) return undefined;
+	const cameras = stage
+		? nodes.filter((n) => n.camera && layout[n.id]?.start !== undefined)
+		: [];
+	if (motions.length === 0 && phases.length === 0 && cameras.length === 0)
+		return undefined;
 
 	const natural = Math.max(
 		...motions.map((m) => {
@@ -737,7 +770,10 @@ export function compileAnimation(
 	);
 	// A change of layout that takes no time still holds once nothing else is
 	// timed: the timeline is then one held frame
-	const instant = natural <= 0 && phases.some((p) => p.clock === undefined);
+	const instant =
+		natural <= 0 &&
+		(phases.some((p) => p.clock === undefined) ||
+			cameras.some((c) => c.clock === undefined));
 	const period = opts.duration ?? (instant ? INSTANT : natural);
 	if (!(period > 0)) return undefined;
 
@@ -1027,6 +1063,34 @@ export function compileAnimation(
 		return carried;
 	};
 
+	/**
+	 * A box in scene time: where each clock's changes of layout put it, plus
+	 * what `overlays` (the translates of motions) add
+	 */
+	const boxTrack = (
+		home: LayoutBox,
+		moves: readonly { change: Change; boxes: readonly LayoutBox[] }[],
+		overlays: readonly Expanded[],
+	) => {
+		const tracks = moves
+			.flatMap(({ change, boxes }) => {
+				const e = followBox(home, boxes, change.events, change.eases, BOX);
+				return e ? tracksOf(played(change, e)) : [];
+			})
+			.concat(overlays.flatMap(tracksOf));
+		const rest = { x: 0, y: 0, width: home.width, height: home.height };
+		const at = (t: number): LayoutBox => {
+			const now = totalAt(tracks, rest, t);
+			return {
+				x: home.x + Number(now.x),
+				y: home.y + Number(now.y),
+				width: Number(now.width),
+				height: Number(now.height),
+			};
+		};
+		return { tracks, at };
+	};
+
 	const morphs = new Map<string, Map<string, Expanded & { still?: string }>>();
 	for (const mark of nodes) {
 		const box = layout[mark.id];
@@ -1170,31 +1234,15 @@ export function compileAnimation(
 			home: LayoutBox,
 			side: "as" | "bs",
 			overlays: readonly Expanded[],
-		) => {
-			const tracks = (rigid ? [] : by)
-				.flatMap((moved) => {
-					const e = followBox(
-						home,
-						moved[side],
-						moved.change.events,
-						moved.change.eases,
-						BOX,
-					);
-					return e ? tracksOf(played(moved.change, e)) : [];
-				})
-				.concat(overlays.flatMap(tracksOf));
-			const rest = { x: 0, y: 0, width: home.width, height: home.height };
-			const at = (t: number): LayoutBox => {
-				const now = totalAt(tracks, rest, t);
-				return {
-					x: home.x + Number(now.x),
-					y: home.y + Number(now.y),
-					width: Number(now.width),
-					height: Number(now.height),
-				};
-			};
-			return { tracks, at };
-		};
+		) =>
+			boxTrack(
+				home,
+				(rigid ? [] : by).map((moved) => ({
+					change: moved.change,
+					boxes: moved[side],
+				})),
+				overlays,
+			);
 		const [endA, endB] = [end(a, "as", carried.from), end(b, "bs", carried.to)];
 		const draw = (t: number) =>
 			pathsOf(mark, { [from]: endA.at(t), [to]: endB.at(t) });
@@ -1265,10 +1313,20 @@ export function compileAnimation(
 		if (clocks.length === 0) pastEnd(m.id, expanded);
 		for (const target of m.targets ?? []) {
 			const box = layout[target.id];
-			const pivot = {
-				x: box.x + box.width / 2 + offset.x,
-				y: box.y + box.height / 2 + offset.y,
-			};
+			// A motion on a camera moves the view, about the middle of the viewport
+			const onCamera = stage && byId.get(target.id)?.camera;
+			if (onCamera)
+				for (const c of Object.keys(touched(expanded)) as Channel[])
+					if (!CHANNELS[c].nest)
+						throw new Error(
+							`Camera(${target.id}) cannot animate ${c}; a motion on a camera takes x, y, scale, rotate, opacity or blur`,
+						);
+			const pivot = onCamera
+				? { x: stage.width / 2, y: stage.height / 2 }
+				: {
+						x: box.x + box.width / 2 + offset.x,
+						y: box.y + box.height / 2 + offset.y,
+					};
 			const origin = originOf(target.id);
 			for (const mark of target.marks) {
 				const node = byId.get(mark);
@@ -1510,6 +1568,134 @@ export function compileAnimation(
 		});
 	}
 
+	// The view. Each clock's cameras are folded in its own time, played into
+	// the scene's, and merged: one transform on the group round every mark
+	let view: CompiledAnimation["camera"];
+	if (stage && cameras.length > 0) {
+		const wide = everything(stage);
+		const fitted = (
+			framed: LayoutBox | undefined,
+			{ padding, fit }: NonNullable<NodeRecord["camera"]>,
+		) =>
+			(framed &&
+				fitView(
+					{ ...framed, x: framed.x + offset.x, y: framed.y + offset.y },
+					padding,
+					fit,
+					stage,
+				)) ??
+			wide;
+		const framings = cameras.map((node): Framing => {
+			const camera = node.camera as NonNullable<NodeRecord["camera"]>;
+			if (camera.follow) carriers ??= carriersOf();
+			// Marks that stay put are framed once; the rest at every sample
+			const still: string[] = [];
+			const moving = new Map<string, (t: number) => LayoutBox>();
+			const breaks = new Set<number>();
+			for (const id of camera.frames) {
+				const box = layout[id];
+				if (!box) continue;
+				const moves = changesOf(id).map((change) => ({
+					change,
+					boxes: boxesIn(change, box),
+				}));
+				const carried = camera.follow ? (carriers?.get(id) ?? []) : [];
+				if (moves.length === 0 && carried.length === 0) {
+					still.push(id);
+					continue;
+				}
+				const track = boxTrack(
+					box,
+					moves,
+					carried.map((c) => c.played()),
+				);
+				for (const { keys } of track.tracks)
+					for (const k of keys) breaks.add(k.t);
+				moving.set(id, track.at);
+			}
+			const rest = framedBox(still, (id) => layout[id], byId);
+			if (moving.size === 0) {
+				const fixed = fitted(rest, camera);
+				return { at: () => fixed, breaks: [] };
+			}
+			const ids = [...moving.keys()];
+			return {
+				at: (t) => {
+					const moved = framedBox(ids, (id) => moving.get(id)?.(t), byId);
+					return fitted(
+						rest && moved ? around(rest, moved) : (rest ?? moved),
+						camera,
+					);
+				},
+				breaks: [...breaks],
+			};
+		});
+		const indexOf = new Map(cameras.map((c, i) => [c.id, i]));
+		const perClock = foldCameras(
+			cameras,
+			(id) => layout[id].local ?? span(id),
+		).flatMap(({ clock, events }) => {
+			const clocks = clocksFrom(clock);
+			if (clocks.some((c) => !(c.length > 0 && c.span > 0))) return [];
+			let e: Expanded = {
+				initial: { x: INHERIT },
+				steps: events.map((event) => ({
+					start: event.start,
+					over: event.over,
+					ease:
+						event.over > 0
+							? resolveEase(byId.get(event.id)?.camera?.ease ?? "inOut")
+							: CUT,
+					values: { x: indexOf.get(event.id) as number },
+				})),
+			};
+			clocks.forEach((c, i) => {
+				const played = retime(
+					e,
+					c,
+					clocks[i + 1]?.length ?? period,
+					() => INHERIT,
+				);
+				// A backward pass begins on its last framing: a cut where the
+				// phrase starts, not the view from the start of the scene
+				e =
+					played.initial.x === INHERIT
+						? played
+						: {
+								initial: { x: INHERIT },
+								steps: [
+									{
+										start: c.start,
+										over: 0,
+										ease: CUT,
+										values: { x: played.initial.x },
+									},
+									...played.steps,
+								],
+							};
+			});
+			pastEnd(events[events.length - 1].id, e);
+			return [{ clock, steps: e.steps }];
+		});
+		const moved = viewKeys(mergeCameraSteps(perClock), framings, stage, period);
+		const lane: Lane = {
+			name: "transform",
+			channels: ["x", "y", "scale"],
+			keys: keysOf(moved.initial, moved.steps, period),
+			declare: (v) =>
+				`transform:translate(${num(Number(v.x), 3)}px,${num(Number(v.y), 3)}px) scale(${num(Number(v.scale), 6)})`,
+		};
+		view = {
+			class: classFor([lane], ";transform-origin:0 0"),
+			// Motions on cameras: their shells wrap the view, in screen px
+			shells: cameras.flatMap((c) => {
+				const shells = marks.get(c.id)?.shells ?? [];
+				marks.delete(c.id);
+				return shells;
+			}),
+		};
+	}
+
 	const css = [
 		`.${TOKEN}a{animation-duration:${num(period)}s;animation-iteration-count:${opts.loop ? "infinite" : 1};animation-fill-mode:both;animation-timing-function:linear}`,
 		...rules,
@@ -1537,7 +1723,16 @@ export function compileAnimation(
 					stillClass: named(twin.still.stillClass),
 				};
 	}
-	return { duration: period, css: named(css), marks };
+	const camera = view && {
+		class: named(view.class),
+		shells: view.shells.map((shell) => ({ class: named(shell.class) })),
+	};
+	return {
+		duration: period,
+		css: named(css),
+		marks,
+		...(camera ? { camera } : {}),
+	};
 }
 
 const center = (b: LayoutResult[string]) => ({

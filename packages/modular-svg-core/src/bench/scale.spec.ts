@@ -60,6 +60,27 @@ it("stays within budget and linear with springs and smooth travel on every row",
 	expect(many).toBeLessThan(3000);
 }, 20000);
 
+it("stays within budget and linear with a camera on every row, following it through the modulations", () => {
+	const run = (n: number): number => {
+		const t0 = performance.now();
+		const scene = buildSceneFromJson(
+			scaleScene(n, { cameras: true, modulations: true }),
+		);
+		const layout = solveLayout(scene);
+		expect(checkSolution(scene, layout)).toEqual([]);
+		const ast = layoutToAst(layout, scene.nodes, 0, {
+			animation: { loop: true },
+		});
+		expect(ast.viewBox).toBeDefined();
+		return performance.now() - t0;
+	};
+	const best = (n: number) => Math.min(run(n), run(n));
+	run(200);
+	const [few, many] = [best(500), best(2000)];
+	expect(many / few).toBeLessThan(7);
+	expect(many).toBeLessThan(3000);
+}, 20000);
+
 // One solve per change of layout is the design; what a change costs must not
 // grow with how many others there are. Every phase used to relax all the
 // modulations it did not use, so four times the changes took eleven times as

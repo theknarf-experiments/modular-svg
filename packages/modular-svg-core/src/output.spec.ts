@@ -210,4 +210,19 @@ describe("layoutToSvg", () => {
 		expect(svg).not.toContain("marker-end");
 		expect(svg).toContain('stroke-width="3"');
 	});
+
+	it("writes a viewBox and the fitted canvas when given a view", () => {
+		const nodes: NodeRecord[] = [
+			{ id: "A", type: "rect", x: 0, y: 0, width: 100, height: 50 },
+		];
+		const layout: LayoutResult = { A: { x: 0, y: 0, width: 100, height: 50 } };
+		expect(layoutToSvg(layout, nodes)).not.toContain("viewBox");
+		const svg = layoutToSvg(layout, nodes, 0, { view: { width: 300 } });
+		expect(svg).toContain(
+			'width="300" height="150" viewBox="0 0 300 150"><g data-camera="" transform="translate(0,0) scale(3)"><rect id="A"',
+		);
+		expect(() =>
+			layoutToSvg(layout, nodes, 0, { view: { height: 0 } }),
+		).toThrow("view.height must be above 0");
+	});
 });

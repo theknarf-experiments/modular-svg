@@ -30,6 +30,8 @@ program
 	.option("-m, --margin <number>", "margin around the SVG", "3")
 	.option("-d, --duration <seconds>", "animation length (default: last motion)")
 	.option("-l, --loop", "replay the animation forever")
+	.option("--width <px>", "output width; the canvas is fitted into it")
+	.option("--height <px>", "output height; the canvas is fitted into it")
 	.action(
 		async (input: string | undefined, output: string | undefined, opts) => {
 			const raw = await readInput(input);
@@ -49,6 +51,14 @@ program
 					loop: !!opts.loop,
 					...(opts.duration ? { duration: Number(opts.duration) } : {}),
 				},
+				...(opts.width || opts.height
+					? {
+							view: {
+								...(opts.width ? { width: Number(opts.width) } : {}),
+								...(opts.height ? { height: Number(opts.height) } : {}),
+							},
+						}
+					: {}),
 			});
 			if (output && output !== "-") {
 				await writeFile(output, svg);

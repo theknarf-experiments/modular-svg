@@ -6,6 +6,12 @@ import {
 	type SmilAnimate,
 } from "./animation.ts";
 import {
+	everything,
+	stageOf,
+	type ViewOptions,
+	viewTransform,
+} from "./camera.ts";
+import {
 	addVec,
 	type BoundingBox2d,
 	boundingBoxFromPoints,
@@ -137,6 +143,8 @@ export type SvgDocument = {
 	css?: string;
 	/** seconds the animation runs */
 	duration?: number;
+	/** set when the scene is seen through a viewport: a `view` or a camera */
+	viewBox?: string;
 };
 
 /** Nodes that only exist in time take no space. */
@@ -544,7 +552,11 @@ export function layoutToAst(
 	layout: LayoutResult,
 	nodes?: NodeRecord[],
 	margin = 0,
-	opts: { animation?: AnimationOptions | false } = {},
+	opts: {
+		animation?: AnimationOptions | false;
+		/** the size the document is shown at; the canvas is fitted into it */
+		view?: ViewOptions;
+	} = {},
 ): SvgDocument {
 	const byId = new Map<string, NodeRecord>();
 	if (nodes) for (const n of nodes) byId.set(n.id, n);
@@ -571,9 +583,19 @@ export function layoutToAst(
 			return path?.id !== undefined ? [{ id: path.id, d: path.d }] : [];
 		});
 	};
+	const width = max.x - min.x + margin * 2;
+	const height = max.y - min.y + margin * 2;
+	// A viewport: asked for, or needed by a camera. A canvas with no extent
+	// has nothing to fit into one
+	const fitted =
+		opts.view || nodes?.some((n) => n.camera)
+			? stageOf({ width, height }, opts.view)
+			: undefined;
+	const stage =
+		fitted && fitted.width > 0 && fitted.height > 0 ? fitted : undefined;
 	const animation =
 		nodes && opts.animation !== false
-			? compileAnimation(layout, nodes, offset, opts.animation, pathsOf)
+			? compileAnimation(layout, nodes, offset, opts.animation, pathsOf, stage)
 			: undefined;
 
 	// Elements grouped per node so multi-element marks (arrows) sort together
@@ -622,14 +644,40 @@ export function layoutToAst(
 		.sort((a, b) => a.zOrder - b.zOrder || a.i - b.i)
 		.flatMap((g) => g.elements);
 
-	const width = max.x - min.x + margin * 2;
-	const height = max.y - min.y + margin * 2;
+	const timed = animation
+		? { css: animation.css, duration: animation.duration }
+		: {};
+	if (!stage) return { width, height, children, ...timed };
 
-	return {
-		width,
-		height,
+	// The default view is the still frame: what shows without CSS
+	const fit = viewTransform(everything(stage), stage);
+	const [x, y, scale] = [
+		round(fit.x),
+		round(fit.y),
+		Number(fit.scale.toFixed(6)),
+	];
+	const still = x !== 0 || y !== 0 || scale !== 1;
+	const group: SvgElement = {
+		type: "g",
+		attrs: {
+			"data-camera": "",
+			...(animation?.camera ? { class: animation.camera.class } : {}),
+			...(still ? { transform: `translate(${x},${y}) scale(${scale})` } : {}),
+		},
 		children,
-		...(animation ? { css: animation.css, duration: animation.duration } : {}),
+	};
+	return {
+		width: stage.width,
+		height: stage.height,
+		viewBox: `0 0 ${stage.width} ${stage.height}`,
+		// Motions on a camera wrap the view, so they move it in screen px
+		children: (animation?.camera?.shells ?? []).reduceRight<SvgElement[]>(
+			(inner, shell) => [
+				{ type: "g", attrs: { class: shell.class }, children: inner },
+			],
+			[group],
+		),
+		...timed,
 	};
 }
 

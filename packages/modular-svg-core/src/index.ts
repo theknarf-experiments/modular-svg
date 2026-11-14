@@ -1,5 +1,6 @@
 export * from "./animation.ts";
 export * from "./builder.ts";
+export * from "./camera.ts";
 export * from "./color.ts";
 export * from "./cues.ts";
 export * from "./motion.ts";

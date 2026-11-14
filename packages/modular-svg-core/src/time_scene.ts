@@ -60,8 +60,17 @@ const TIME_GROUPS = new Set([
 	"Fermata",
 ]);
 // Spans of their own with nothing inside: grids, silences and changes of layout
-const TIME_LEAVES = new Set(["Beat", "Bar", "Rest", "Modulate", "Resolve"]);
+const TIME_LEAVES = new Set([
+	"Beat",
+	"Bar",
+	"Rest",
+	"Modulate",
+	"Resolve",
+	"Camera",
+]);
 const MODULATIONS = new Set(["Modulate", "Resolve"]);
+// Changes that settle over their span, and are cut short by the next of their kind
+const SETTLING = [MODULATIONS, new Set(["Camera"])];
 // Pure constraints: no span, nothing to Ref
 const TIME_CONSTRAINTS = new Set([
 	"Legato",
@@ -263,7 +272,7 @@ export function buildTime(
 			timeSeed.push(num(t.props.at, 0), num(t.props.over, 0));
 		} else if (t?.type === "Rest") {
 			timeSeed.push(num(t.props.at, 0), num(t.props.over, 0.5));
-		} else if (t && MODULATIONS.has(t.type)) {
+		} else if (t && SETTLING.some((kind) => kind.has(t.type))) {
 			timeSeed.push(
 				num(t.props.at, 0),
 				num(t.props.over, settleTime(t.props.ease as Ease) ?? DEFAULT_OVER),
@@ -355,6 +364,8 @@ export function buildTime(
 		if (
 			!TIME_TYPES.has(t.type) ||
 			TIME_CLOCKS.has(t.type) ||
+			// What a camera refs is framed, not placed in time
+			t.type === "Camera" ||
 			clockOf.has(t.rec.id)
 		)
 			continue;
@@ -614,7 +625,11 @@ export function buildTime(
 			warnings.push(`${name}: alternate needs loop`);
 		const seen = (m: NodeRecord): number => seenFrom(own, m);
 
-		if (TIME_TYPES.has(t.type) && !TIME_CLOCKS.has(t.type)) {
+		if (
+			TIME_TYPES.has(t.type) &&
+			!TIME_CLOCKS.has(t.type) &&
+			t.type !== "Camera"
+		) {
 			const related = t.children.filter((c) => rawTimed(c));
 			for (const m of related) {
 				if (clockOf.get(m.id) !== own || timed.has(m.id)) continue;
@@ -971,43 +986,55 @@ export function buildTime(
 		timeChecks.push(earliestCheck(ids, `${name} starts`, "the phrase"));
 	}
 
-	// A change of layout that starts before the one before it has settled
-	const changes = new Map<string | undefined, TimeNode[]>();
-	for (const t of order) {
-		if (!MODULATIONS.has(t.type)) continue;
-		const clock = clockOf.get(t.rec.id);
-		const list = changes.get(clock);
-		if (list) list.push(t);
-		else changes.set(clock, [t]);
-	}
-	for (const list of changes.values()) {
-		const sorted = [...list].sort((a, b) => base(a.rec.id) - base(b.rec.id));
-		// The change before each one: by start, ties in document order. Worked
-		// out once per solution, not once per change
-		let known:
-			| { span: Parameters<TimeCheck>[0]; before: Map<string, TimeNode> }
-			| undefined;
-		const beforeIn = (span: Parameters<TimeCheck>[0]) => {
-			if (known?.span === span) return known.before;
-			const byStart = [...sorted].sort(
-				(a, b) => span(a.rec.id)[0] - span(b.rec.id)[0],
-			);
-			const before = new Map(
-				byStart.slice(1).map((t, i) => [t.rec.id, byStart[i]]),
-			);
-			known = { span, before };
-			return before;
-		};
-		for (const t of sorted) {
-			timeChecks.push((span) => {
-				const prev = beforeIn(span).get(t.rec.id);
-				if (!prev) return undefined;
-				const [start, over] = span(prev.rec.id);
-				return span(t.rec.id)[0] < start + over - TIME_EPSILON
-					? `${t.type}(${t.rec.id}) starts while ${prev.type}(${prev.rec.id}) is still settling; ${prev.rec.id} is cut short`
-					: undefined;
-			});
+	// A change of layout, or of the view, that starts before the one before
+	// it has settled
+	for (const kind of SETTLING) {
+		const changes = new Map<string | undefined, TimeNode[]>();
+		for (const t of order) {
+			if (!kind.has(t.type)) continue;
+			const clock = clockOf.get(t.rec.id);
+			const list = changes.get(clock);
+			if (list) list.push(t);
+			else changes.set(clock, [t]);
 		}
+		for (const list of changes.values()) {
+			const sorted = [...list].sort((a, b) => base(a.rec.id) - base(b.rec.id));
+			// The change before each one: by start, ties in document order. Worked
+			// out once per solution, not once per change
+			let known:
+				| { span: Parameters<TimeCheck>[0]; before: Map<string, TimeNode> }
+				| undefined;
+			const beforeIn = (span: Parameters<TimeCheck>[0]) => {
+				if (known?.span === span) return known.before;
+				const byStart = [...sorted].sort(
+					(a, b) => span(a.rec.id)[0] - span(b.rec.id)[0],
+				);
+				const before = new Map(
+					byStart.slice(1).map((t, i) => [t.rec.id, byStart[i]]),
+				);
+				known = { span, before };
+				return before;
+			};
+			for (const t of sorted) {
+				timeChecks.push((span) => {
+					const prev = beforeIn(span).get(t.rec.id);
+					if (!prev) return undefined;
+					const [start, over] = span(prev.rec.id);
+					return span(t.rec.id)[0] < start + over - TIME_EPSILON
+						? `${t.type}(${t.rec.id}) starts while ${prev.type}(${prev.rec.id}) is still settling; ${prev.rec.id} is cut short`
+						: undefined;
+				});
+			}
+		}
+		// One view: cameras in different time take it from each other
+		if (!kind.has("Camera")) continue;
+		const clocks = [...changes.values()];
+		clocks.forEach((list, i) => {
+			for (const other of clocks.slice(i + 1))
+				warnings.push(
+					`Camera(${list[0].rec.id}) and Camera(${other[0].rec.id}) play in different time and both move the view; whichever started last holds it`,
+				);
+		});
 	}
 
 	// A Sequence sets b's start from a's length while Legato sets a's length

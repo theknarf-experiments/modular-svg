@@ -1160,3 +1160,50 @@ describe("springs in time", () => {
 		expect(span("free")[1]).toBe(0.5);
 	});
 });
+
+describe("Camera in time", () => {
+	const camera = (id: string, props = {}, ...targets: string[]): N => ({
+		type: "Camera",
+		id,
+		props,
+		children: targets.map(ref),
+	});
+
+	it("is a timed leaf: half a second unless told, or as long as its spring settles", () => {
+		const ease = { kind: "spring", stiffness: 200, damping: 20 };
+		const { span } = solve([
+			dot("a"),
+			camera("plain", {}, "a"),
+			camera("cut", { at: 1, over: 0 }, "a"),
+			camera("sprung", { at: 2, ease }, "a"),
+		]);
+		expect(span("plain")).toEqual([0, 0.5]);
+		expect(span("cut")).toEqual([1, 0]);
+		expect(span("sprung")[1]).toBeGreaterThan(0.5);
+	});
+
+	it("keeps its own time when what it frames plays in a phrase", () => {
+		const { span, warnings, scene } = solve([
+			dot("a"),
+			motion("Enter", "in", "a", { over: 1 }),
+			{ type: "Phrase", id: "p", props: { at: 2 }, children: [ref("in")] },
+			camera("on", { at: 0.5, over: 1 }, "a"),
+		]);
+		expect(warnings).toEqual([]);
+		expect(scene.nodes.find((n) => n.id === "on")?.clock).toBeUndefined();
+		expect(span("on")).toEqual([0.5, 1]);
+	});
+
+	it("is taken by a phrase that refs it, without what it frames", () => {
+		const { scene, warnings } = solve([
+			dot("a"),
+			motion("Enter", "in", "a", { over: 1 }),
+			camera("on", { over: 1 }, "a"),
+			{ type: "Phrase", id: "p", props: { rate: 2 }, children: [ref("on")] },
+		]);
+		expect(warnings).toEqual([]);
+		const clockOf = (id: string) => scene.nodes.find((n) => n.id === id)?.clock;
+		expect(clockOf("on")).toBe("p");
+		expect(clockOf("in")).toBeUndefined();
+	});
+});
