@@ -1,6 +1,7 @@
 import {
 	type AnimationOptions,
 	compileAnimation,
+	hash,
 	type MarkAnimation,
 	type PathsOf,
 	type SmilAnimate,
@@ -24,7 +25,7 @@ import {
 	type Vec2,
 	vec,
 } from "./math.ts";
-import type { LayoutResult, NodeRecord } from "./solver/index.ts";
+import type { LayoutResult, Matte, NodeRecord } from "./solver/index.ts";
 import { lineEndpoints } from "./solver/index.ts";
 
 // Extra SVG attributes passed through from the scene
@@ -135,10 +136,28 @@ export type ImageElement = {
 	attrs?: PassthroughAttrs;
 };
 
+/**
+ * What a Clip or Mask shows its content through: the shape's elements, in the
+ * user space of the group that names it. Clips are masks too, since a
+ * `clipPath` drops the groups that motions on its shape need.
+ */
+export type MaskElement = {
+	type: "mask";
+	id: string;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	by: "alpha" | "luminance";
+	children: SvgElement[];
+};
+
 export type SvgDocument = {
 	width: number;
 	height: number;
 	children: SvgElement[];
+	/** the mattes of the scene's clips and masks, which their groups name by id */
+	defs?: MaskElement[];
 	/** stylesheet for animated scenes */
 	css?: string;
 	/** seconds the animation runs */
@@ -146,6 +165,9 @@ export type SvgDocument = {
 	/** set when the scene is seen through a viewport: a `view` or a camera */
 	viewBox?: string;
 };
+
+// A matte blurred by `feather` still shows this many feathers past its edge
+const FEATHER_REACH = 2;
 
 /** Nodes that only exist in time take no space. */
 const isTimeOnly = (n: NodeRecord | undefined): boolean =>
@@ -165,14 +187,80 @@ export function layoutBounds(
 			.map((n) => n.id),
 	);
 	const byId = new Map(nodes?.map((n) => [n.id, n]));
-	const placed = Object.entries(layout).flatMap(([id, box]) =>
+	const clipped = nodes?.some((n) => n.matte) ?? false;
+	const everywhere = (id: string, box: LayoutResult[string]) =>
 		opts.phases && box.phases
 			? [box, ...Object.values(box.phases)].map((b) => [id, b] as const)
-			: [[id, box] as const],
+			: [[id, box] as const];
+	const placed = Object.entries(layout).flatMap(([id, box]) =>
+		everywhere(id, box),
 	);
+	// Where a clip can show anything: round the marks of its shape wherever
+	// layout has them, strokes and the reach of a feather included (the clip's
+	// own box carries the solver's residue). Undefined for a clip that only hides
+	const windows = new Map<string, BoundingBox2d | undefined>();
+	const windowOf = (clip: NodeRecord): BoundingBox2d | undefined => {
+		if (windows.has(clip.id)) return windows.get(clip.id);
+		const found = clip.matte?.inverse
+			? undefined
+			: (clip.matte?.shapes ?? [])
+					.flatMap((id) => {
+						const [n, box] = [byId.get(id), layout[id]];
+						const grow =
+							(n?.strokeWidth ?? (n?.type === "arrow" ? 3 : 0)) / 2 +
+							(clip.matte?.feather ?? 0) * FEATHER_REACH;
+						return box
+							? everywhere(id, box).map(([, b]) =>
+									boundingBoxFromRect({
+										x: b.x - grow,
+										y: b.y - grow,
+										width: b.width + grow * 2,
+										height: b.height + grow * 2,
+									}),
+								)
+							: [];
+					})
+					.reduce<BoundingBox2d | undefined>(
+						(acc, bb) => (acc ? unionBoundingBox2d(acc, bb) : bb),
+						undefined,
+					);
+		windows.set(clip.id, found);
+		return found;
+	};
+	// A shape is not drawn, and content only shows inside every clip round it
+	const shown = (id: string, bb: BoundingBox2d): BoundingBox2d | undefined => {
+		const n = byId.get(id);
+		if (n?.shapes !== undefined) return undefined;
+		// A box round other things may reach round a shape, or round what a
+		// clip hides: in a scene with clips only what is drawn counts
+		if (clipped && !n?.type) return undefined;
+		let seen = bb;
+		for (
+			let clip = byId.get(n?.within ?? ""), depth = 0;
+			clip && depth <= byId.size;
+			clip = byId.get(clip.within ?? ""), depth++
+		) {
+			if (clip.matte?.inverse) continue;
+			const window = windowOf(clip);
+			if (!window) return undefined;
+			seen = {
+				start: vec(
+					Math.max(seen.start.x, window.start.x),
+					Math.max(seen.start.y, window.start.y),
+				),
+				end: vec(
+					Math.min(seen.end.x, window.end.x),
+					Math.min(seen.end.y, window.end.y),
+				),
+			};
+			if (seen.end.x < seen.start.x || seen.end.y < seen.start.y)
+				return undefined;
+		}
+		return seen;
+	};
 	const boxes = placed
 		.filter(([id]) => !timeOnly.has(id))
-		.map(([, box]) => boundingBoxFromRect(box))
+		.flatMap(([id, box]) => shown(id, boundingBoxFromRect(box)) ?? [])
 		.reduce<BoundingBox2d | undefined>(
 			(acc, bb) => (acc ? unionBoundingBox2d(acc, bb) : bb),
 			undefined,
@@ -183,12 +271,16 @@ export function layoutBounds(
 			const n = byId.get(id);
 			const sw = n?.strokeWidth ?? (n?.type === "arrow" ? 3 : 0);
 			if (!sw) return acc;
-			const bb = boundingBoxFromRect({
-				x: box.x - sw / 2,
-				y: box.y - sw / 2,
-				width: box.width + sw,
-				height: box.height + sw,
-			});
+			const bb = shown(
+				id,
+				boundingBoxFromRect({
+					x: box.x - sw / 2,
+					y: box.y - sw / 2,
+					width: box.width + sw,
+					height: box.height + sw,
+				}),
+			);
+			if (!bb) return acc;
 			return acc ? unionBoundingBox2d(acc, bb) : bb;
 		},
 		boxes,
@@ -556,6 +648,11 @@ export function layoutToAst(
 		animation?: AnimationOptions | false;
 		/** the size the document is shown at; the canvas is fitted into it */
 		view?: ViewOptions;
+		/**
+		 * what the ids of mattes start with. By default they are named after
+		 * their content; two live copies of one scene need a prefix each
+		 */
+		idPrefix?: string;
 	} = {},
 ): SvgDocument {
 	const byId = new Map<string, NodeRecord>();
@@ -598,17 +695,33 @@ export function layoutToAst(
 			? compileAnimation(layout, nodes, offset, opts.animation, pathsOf, stage)
 			: undefined;
 
-	// Elements grouped per node so multi-element marks (arrows) sort together
-	const groups: { zOrder: number; elements: SvgElement[] }[] = [];
+	// Elements grouped per node so multi-element marks (arrows) sort together.
+	// What a clip shows, and what shapes it, is kept apart for its group and matte
+	type Painted = { zOrder: number; i: number; elements: SvgElement[] };
+	const groups: Painted[] = [];
+	const contents = new Map<string, Painted[]>();
+	const shapes = new Map<string, Painted[]>();
+	const clips: { node: NodeRecord; matte: Matte; i: number }[] = [];
+	const listed = (lists: Map<string, Painted[]>, clip: string): Painted[] => {
+		const list = lists.get(clip) ?? [];
+		lists.set(clip, list);
+		return list;
+	};
+	const applied = (id: string | undefined): string | undefined =>
+		id !== undefined && byId.get(id)?.matte ? id : undefined;
 
-	for (const [id, box] of Object.entries(layout)) {
+	for (const [i, [id, box]] of Object.entries(layout).entries()) {
 		const raw = byId.get(id);
+		if (raw?.matte) clips.push({ node: raw, matte: raw.matte, i });
 		if (!raw?.type || isTimeOnly(raw)) continue;
-		// Solved constraint colors replace what the node set
+		const shaping = applied(raw.shapes);
+		const cut = shaping && byId.get(shaping)?.matte?.kind === "clip";
+		// Solved constraint colors replace what the node set, but a clip is cut
+		// by its shape whatever that is painted with
 		const n = {
 			...raw,
-			...(box.fill !== undefined ? { fill: box.fill } : {}),
-			...(box.stroke !== undefined ? { stroke: box.stroke } : {}),
+			...(box.fill !== undefined && !cut ? { fill: box.fill } : {}),
+			...(box.stroke !== undefined && !cut ? { stroke: box.stroke } : {}),
 		};
 
 		let elements: SvgElement[] | undefined;
@@ -635,18 +748,94 @@ export function layoutToAst(
 		}
 		const animated = animation?.marks.get(id);
 		if (elements && animated) elements = animateElements(elements, animated);
-		if (elements) groups.push({ zOrder: n.zOrder ?? 0, elements });
+		if (!elements) continue;
+		const inside = applied(raw.within);
+		const into = shaping
+			? listed(shapes, shaping)
+			: inside
+				? listed(contents, inside)
+				: groups;
+		into.push({ zOrder: n.zOrder ?? 0, i, elements });
 	}
 
 	// Stable sort by zOrder: higher paints later (on top), matching Bluefish
-	const children = groups
-		.map((g, i) => ({ ...g, i }))
-		.sort((a, b) => a.zOrder - b.zOrder || a.i - b.i)
-		.flatMap((g) => g.elements);
+	const painted = (list: readonly Painted[]): SvgElement[] =>
+		[...list]
+			.sort((a, b) => a.zOrder - b.zOrder || a.i - b.i)
+			.flatMap((g) => g.elements);
 
-	const timed = animation
-		? { css: animation.css, duration: animation.duration }
-		: {};
+	// A matte spans three canvases, so a shape or content that a motion takes
+	// off the canvas and back is not cut at its edge
+	const region = {
+		x: -Math.max(width, 1),
+		y: -Math.max(height, 1),
+		width: Math.max(width, 1) * 3,
+		height: Math.max(height, 1) * 3,
+	};
+	const mattes = clips.map(({ node, matte }) => {
+		const drawn = painted(shapes.get(node.id) ?? []);
+		return {
+			by: matte.by,
+			inverse: matte.inverse,
+			children:
+				matte.feather > 0
+					? [
+							{
+								type: "g" as const,
+								attrs: { filter: `blur(${matte.feather}px)` },
+								children: drawn,
+							},
+						]
+					: drawn,
+		};
+	});
+	const prefix =
+		opts.idPrefix ??
+		(clips.length > 0 ? `ms${hash(JSON.stringify([region, mattes]))}-` : "");
+	const defs = mattes.map(
+		({ by, inverse, children }, k): MaskElement => ({
+			type: "mask",
+			id: `${prefix}m${k}`,
+			...region,
+			by,
+			children: inverse
+				? [
+						// What a black shape hides is cut out of this
+						{
+							type: "rect",
+							id: `${prefix}m${k}-bg`,
+							...region,
+							fill: "white",
+							stroke: "none",
+						},
+						...children,
+					]
+				: children,
+		}),
+	);
+	// Inner clips first: each is one group where the clip stands in paint
+	// order, inside the clip round it
+	for (const [k, { node, i }] of [...clips.entries()].reverse()) {
+		const group: SvgElement = {
+			type: "g",
+			id: node.id,
+			attrs: { mask: `url(#${prefix}m${k})` },
+			children: painted(contents.get(node.id) ?? []),
+		};
+		const animated = animation?.marks.get(node.id);
+		const inside = applied(node.within);
+		(inside ? listed(contents, inside) : groups).push({
+			zOrder: node.zOrder ?? 0,
+			i,
+			elements: animated ? animateElements([group], animated) : [group],
+		});
+	}
+	const children = painted(groups);
+
+	const timed = {
+		...(animation ? { css: animation.css, duration: animation.duration } : {}),
+		...(defs.length > 0 ? { defs } : {}),
+	};
 	if (!stage) return { width, height, children, ...timed };
 
 	// The default view is the still frame: what shows without CSS

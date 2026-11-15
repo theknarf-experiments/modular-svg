@@ -1,5 +1,5 @@
 import { parseRgba, rgbToOklch } from "./color.ts";
-import { type Ease, easeProblems } from "./motion.ts";
+import { type Ease, easeProblems, namedChannels } from "./motion.ts";
 import { flattenPath } from "./route.ts";
 import type {
 	AlignmentX,
@@ -12,6 +12,7 @@ import {
 	alignX,
 	alignY,
 	backgroundOp,
+	clipOp,
 	contrastOp,
 	distinctColorsOp,
 	distributeX,
@@ -353,12 +354,29 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		  }
 		| { kind: "line"; line: NodeRecord; children: NodeRecord[] }
 		| { kind: "union"; container: NodeRecord; children: NodeRecord[] }
+		| {
+				kind: "clip";
+				container: NodeRecord;
+				/** the shape first, then what shows inside it */
+				children: NodeRecord[];
+				inverse: boolean;
+		  }
 	) & {
 		/** the Modulate this relation belongs to; absent for the home layout */
 		scope?: string;
 	};
 	const descs: Desc[] = [];
 	const scopeWarnings: string[] = [];
+	// Every Clip and Mask with a shape and something to show, as walked
+	const clips: {
+		rec: NodeRecord;
+		name: string;
+		mask: boolean;
+		props: Record<string, unknown>;
+		shape: NodeRecord;
+		content: NodeRecord[];
+		desc: number;
+	}[] = [];
 
 	function generateId(node: AnyNode, path: string): string {
 		// Prefer 'key' over 'id' over auto-generated
@@ -716,6 +734,45 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 			structuralChildren.set(rec.id, structural);
 			if (rec.type === "motion" || rec.type === "timing") {
 				// Time-only nodes take no part in layout
+			} else if (node.type === "Clip" || node.type === "Mask") {
+				const name = `${node.type}(${rec.id})`;
+				const [shape, ...rest] = walked.filter((w) => spatial(w.rec));
+				// What shows is one paint group, so it is declared here, not ref'd
+				const content = rest
+					.filter((w) => {
+						if (w.child.type !== "Ref") return true;
+						scopeWarnings.push(
+							`${name} refs ${w.rec.id} after its shape; what a ${node.type.toLowerCase()} shows is declared inside it, so the ref is ignored`,
+						);
+						return false;
+					})
+					.map((w) => w.rec);
+				if (!shape)
+					scopeWarnings.push(
+						`${name} has no shape: its first child is the shape, the rest is what shows inside it`,
+					);
+				else if (content.length === 0) {
+					scopeWarnings.push(
+						`${name} has a shape and nothing to show inside it`,
+					);
+					descs.push({ kind: "union", container: rec, children });
+				} else {
+					clips.push({
+						rec,
+						name,
+						mask: node.type === "Mask",
+						props: node.props ?? {},
+						shape: shape.rec,
+						content,
+						desc: descs.length,
+					});
+					descs.push({
+						kind: "clip",
+						container: rec,
+						children: [shape.rec, ...content],
+						inverse: node.type === "Clip" && node.props?.inverse === true,
+					});
+				}
 			} else if (node.type === "StackV" || node.type === "StackH") {
 				descs.push({
 					kind: node.type === "StackV" ? "stackV" : "stackH",
@@ -881,6 +938,99 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	};
 	const isMark = (rec: NodeRecord): boolean =>
 		!!rec.type && rec.type !== "motion" && rec.type !== "timing";
+	// Clips and masks. A shape is plain marks that shape one clip; one that
+	// cannot be read that way leaves its clip a Group
+	const order = new Map(nodes.map((n, i) => [n.id, i]));
+	clips.sort((a, b) => (order.get(a.rec.id) ?? 0) - (order.get(b.rec.id) ?? 0));
+	const clipNames = new Map(clips.map((c) => [c.rec.id, c.name]));
+	const unapplied = new Set<string>();
+	for (const c of clips)
+		for (const n of nodesUnder(c.shape)) {
+			if (n.id === c.rec.id || !clipNames.has(n.id) || unapplied.has(n.id))
+				continue;
+			unapplied.add(n.id);
+			targetWarnings.push(
+				`${c.name}: its shape holds ${clipNames.get(n.id)}, which is not applied there; a shape is plain marks`,
+			);
+		}
+	const shapedBy = new Map<string, string>();
+	const applied = clips.filter((c) => {
+		const kind = c.mask ? "mask" : "clip";
+		const ignore = (why?: string): boolean => {
+			if (why) targetWarnings.push(`${c.name}: ${why}`);
+			const d = descs[c.desc];
+			descs[c.desc] = {
+				kind: "union",
+				container: c.rec,
+				children: d.children,
+			};
+			return false;
+		};
+		if (unapplied.has(c.rec.id)) return ignore();
+		const under = nodesUnder(c.shape);
+		if (under.some((n) => n.id === c.rec.id))
+			return ignore(
+				`its shape ${c.shape.id} holds the ${c.mask ? "Mask" : "Clip"} itself, so the ${kind} is ignored`,
+			);
+		const marks = under.filter(isMark);
+		if (marks.length === 0)
+			return ignore(
+				`its shape ${c.shape.id} draws nothing, so the ${kind} is ignored`,
+			);
+		const taken = marks.find((m) => shapedBy.has(m.id));
+		if (taken)
+			return ignore(
+				`${taken.id} already shapes ${clipNames.get(shapedBy.get(taken.id) ?? "")} and a mark shapes one ${kind}, so ${c.name} is ignored; give it a shape of its own and move both with one motion`,
+			);
+		for (const m of marks) shapedBy.set(m.id, c.rec.id);
+		const { by, feather, inverse } = c.props;
+		if (c.mask && by !== undefined && by !== "alpha" && by !== "luminance")
+			targetWarnings.push(
+				`${c.name}: by must be "alpha" or "luminance"; read as "alpha"`,
+			);
+		if (c.mask && inverse !== undefined && inverse !== false)
+			targetWarnings.push(
+				`${c.name}: inverse only applies to a Clip; paint the shape the other way round instead`,
+			);
+		const soft =
+			feather === undefined ||
+			(typeof feather === "number" && Number.isFinite(feather) && feather >= 0);
+		if (!soft)
+			targetWarnings.push(`${c.name}: feather must be 0 or more; read as 0`);
+		c.rec.matte = {
+			kind,
+			// A clip's shape is painted white (on black, or the other way round)
+			by: c.mask && by !== "luminance" ? "alpha" : "luminance",
+			inverse: !c.mask && inverse === true,
+			feather: soft && feather !== undefined ? (feather as number) : 0,
+			shapes: marks.map((m) => m.id),
+		};
+		return true;
+	});
+	// Innermost wins: an inner clip is declared after the one around it
+	for (const c of applied)
+		for (const child of c.content)
+			for (const n of nodesUnder(child)) n.within = c.rec.id;
+	for (const c of applied) {
+		const matte = c.rec.matte as NonNullable<NodeRecord["matte"]>;
+		const paint = matte.inverse ? "black" : "white";
+		for (const id of matte.shapes) {
+			const mark = nodeMap.get(id) as NodeRecord;
+			mark.shapes = c.rec.id;
+			delete mark.within;
+			if (matte.kind !== "clip") continue;
+			// Cut by geometry: whatever the shape was painted with, it covers
+			if (defaultPaint(mark) === "stroke") {
+				mark.stroke = paint;
+				if (mark.type === "arrow") mark.fill = paint;
+			} else {
+				mark.fill = paint;
+				mark.stroke = "none";
+				mark.strokeWidth = 0;
+			}
+		}
+	}
+
 	// What a camera frames reaches through refs as well: a relation over refs
 	// is framed as the marks it relates
 	const related = new Map(timeNodes.map((t) => [t.rec.id, t.children]));
@@ -888,6 +1038,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		if (seen.has(rec.id) || rec.type === "motion" || rec.type === "timing")
 			return [];
 		seen.add(rec.id);
+		// A clip is framed as what it shows, not as all it holds
+		if (rec.matte) return [rec];
 		return [
 			rec,
 			...(related.get(rec.id) ?? []).flatMap((c) => reached(c, seen)),
@@ -913,7 +1065,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		t.rec.camera = {
 			frames: framed
 				.flatMap((c) => reached(c, seen))
-				.filter(isMark)
+				.filter((n) => isMark(n) || !!n.matte)
 				.map((n) => n.id),
 			aimed: framed.length > 0,
 			padding:
@@ -960,6 +1112,20 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		});
 		if (t.children.length === 0)
 			targetWarnings.push(`${t.type}(${t.rec.id}) has no target`);
+		const paints = t.rec.motion
+			? namedChannels(t.rec.motion).filter(
+					(c) => c === "fill" || c === "stroke",
+				)
+			: [];
+		for (const id of new Set(
+			paints.length > 0 ? t.rec.targets.flatMap((x) => x.marks) : [],
+		)) {
+			const clip = nodeMap.get(nodeMap.get(id)?.shapes ?? "");
+			if (clip?.matte?.kind === "clip")
+				targetWarnings.push(
+					`${t.type}(${t.rec.id}) animates ${paints.join(" and ")} on ${id}, the shape of Clip(${clip.id}); a Clip is cut by geometry and ignores paint (use a Mask)`,
+				);
+		}
 	}
 
 	const indexMap = new Map<string, number>();
@@ -989,6 +1155,14 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	function toSubtreeChildren(children: NodeRecord[]): SubtreeChild[] {
 		return children.map((c) => ({ base: baseOf(c), subtree: subtreeBases(c) }));
 	}
+
+	/** A container's box from what it holds: all of it, or what a clip shows. */
+	const boxOp = (d: Desc & { container: NodeRecord }): LayoutOperator => {
+		const bases = d.children.map((c) => baseOf(c));
+		return d.kind === "clip"
+			? clipOp([bases[0]], bases.slice(1), baseOf(d.container), d.inverse)
+			: unionOp(bases, baseOf(d.container));
+	};
 
 	const warnings: string[] = [];
 	const colorOps: LayoutOperator[] = [];
@@ -1453,13 +1627,8 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					),
 				);
 				coloredPaints.add(`${fg.id}:${d.paints[0]}`);
-			} else if (d.kind === "union") {
-				push(
-					unionOp(
-						d.children.map((c) => baseOf(c)),
-						baseOf(d.container),
-					),
-				);
+			} else if (d.kind === "union" || d.kind === "clip") {
+				push(boxOp(d));
 				ownSelf(d.container.id);
 			}
 		}
@@ -1543,13 +1712,7 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 	const restOf = (i: number): LayoutOperator | undefined => {
 		if (rests.has(i)) return rests.get(i);
 		const d = descs[i];
-		const op =
-			"container" in d
-				? unionOp(
-						d.children.map((c) => baseOf(c)),
-						baseOf(d.container),
-					)
-				: undefined;
+		const op = "container" in d ? boxOp(d) : undefined;
 		rests.set(i, op);
 		return op;
 	};
@@ -1906,6 +2069,30 @@ export function checkCamera(
 	});
 }
 
+/** Clips whose shape is closed at rest: a render without animation shows nothing in them. */
+export function checkClips(
+	scene: { nodes: readonly NodeRecord[] },
+	layout: Record<string, LayoutBox>,
+): string[] {
+	const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+	return scene.nodes.flatMap((n) => {
+		if (!n.matte || n.matte.inverse) return [];
+		const open = n.matte.shapes.some((id) => {
+			const [mark, box] = [byId.get(id), layout[id]];
+			if (!mark || !box) return false;
+			// A connector is a stroke: it covers along its length
+			return defaultPaint(mark) === "stroke"
+				? box.width + box.height > 0
+				: box.width > 0 && box.height > 0;
+		});
+		return open
+			? []
+			: [
+					`${n.matte.kind === "mask" ? "Mask" : "Clip"}(${n.id}): its shape has no area at rest, so a render without animation shows nothing inside it; let the shape rest open and give the motion a from`,
+				];
+	});
+}
+
 /** Everything wrong with a solution: unsatisfied layout, color and time relations, schedule checks. */
 export function checkSolution(
 	scene: JsonScene,
@@ -1915,6 +2102,7 @@ export function checkSolution(
 		...checkLayout(scene, layout),
 		...checkPhases(scene, layout),
 		...checkCamera(scene, layout),
+		...checkClips(scene, layout),
 		...checkColor(scene),
 		...checkTime(scene, layout),
 	];

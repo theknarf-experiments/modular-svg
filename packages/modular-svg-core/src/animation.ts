@@ -11,6 +11,7 @@ import {
 import {
 	CHANNELS,
 	type Channel,
+	CROP_CHANNELS,
 	clampEase,
 	type Expanded,
 	easeAt,
@@ -165,6 +166,8 @@ function declarations(lane: string, values: Values): string {
 			return `opacity:${num(n("opacity"))}`;
 		case "blur":
 			return `filter:blur(${num(n("blur"))}px)`;
+		case "crop":
+			return `clip-path:inset(${CROP_CHANNELS.map((c) => `${num(n(c) * 100, 2)}%`).join(" ")})`;
 		case "draw": {
 			const drawn = n("draw");
 			// Round caps leave a dot at 0, so an undrawn stroke is hidden
@@ -1306,6 +1309,22 @@ export function compileAnimation(
 		return origin;
 	};
 
+	// The outermost applied clip under a motion's target that holds the mark,
+	// as content or as its shape: that clip's group is what the motion wraps
+	const carrierOf = (
+		mark: NodeRecord,
+		under: ReadonlySet<string>,
+	): NodeRecord | undefined => {
+		let found: NodeRecord | undefined;
+		for (
+			let clip = byId.get(mark.shapes ?? mark.within ?? ""), depth = 0;
+			clip && depth <= nodes.length;
+			clip = byId.get(clip.within ?? ""), depth++
+		)
+			if (clip.matte && under.has(clip.id) && layout[clip.id]) found = clip;
+		return found;
+	};
+
 	for (const m of motions) {
 		const found = expansionOf(m);
 		if (!found) continue;
@@ -1328,15 +1347,31 @@ export function compileAnimation(
 						y: box.y + box.height / 2 + offset.y,
 					};
 			const origin = originOf(target.id);
+			const under = new Set(target.under ?? []);
+			const carried = new Set<string>();
 			for (const mark of target.marks) {
 				const node = byId.get(mark);
 				if (!node || !layout[mark]) continue;
-				perform(node, clocks, {
+				const c: Contribution = {
 					motion: m.id,
 					expanded,
 					pivot,
 					...(origin ? { origin } : {}),
-				});
+				};
+				const clip = carrierOf(node, under);
+				if (!clip) {
+					perform(node, clocks, c);
+					continue;
+				}
+				// The clip's one group takes what composes by wrapping, once, and
+				// the cut rides along; the mark keeps what is set on its element
+				if (!carried.has(clip.id)) {
+					carried.add(clip.id);
+					const nesting = only(expanded, (ch) => !!CHANNELS[ch].nest);
+					if (nesting) perform(clip, clocks, { ...c, expanded: nesting });
+				}
+				const replaced = only(expanded, (ch) => !CHANNELS[ch].nest);
+				if (replaced) perform(node, clocks, { ...c, expanded: replaced });
 			}
 		}
 	}
@@ -1441,8 +1476,13 @@ export function compileAnimation(
 			for (const [name, channels] of lanesOf(touched(expanded))) {
 				if (!CHANNELS[channels[0]].nest) continue;
 				channels.forEach(check);
-				// x and y share a lane, so both start from rest unless given
-				const all: Channel[] = name === "translate" ? ["x", "y"] : channels;
+				// The channels of a shared lane all start from rest unless given
+				const all: Channel[] =
+					name === "translate"
+						? ["x", "y"]
+						: name === "crop"
+							? [...CROP_CHANNELS]
+							: channels;
 				const initial = Object.fromEntries(
 					all.map((c) => [c, expanded.initial[c] ?? CHANNELS[c].identity ?? 0]),
 				);
@@ -1487,7 +1527,12 @@ export function compileAnimation(
 		const smils: SmilAnimate[] = [];
 		let stillD: string | undefined;
 		const cssLanes: Lane[] = [];
+		// A clip is cut by geometry: its shape's paint is not the author's
+		const cuts =
+			mark.shapes !== undefined &&
+			byId.get(mark.shapes)?.matte?.kind === "clip";
 		for (const [name, entry] of own) {
+			if (cuts && (name === "fill" || name === "stroke")) continue;
 			const initial = Object.fromEntries(
 				entry.channels.map((c) => [
 					c,
@@ -1838,7 +1883,8 @@ function resolveTravel(
 	};
 }
 
-function hash(text: string): string {
+/** A short name for a text, so what is named after its content never collides. */
+export function hash(text: string): string {
 	let h = 0x811c9dc5;
 	for (let i = 0; i < text.length; i++)
 		h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);

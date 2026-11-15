@@ -6,7 +6,9 @@
 // two rows reverse, the first of them shuffles again, and all of it resolves.
 // With `springs`, every enter is a spring and a dot per row rides a smooth,
 // oriented route through the row's marks. With `cameras`, the view pushes in
-// on every row in turn, following its marks, and pulls back at the end.
+// on every row in turn, following its marks, and pulls back at the end. With
+// `clips`, every row shows through a window half its width that a motion
+// opens, and enters as one clipped group with a crop.
 const ref = (target: string, paint?: string) => ({
 	type: "Ref",
 	target,
@@ -20,6 +22,7 @@ export function scaleScene(
 		modulations?: boolean;
 		springs?: boolean;
 		cameras?: boolean;
+		clips?: boolean;
 	} = {},
 ): Record<string, unknown> {
 	const rows = Math.ceil(n / 10);
@@ -30,18 +33,54 @@ export function scaleScene(
 			type: "StackV",
 			id: "grid",
 			props: { spacing: 20 },
-			children: Array.from({ length: rows }, (_, r) => ({
-				type: "StackH",
-				id: `row${r}`,
-				props: { spacing: 30 },
-				children: row(r).map((id) => ({
-					type: "Rect",
-					id,
-					props: { width: 24, height: 16 },
-				})),
-			})),
+			children: Array.from({ length: rows }, (_, r) => {
+				const stack = {
+					type: "StackH",
+					id: `row${r}`,
+					props: { spacing: 30 },
+					children: row(r).map((id) => ({
+						type: "Rect",
+						id,
+						props: { width: 24, height: 16 },
+					})),
+				};
+				return opts.clips
+					? {
+							type: "Clip",
+							id: `clip${r}`,
+							props: { feather: r % 2 },
+							children: [
+								{
+									type: "Rect",
+									id: `window${r}`,
+									props: { width: 260, height: 16 },
+								},
+								stack,
+							],
+						}
+					: stack;
+			}),
 		},
 	];
+	if (opts.clips)
+		for (let r = 0; r < rows; r++)
+			children.push(
+				{
+					type: "Motion",
+					id: `open${r}`,
+					props: {
+						from: { width: 0 },
+						steps: [{ to: { width: 260 }, over: 0.4 }],
+					},
+					children: [ref(`window${r}`)],
+				},
+				{
+					type: "Enter",
+					id: `rise${r}`,
+					props: { from: { cropBottom: 1, opacity: 0 }, over: 0.4 },
+					children: [ref(`clip${r}`)],
+				},
+			);
 	for (let i = 1; i < n; i++)
 		children.push({
 			type: "Arrow",

@@ -4,6 +4,7 @@ import { cuesBetween } from "./cues.ts";
 import {
 	CHANNELS,
 	type Channel,
+	CROP_CHANNELS,
 	type Ease,
 	easeAt,
 	expandMotion,
@@ -608,6 +609,69 @@ describe("sampled eases (properties)", () => {
 						const v = Number(sampleAt(keys, t)[channel]);
 						expect(v).toBeGreaterThanOrEqual(lo);
 						expect(v).toBeLessThanOrEqual(hi);
+					}
+				},
+			),
+		);
+	});
+});
+
+describe("crop channels (properties)", () => {
+	const fraction = fc.integer({ min: 0, max: 100 }).map((n) => n / 100);
+	const sideArb = fc.constantFrom(...CROP_CHANNELS);
+
+	it("a crop in a retrograde phrase plays its keys in reverse, and stays in the box", () => {
+		fc.assert(
+			fc.property(
+				fc.uniqueArray(sideArb, { minLength: 1, maxLength: 4 }),
+				fc.array(fraction, { minLength: 8, maxLength: 8 }),
+				// Continuous eases: a step's jump has no mirror at its own instant
+				fc.oneof(
+					fc.constantFrom<Ease>("linear", "in", "out", "inOut"),
+					shapedArb,
+				),
+				fc.constantFrom(0.5, 1, 2),
+				(sides, values, ease, over) => {
+					const pick = (offset: number) =>
+						Object.fromEntries(sides.map((c, i) => [c, values[i + offset]]));
+					const forward = expandMotion(
+						{
+							kind: "motion",
+							from: pick(0),
+							steps: [{ to: pick(4), over, ease }],
+						},
+						0,
+						over,
+						over,
+					);
+					const back = retime(
+						forward,
+						{
+							start: 0,
+							span: over,
+							length: over,
+							repeat: 1,
+							alternate: false,
+							retrograde: true,
+						},
+						over,
+						() => 0,
+					);
+					const keys = (e: typeof forward) =>
+						keysOf(
+							Object.fromEntries(sides.map((c) => [c, e.initial[c] ?? 0])),
+							e.steps,
+							over,
+						);
+					const [there, here] = [keys(forward), keys(back)];
+					for (let i = 0; i <= 20; i++) {
+						const t = (over * i) / 20;
+						const [a, b] = [sampleAt(here, t), sampleAt(there, over - t)];
+						for (const c of sides) {
+							expect(Number(a[c])).toBeCloseTo(Number(b[c]), 3);
+							expect(Number(a[c])).toBeGreaterThanOrEqual(0);
+							expect(Number(a[c])).toBeLessThanOrEqual(1);
+						}
 					}
 				},
 			),

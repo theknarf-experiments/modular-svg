@@ -83,48 +83,68 @@ const distributeSceneArb = fc.record({
 	),
 });
 
-// Recursive scene: nested stacks / backgrounds / groups over leaves.
-const { tree: nestedNodeArb } = fc.letrec((tie) => ({
-	tree: fc.oneof(
-		{ depthSize: "small", withCrossShrink: true },
-		{ arbitrary: leafArb, weight: 4 },
-		{
-			arbitrary: fc
-				.record({
-					horizontal: fc.boolean(),
-					spacing: spacingArb,
-					children: fc.array(tie("tree"), { minLength: 1, maxLength: 4 }),
-				})
-				.map(({ horizontal, spacing, children }) => ({
-					type: horizontal ? "StackH" : "StackV",
-					props: { spacing },
-					children,
-				})),
-			weight: 2,
-		},
-		{
-			arbitrary: fc
-				.record({
-					padding: fc.integer({ min: 0, max: 30 }),
-					child: tie("tree"),
-				})
-				.map(({ padding, child }) => ({
-					type: "Background",
-					props: { padding },
-					children: [child],
-				})),
-			weight: 1,
-		},
-		{
-			arbitrary: fc
-				.record({
-					children: fc.array(tie("tree"), { minLength: 1, maxLength: 3 }),
-				})
-				.map(({ children }) => ({ type: "Group", children })),
-			weight: 1,
-		},
-	),
-}));
+// Recursive scene: nested stacks / backgrounds / groups over leaves, and with
+// `clips` also clips and masks, whose content the canvas may cut.
+const nestedArb = (clips: boolean) =>
+	fc.letrec((tie) => ({
+		tree: fc.oneof(
+			{ depthSize: "small", withCrossShrink: true },
+			{ arbitrary: leafArb, weight: 4 },
+			{
+				arbitrary: fc
+					.record({
+						horizontal: fc.boolean(),
+						spacing: spacingArb,
+						children: fc.array(tie("tree"), { minLength: 1, maxLength: 4 }),
+					})
+					.map(({ horizontal, spacing, children }) => ({
+						type: horizontal ? "StackH" : "StackV",
+						props: { spacing },
+						children,
+					})),
+				weight: 2,
+			},
+			{
+				arbitrary: fc
+					.record({
+						padding: fc.integer({ min: 0, max: 30 }),
+						child: tie("tree"),
+					})
+					.map(({ padding, child }) => ({
+						type: "Background",
+						props: { padding },
+						children: [child],
+					})),
+				weight: 1,
+			},
+			{
+				arbitrary: fc
+					.record({
+						children: fc.array(tie("tree"), { minLength: 1, maxLength: 3 }),
+					})
+					.map(({ children }) => ({ type: "Group", children })),
+				weight: 1,
+			},
+			// The first child is the shape, the rest is what shows inside it
+			{
+				arbitrary: fc
+					.record({
+						type: fc.constantFrom("Clip", "Mask"),
+						inverse: fc.boolean(),
+						feather: fc.constantFrom(0, 0, 4),
+						children: fc.array(tie("tree"), { minLength: 1, maxLength: 3 }),
+					})
+					.map(({ type, inverse, feather, children }) => ({
+						type,
+						props: type === "Clip" ? { inverse, feather } : { feather },
+						children,
+					})),
+				weight: clips ? 2 : 0,
+			},
+		),
+	})).tree;
+const nestedNodeArb = nestedArb(false);
+const clippedNodeArb = nestedArb(true);
 
 // Flat leaves plus relational operators over Refs, planet-tutorial style.
 const refOpSceneArb = fc
@@ -506,7 +526,8 @@ describe("background properties", () => {
 // converge to finite values, must validate, and must serialize to sane SVG.
 // ---------------------------------------------------------------------------
 
-const anySceneArb = fc.oneof(nestedNodeArb, refOpSceneArb);
+const unclippedSceneArb = fc.oneof(nestedNodeArb, refOpSceneArb);
+const anySceneArb = fc.oneof(nestedNodeArb, refOpSceneArb, clippedNodeArb);
 
 describe("pipeline fuzzing", () => {
 	it("generated scenes pass schema validation", async () => {
@@ -594,10 +615,33 @@ describe("pipeline fuzzing", () => {
 		);
 	});
 
+	it("every clip that holds names a matte of its own, and no shape is drawn outside one", () => {
+		fc.assert(
+			fc.property(clippedNodeArb, (json) => {
+				const scene = buildSceneFromJson(json as JsonNode);
+				const svg = layoutToSvg(solveLayout(scene), scene.nodes);
+				const applied = scene.nodes.filter((n) => n.matte);
+				const mattes = [...svg.matchAll(/<mask id="([^"]+)"/g)].map(
+					(m) => m[1],
+				);
+				const named = [...svg.matchAll(/ mask="url\(#([^)]+)\)"/g)].map(
+					(m) => m[1],
+				);
+				expect(mattes).toHaveLength(applied.length);
+				expect(new Set(mattes).size).toBe(mattes.length);
+				expect([...named].sort()).toEqual([...mattes].sort());
+				const [, drawn = ""] = svg.split("</defs>");
+				for (const id of applied.flatMap((n) => n.matte?.shapes ?? []))
+					expect(drawn).not.toContain(` id="${id}"`);
+			}),
+			{ numRuns: 200 },
+		);
+	});
+
 	it("every emitted shape lies inside the SVG viewport", () => {
 		fc.assert(
 			fc.property(
-				anySceneArb,
+				unclippedSceneArb,
 				fc.integer({ min: 0, max: 20 }),
 				(json, margin) => {
 					const scene = buildSceneFromJson(json as JsonNode);

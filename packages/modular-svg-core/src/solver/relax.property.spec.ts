@@ -39,6 +39,7 @@ const sceneArb = fc.integer({ min: 2, max: 7 }).chain((n) =>
 					"Phrase",
 					"Modulate",
 					"Resolve",
+					"Clip",
 				),
 				members: fc.uniqueArray(fc.integer({ min: 0, max: n - 1 }), {
 					minLength: 2,
@@ -92,6 +93,24 @@ function json(s: S) {
 					r.type === "Modulate"
 						? [{ type: "StackH", props: { spacing: 7 }, children: members }]
 						: [],
+			});
+			return;
+		}
+		if (r.type === "Clip") {
+			// The first member is the shape; what shows is declared inside
+			const [shape, ...inside] = r.members;
+			children.push({
+				type: "Clip",
+				id: `rel${j}`,
+				props: { inverse: j % 2 === 1 },
+				children: [
+					ref(`r${shape}`),
+					...inside.map((i, k) => ({
+						type: "Rect",
+						id: `in${j}-${k}`,
+						props: { width: s.sizes[i], height: 10, x: i * 9 - 20 },
+					})),
+				],
 			});
 			return;
 		}

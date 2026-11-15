@@ -358,6 +358,10 @@ export type Channel =
 	| "scale"
 	| "rotate"
 	| "blur"
+	| "cropLeft"
+	| "cropRight"
+	| "cropTop"
+	| "cropBottom"
 	| "draw"
 	| "d"
 	| "fill"
@@ -397,6 +401,21 @@ type ChannelSpec = {
 
 const GEOMETRY = ["rect", "circle", "line", "curve", "path", "arc", "arrow"];
 
+const CROP: ChannelSpec = {
+	lane: "crop",
+	nest: true,
+	identity: 0,
+	range: [0, 1],
+};
+
+/** The sides a crop hides from, in the order CSS `inset()` lists them. */
+export const CROP_CHANNELS = [
+	"cropTop",
+	"cropRight",
+	"cropBottom",
+	"cropLeft",
+] as const satisfies readonly Channel[];
+
 export const CHANNELS: Record<Channel, ChannelSpec> = {
 	opacity: { lane: "opacity", nest: true, identity: 1, range: [0, 1] },
 	x: { lane: "translate", nest: true, identity: 0 },
@@ -404,6 +423,11 @@ export const CHANNELS: Record<Channel, ChannelSpec> = {
 	scale: { lane: "scale", nest: true, identity: 1 },
 	rotate: { lane: "rotate", nest: true, identity: 0 },
 	blur: { lane: "blur", nest: true, identity: 0, range: [0, Infinity] },
+	// The fraction of the target's own box hidden from each side
+	cropLeft: CROP,
+	cropRight: CROP,
+	cropTop: CROP,
+	cropBottom: CROP,
 	draw: {
 		lane: "draw",
 		nest: false,
@@ -433,7 +457,14 @@ export const CHANNELS: Record<Channel, ChannelSpec> = {
 export const isChannel = (name: string): name is Channel =>
 	Object.hasOwn(CHANNELS, name);
 
-type RestChannel = "opacity" | "x" | "y" | "scale" | "rotate" | "blur";
+type RestChannel =
+	| "opacity"
+	| "x"
+	| "y"
+	| "scale"
+	| "rotate"
+	| "blur"
+	| (typeof CROP_CHANNELS)[number];
 
 export type MotionStep =
 	/** transition from the current values, starting at the cursor (or `at`, relative to the motion's start) */
@@ -550,6 +581,32 @@ export function resolveColorRefs(
 					: step,
 		),
 	};
+}
+
+/** The channels a motion names in its `from`, `to`, `steps` and `amplitude`, whatever their values. */
+export function namedChannels(spec: MotionSpec): string[] {
+	const named = (values: unknown): string[] =>
+		typeof values === "object" && values !== null ? Object.keys(values) : [];
+	const all =
+		spec.kind === "motion"
+			? [
+					...named(spec.from),
+					...(Array.isArray(spec.steps) ? spec.steps : []).flatMap((step) =>
+						"to" in step
+							? named(step.to)
+							: "set" in step
+								? named(step.set)
+								: [],
+					),
+				]
+			: spec.kind === "enter"
+				? named(spec.from)
+				: spec.kind === "exit"
+					? named(spec.to)
+					: spec.kind === "shake" || spec.kind === "wiggle"
+						? named(spec.amplitude)
+						: [];
+	return [...new Set(all)];
 }
 
 /** The length a motion has before any relation stretches it. */
@@ -884,7 +941,7 @@ function assertRest(values: Values, what: string): void {
 	for (const c of Object.keys(values)) {
 		if (!CHANNELS[c as Channel].nest)
 			throw new Error(
-				`${what} only takes opacity, x, y, scale, rotate or blur; use Motion for ${c}`,
+				`${what} only takes opacity, x, y, scale, rotate, blur or a crop; use Motion for ${c}`,
 			);
 	}
 }

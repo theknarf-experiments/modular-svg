@@ -117,6 +117,27 @@ export type NodeRecord = {
 	zOrder?: number;
 	/** extra SVG attributes passed through to the emitted element */
 	attrs?: Record<string, string | number>;
+	/** for a Clip or Mask: what shows of its content, and the marks that say so */
+	matte?: Matte;
+	/** for a mark that is (part of) a clip's shape: that clip. It is drawn in the matte only */
+	shapes?: string;
+	/** for a node inside a clip's content: the innermost such clip */
+	within?: string;
+};
+
+/**
+ * How a Clip or Mask shows its content. A `clip` cuts by the shape's
+ * geometry (the shape is painted white, or black on white when `inverse`); a
+ * `mask` shows through the shape's own paint, read as `by` says.
+ */
+export type Matte = {
+	kind: "clip" | "mask";
+	by: "alpha" | "luminance";
+	inverse: boolean;
+	/** px the matte is blurred by: a soft edge */
+	feather: number;
+	/** the marks of the shape */
+	shapes: string[];
 };
 
 // A relation child: the node's own slot base plus the bases of every node in
@@ -737,6 +758,53 @@ export function unionOp(
 			next[containerIndex + 1] = minY;
 			next[containerIndex + 2] = maxX - minX;
 			next[containerIndex + 3] = maxY - minY;
+		},
+		slots([containerIndex], 4),
+	);
+}
+
+/**
+ * A Clip's box: what shows of its content, which is the box round the content
+ * cut to the box round the shape. With `inverse` the shape hides instead, so
+ * the box is the content's.
+ */
+export function clipOp(
+	shapeBases: readonly number[],
+	contentBases: readonly number[],
+	containerIndex: number,
+	inverse: boolean,
+): LayoutOperator {
+	const around = (cur: Float64Array, bases: readonly number[]) => {
+		let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
+		for (const base of bases) {
+			minX = Math.min(minX, cur[base]);
+			minY = Math.min(minY, cur[base + 1]);
+			maxX = Math.max(maxX, cur[base] + cur[base + 2]);
+			maxY = Math.max(maxY, cur[base + 1] + cur[base + 3]);
+		}
+		return [minX, minY, maxX, maxY];
+	};
+	return writing(
+		(cur, next) => {
+			if (contentBases.length === 0) return;
+			const content = around(cur, contentBases);
+			const shape =
+				inverse || shapeBases.length === 0 ? content : around(cur, shapeBases);
+			const [minX, minY] = [
+				Math.max(content[0], shape[0]),
+				Math.max(content[1], shape[1]),
+			];
+			next[containerIndex] = minX;
+			next[containerIndex + 1] = minY;
+			// Nothing shows where they do not meet
+			next[containerIndex + 2] = Math.max(
+				0,
+				Math.min(content[2], shape[2]) - minX,
+			);
+			next[containerIndex + 3] = Math.max(
+				0,
+				Math.min(content[3], shape[3]) - minY,
+			);
 		},
 		slots([containerIndex], 4),
 	);

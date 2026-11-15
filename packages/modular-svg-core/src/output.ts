@@ -1,7 +1,12 @@
 import type { AnimationOptions } from "./animation.ts";
 import type { ViewOptions } from "./camera.ts";
 import type { LayoutResult, NodeRecord } from "./solver/index.ts";
-import { layoutToAst, type SvgDocument, type SvgElement } from "./svg_ast.ts";
+import {
+	layoutToAst,
+	type MaskElement,
+	type SvgDocument,
+	type SvgElement,
+} from "./svg_ast.ts";
 
 // Re-export for convenience
 export { layoutBounds } from "./svg_ast.ts";
@@ -147,9 +152,26 @@ function serializeElement(element: SvgElement): string {
 	return "";
 }
 
+const serializeMask = (mask: MaskElement): string =>
+	xml(
+		"mask",
+		{
+			id: mask.id,
+			maskUnits: "userSpaceOnUse",
+			x: mask.x,
+			y: mask.y,
+			width: mask.width,
+			height: mask.height,
+			"mask-type": mask.by === "alpha" ? "alpha" : undefined,
+		},
+		mask.children.map(serializeElement),
+	);
+
 // Serialize SVG AST to string
 export function serializeToSvg(ast: SvgDocument): string {
 	const body = ast.children.map(serializeElement);
+	if (ast.defs?.length)
+		body.unshift(xml("defs", {}, ast.defs.map(serializeMask)));
 	if (ast.css) body.unshift(xml("style", {}, escapeXml(ast.css)));
 	return xml(
 		"svg",
@@ -168,7 +190,11 @@ export function layoutToSvg(
 	layout: LayoutResult,
 	nodes?: NodeRecord[],
 	margin = 0,
-	opts: { animation?: AnimationOptions | false; view?: ViewOptions } = {},
+	opts: {
+		animation?: AnimationOptions | false;
+		view?: ViewOptions;
+		idPrefix?: string;
+	} = {},
 ): string {
 	const ast = layoutToAst(layout, nodes, margin, opts);
 	return serializeToSvg(ast);

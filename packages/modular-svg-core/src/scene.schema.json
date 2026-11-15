@@ -55,7 +55,9 @@
 				"Phrase",
 				"Modulate",
 				"Resolve",
-				"Camera"
+				"Camera",
+				"Clip",
+				"Mask"
 			]
 		},
 		"id": { "type": "string" },
@@ -141,7 +143,10 @@
 				"pace": { "type": "string", "enum": ["leg", "trip"] },
 				"orient": { "type": ["boolean", "number"] },
 				"fit": { "type": "string", "enum": ["contain", "cover"] },
-				"follow": { "type": "boolean" }
+				"follow": { "type": "boolean" },
+				"inverse": { "type": "boolean" },
+				"feather": { "type": "number", "minimum": 0 },
+				"by": { "type": "string", "enum": ["alpha", "luminance"] }
 			},
 			"additionalProperties": true
 		},
