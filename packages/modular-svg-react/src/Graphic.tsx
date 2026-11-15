@@ -3,6 +3,7 @@ import {
 	checkSolution,
 	cueSchedule,
 	layoutToAst,
+	type MaskElement,
 	type SvgDocument,
 	type SvgElement,
 	solveLayout,
@@ -365,6 +366,32 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 	return null;
 }
 
+// The matte of a clip or mask: its shape's elements, which tween and play
+// like any other
+function MaskRenderer({ mask }: { mask: MaskElement }) {
+	return React.createElement(
+		"mask",
+		{
+			id: mask.id,
+			maskUnits: "userSpaceOnUse",
+			x: mask.x,
+			y: mask.y,
+			width: mask.width,
+			height: mask.height,
+			...(mask.by === "alpha" ? { style: { maskType: "alpha" } } : {}),
+		},
+		mask.children.map((child, index) => (
+			<SvgElementRenderer
+				key={child.id ?? `element-${index}`}
+				element={child}
+			/>
+		)),
+	);
+}
+
+// Graphics mounted so far by this copy of the module
+let mounted = 0;
+
 // Internal Graphic component that uses context bridge
 function GraphicImpl({
 	children,
@@ -411,6 +438,11 @@ function GraphicImpl({
 	onSolveRef.current = onSolve;
 	const rootRef = React.useRef<ReconcilerRoot | null>(null);
 	const [ast, setAst] = React.useState<SvgDocument | null>(null);
+	// Two mounted copies of one scene (one scrubbed, one playing) must not
+	// share a matte, so each names its own. useId alone repeats across React
+	// roots on one page, hence the count
+	const id = React.useId().replace(/\W/g, "");
+	const [idPrefix] = React.useState(() => `ms${id}n${mounted++}-`);
 
 	// Get context bridge - this must be called within FiberProvider
 	const ContextBridge = useContextBridge();
@@ -434,6 +466,7 @@ function GraphicImpl({
 				const layout = solveLayout(scene);
 				const svgAst = layoutToAst(layout, scene.nodes, margin, {
 					animation,
+					idPrefix,
 					...(sized ? { view: { width, height, aspect } } : {}),
 				});
 				const solved = {
@@ -526,6 +559,7 @@ function GraphicImpl({
 		width,
 		height,
 		aspect,
+		idPrefix,
 		ContextBridge,
 	]);
 
@@ -641,6 +675,13 @@ function GraphicImpl({
 				{title && <title>{title}</title>}
 				{ast.css && <style>{ast.css}</style>}
 				<TweenContext.Provider value={tweens}>
+					{ast.defs && (
+						<defs>
+							{ast.defs.map((mask) => (
+								<MaskRenderer key={mask.id} mask={mask} />
+							))}
+						</defs>
+					)}
 					{(framed || ast.children).map((element, index) => (
 						<SvgElementRenderer
 							key={element.id ?? `element-${index}`}

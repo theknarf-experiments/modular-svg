@@ -26,6 +26,19 @@ type Motion = Timed & {
 };
 
 declare module "react" {
+	/**
+	 * `mask` is like `clip`, but the content shows through the shape's paint
+	 * as authored: its opacity (`by="alpha"`, the default) or its lightness
+	 * (`by="luminance"`: white shows, black hides). React types `mask` as the
+	 * SVG element already and an intrinsic element cannot be typed twice, so
+	 * the two props SVG's does not have are added to it here
+	 */
+	interface SVGAttributes<T> {
+		/** on a scene `mask`: px the matte is blurred by */
+		feather?: T extends SVGMaskElement ? number : never;
+		/** on a scene `mask`: paint order of its content among its siblings */
+		zOrder?: T extends SVGMaskElement ? number : never;
+	}
 	namespace JSX {
 		interface IntrinsicElements {
 			// Layout containers
@@ -217,6 +230,22 @@ declare module "react" {
 			};
 			group: {
 				key?: React.Key;
+				children?: React.ReactNode;
+			};
+			/**
+			 * a window: the first child is its shape (a mark, a group of marks, or
+			 * a ref to one) and is not drawn; the rest shows only inside it, as
+			 * one group. Cut by the shape's geometry, whatever it is painted
+			 * with. A motion on the shape moves the cut, one on the content plays
+			 * under it, one on the clip takes both
+			 */
+			clip: {
+				key?: React.Key;
+				/** show the content outside the shape instead */
+				inverse?: boolean;
+				/** px the edge is blurred by */
+				feather?: number;
+				zOrder?: number;
 				children?: React.ReactNode;
 			};
 

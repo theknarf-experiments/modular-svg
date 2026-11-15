@@ -30,6 +30,15 @@ describe("shipped JSX types", () => {
 				<resolve key="home" at={2} ease="out">
 					<ref target="shuffle" />
 				</resolve>
+				<clip key="window" inverse feather={4} zOrder={1}>
+					<ref target="a" />
+				</clip>
+				<mask key="glow" by="luminance" feather={12} zOrder={2}>
+					<ref target="a" />
+				</mask>
+				<enter from={{ cropRight: 1 }}>
+					<ref target="a" />
+				</enter>
 			</Graphic>
 		);
 		const wrong = (
@@ -46,6 +55,14 @@ describe("shipped JSX types", () => {
 				<resolve over="slowly" />
 				{/* @ts-expect-error align is start or end */}
 				<onBeat align="middle" />
+				{/* @ts-expect-error feather is a number */}
+				<clip feather="soft" />
+				{/* @ts-expect-error feather is a number */}
+				<mask feather="soft" />
+				{/* @ts-expect-error only a mask is feathered */}
+				<rect feather={2} />
+				{/* @ts-expect-error not a channel */}
+				<enter from={{ cropMiddle: 1 }} />
 			</Graphic>
 		);
 		expect([ok, wrong]).toHaveLength(2);

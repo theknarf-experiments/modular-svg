@@ -380,3 +380,101 @@ describe("Graphic view", () => {
 		expect(container.querySelector("svg")?.getAttribute("width")).toBe("200");
 	});
 });
+
+describe("clips and masks in transitions", () => {
+	const matte = (width: number): SvgDocument => ({
+		width: 100,
+		height: 100,
+		defs: [
+			{
+				type: "mask",
+				id: "m0",
+				x: -100,
+				y: -100,
+				width: 300,
+				height: 300,
+				by: "luminance",
+				children: [
+					{
+						type: "g",
+						attrs: { filter: "blur(2px)" },
+						children: [
+							{ type: "rect", id: "window", x: 0, y: 0, width, height: 10 },
+						],
+					},
+				],
+			},
+		],
+		children: [
+			{
+				type: "g",
+				id: "c",
+				attrs: { mask: "url(#m0)" },
+				children: [
+					{ type: "rect", id: "inside", x: 0, y: 0, width: 80, height: 10 },
+				],
+			},
+			{ type: "rect", id: "free", x: 0, y: 20, width: 80, height: 10 },
+		],
+	});
+
+	it("tweens the shape of a clip like any mark", () => {
+		expect(diffTransitions(matte(10), matte(60)).get("window")).toEqual([
+			{ attributeName: "width", from: "10", to: "60", kind: "attribute" },
+		]);
+	});
+
+	it("drops what leaves a clip at once, since on top it would show whole", () => {
+		const { elements, fades } = exiting(matte(10), doc([]));
+		expect(elements.map((e) => e.id)).toEqual(["free"]);
+		expect([...fades.keys()]).toEqual(["free"]);
+	});
+});
+
+describe("Graphic with a clip", () => {
+	it("renders the matte in defs, named for this graphic alone", async () => {
+		const scene = (
+			<Graphic>
+				<clip key="c">
+					<rect key="window" width={30} height={10} />
+					<rect key="inside" width={80} height={10} />
+				</clip>
+			</Graphic>
+		);
+		const { container } = render(
+			<>
+				{scene}
+				{scene}
+			</>,
+		);
+		await waitFor(() =>
+			expect(container.querySelectorAll("defs mask rect#window")).toHaveLength(
+				2,
+			),
+		);
+		const masks = [...container.querySelectorAll("mask")];
+		const groups = [...container.querySelectorAll("g#c")];
+		expect(masks[0].id).not.toBe(masks[1].id);
+		expect(groups.map((g) => g.getAttribute("mask"))).toEqual(
+			masks.map((m) => `url(#${m.id})`),
+		);
+		expect(masks[0].getAttribute("maskUnits")).toBe("userSpaceOnUse");
+		expect(groups[0].querySelector("rect#inside")).toBeTruthy();
+		expect(container.querySelectorAll("rect#window")).toHaveLength(2);
+	});
+
+	it("says how a mask is read", async () => {
+		const { container } = render(
+			<Graphic>
+				<mask key="m" feather={3}>
+					<rect key="window" width={30} height={10} fill="black" />
+					<rect key="inside" width={80} height={10} />
+				</mask>
+			</Graphic>,
+		);
+		await waitFor(() => expect(container.querySelector("mask")).toBeTruthy());
+		const mask = container.querySelector("mask") as SVGMaskElement;
+		expect(mask.style.maskType).toBe("alpha");
+		expect(mask.querySelector("g")?.getAttribute("filter")).toBe("blur(3px)");
+	});
+});

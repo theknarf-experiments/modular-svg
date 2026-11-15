@@ -56,7 +56,7 @@ function attributesOf(el: SvgElement): Attrs {
 	}
 }
 
-/** Every element in a document, groups flattened, by id. */
+/** Every element in a document, groups and mattes flattened, by id. */
 export function elementsById(doc: SvgDocument | null): Map<string, SvgElement> {
 	const out = new Map<string, SvgElement>();
 	const walk = (els: readonly SvgElement[]) => {
@@ -66,6 +66,22 @@ export function elementsById(doc: SvgDocument | null): Map<string, SvgElement> {
 		}
 	};
 	if (doc) walk(doc.children);
+	for (const matte of doc?.defs ?? []) walk(matte.children);
+	return out;
+}
+
+/** The ids of what a clip or mask shapes or shows: seen only through a matte. */
+function matted(doc: SvgDocument | null): Set<string> {
+	const out = new Set<string>();
+	const walk = (els: readonly SvgElement[], inside: boolean) => {
+		for (const el of els) {
+			if (el.type === "g")
+				walk(el.children, inside || el.attrs?.mask !== undefined);
+			else if (inside && el.id) out.add(el.id);
+		}
+	};
+	if (doc) walk(doc.children, false);
+	for (const matte of doc?.defs ?? []) walk(matte.children, true);
 	return out;
 }
 
@@ -209,7 +225,8 @@ export function tweenAttributes(
 
 /**
  * Marks of the previous document that the new one no longer has, with a
- * fade out each: rendered on top until the transition ends.
+ * fade out each: rendered on top until the transition ends. What sat in a
+ * clip or mask, or shaped one, goes at once.
  */
 export function exiting(
 	before: SvgDocument | null,
@@ -218,8 +235,10 @@ export function exiting(
 	const now = elementsById(after);
 	const elements: SvgElement[] = [];
 	const fades = new Map<string, Transition[]>();
+	// Rendered on top, a shape would be drawn and clipped content shown whole
+	const cut = matted(before);
 	for (const [id, el] of elementsById(before)) {
-		if (now.has(id) || el.type === "g") continue;
+		if (now.has(id) || el.type === "g" || cut.has(id)) continue;
 		// Its own SMIL would keep morphing a mark that is on its way out
 		elements.push(el.type === "path" ? { ...el, animate: undefined } : el);
 		fades.set(id, [
