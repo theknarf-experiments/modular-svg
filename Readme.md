@@ -49,7 +49,7 @@ self-contained SVG with CSS keyframes and no runtime script.
 
 | Motion | Does |
 | --- | --- |
-| `Enter from`, `Exit to` | arrive from / leave to `opacity x y scale rotate blur` |
+| `Enter from`, `Exit to` | arrive from / leave to `opacity x y scale rotate blur`, or a crop: `cropLeft cropRight cropTop cropBottom` (see Clips and masks) |
 | `Draw` | stroke a shape on |
 | `Shake amplitude`, `Wiggle amplitude seed` | damped shake; seeded looping noise |
 | `Motion from steps` | svjeez-style steps: `{to, over, ease}`, `{set}`, `{wait}`; any channel, `fill`/`stroke`/`width`/`height`/`d` and a circle's `r` included |
@@ -391,6 +391,96 @@ The size of the picture is a document option, next to `margin` and
 viewport of that shape that holds the canvas. The canvas is fitted into it
 and centred. A scene with a `view` or a camera gets a `viewBox`; one with
 neither is written exactly as before.
+
+### Clips and masks
+
+A `Clip` shows what is inside it only within a shape. Its first child is the
+shape, by the same convention as a `Travel`'s mover: a mark, a group or
+relation of marks, or a `<ref>` to one declared earlier. The shape is never
+drawn. The rest of its children are the content, which paints as one group
+where the clip stands in paint order (its `zOrder` among its siblings; the
+children's `zOrder` sorts inside it). Clips nest.
+
+```tsx
+<clip key="window" feather={0}>
+  <rect key="wipe" width={320} height={90} />
+  <stackV key="title">...</stackV>
+</clip>
+<motion from={{ width: 0 }} steps={[{ to: { width: 320 }, over: 0.6 }]}>
+  <ref target="wipe" />
+</motion>
+
+<mask key="spotlight" by="alpha" feather={12}>
+  <circle key="spot" r={80} fill="black" stroke="none" />
+  ...
+</mask>
+
+<enter from={{ cropRight: 1 }}><ref target="headline" /></enter>
+```
+
+| Node | Shows the content |
+| --- | --- |
+| `Clip` | inside the shape's geometry, whatever it is painted with: marks count by their filled area, connectors by their stroke |
+| `Clip inverse` | outside it |
+| `Mask by` | through the shape's paint as authored: its opacity (`by="alpha"`, the default) or its lightness (`"luminance"`: white shows, black hides). Give the shape a `fill`; a rect has none by default |
+| `feather` (both) | px the matte is blurred by, which is the soft edge |
+
+The shape stays an ordinary node, and so does the content. Layout relations
+place them (nothing ties the two together until a relation does), a motion
+on the shape moves the cut (`width` for a wipe, `scale` for an iris, a
+`Travel` for a spotlight), a motion on a content mark plays under the cut,
+and a `Modulate` that restates the shape (a `Span`, a `Background`) resizes
+the window while one that reflows the content moves it underneath. A motion
+whose target is the clip, or a group that holds it, wraps the clipped group
+once: it fades or blurs as one picture and the cut rides along (`fill` and
+the other lanes that are set on an element still go to each mark). All of it
+is the same CSS keyframes as everywhere else, so phrases retime it (a
+`retrograde` wipe closes), it loops, pauses on the reduced-motion still frame
+and follows `Graphic`'s `playhead`, and it zooms with a `Camera`.
+
+A clip's box is what shows: the box round its content cut to the box round
+its shape (with `inverse`, the content's). The canvas is sized the same way:
+a shape never counts, and content counts only where every clip round it can
+show it (out to two feathers past a soft edge). So an iris circle far larger
+than the picture, or a ticker strip ten times its window, leaves the canvas
+alone. A `Camera` that refs a clip frames that box. Bounds follow layout, not
+motions: let the shape rest open and give the motion a `from`, since a shape
+with no area at rest shows nothing in a render without animation (this
+warns). In a scene with clips only drawn marks size the canvas, not the boxes
+of groups and relations.
+
+The **crop channels** need no clip: `cropLeft`, `cropRight`, `cropTop` and
+`cropBottom` hide that fraction (0..1) of the target's own box, stroke
+included, from that side. They work in `Enter`, `Exit`, `Motion`, `Wiggle`
+and `Sampled`; `from={{ cropRight: 1 }}` wipes a mark on from left to right.
+On a group each mark is cropped by its own box (wrap them in a `Clip` to wipe
+them as one), on a clip the crop measures the content before it is cut, and
+a crop cuts whatever lies past the box, a blur's halo included: declare the
+blur motion before the crop, since earlier motions wrap later ones.
+
+What cannot be read warns and the scene still renders: a clip with no shape
+or nothing inside, a shape that draws nothing or that holds the clip itself
+(the clip is then a plain group), content named by a `<ref>` after the shape
+(what shows must be declared inside, since it paints as one group), a mark
+that shapes two clips (give each a shape of its own and move both with one
+motion), a clip inside a shape (not applied there), and a `fill` or `stroke`
+motion on a `Clip`'s shape (a clip ignores paint; use a `Mask`). There is no
+inverse `Mask` (paint the shape the other way round), a shape is not also
+drawn (declare a second mark and `Span` or `Align` it), and a clip inside a
+`Modulate` is read as declared outside it.
+
+In the SVG every clip is a `<mask>` in `<defs>` holding the shape's elements,
+and a `<g mask="url(#...)">` holding the content. A real `<clipPath>` would
+drop the wrapper groups that motions on the shape need, and a mask leaves
+hit-testing alone. Mattes are named after their content;
+`layoutToSvg(layout, nodes, margin, { idPrefix })` names them otherwise, and
+`Graphic` gives every mounted graphic a prefix of its own, so two copies of
+one scene on a page never share a matte. With `transition`, a shape's
+geometry tweens like any mark's, and marks that leave a clip go at once
+instead of fading out on top of it. In JSX `mask` is also React's name for
+the SVG element, whose type an intrinsic element cannot replace: `feather`
+and `zOrder` are added to that type, and `by` is checked when the scene is
+parsed rather than by TypeScript.
 
 ## Solver Architecture
 

@@ -4,6 +4,8 @@ import { ArchitectureTourExample } from "./examples/animation/ArchitectureTourEx
 import architectureTourExampleCode from "./examples/animation/ArchitectureTourExample.tsx?raw";
 import { BeatExample } from "./examples/animation/BeatExample";
 import beatExampleCode from "./examples/animation/BeatExample.tsx?raw";
+import { BeforeAfterExample } from "./examples/animation/BeforeAfterExample";
+import beforeAfterExampleCode from "./examples/animation/BeforeAfterExample.tsx?raw";
 import { ClickRouteExample } from "./examples/animation/ClickRouteExample";
 import clickRouteExampleCode from "./examples/animation/ClickRouteExample.tsx?raw";
 import { CourierExample } from "./examples/animation/CourierExample";
@@ -26,6 +28,8 @@ import { HelloMotion } from "./examples/animation/HelloMotion";
 import helloMotionCode from "./examples/animation/HelloMotion.tsx?raw";
 import { ImpactExample } from "./examples/animation/ImpactExample";
 import impactExampleCode from "./examples/animation/ImpactExample.tsx?raw";
+import { IrisExample } from "./examples/animation/IrisExample";
+import irisExampleCode from "./examples/animation/IrisExample.tsx?raw";
 import { JoinExample } from "./examples/animation/JoinExample";
 import joinExampleCode from "./examples/animation/JoinExample.tsx?raw";
 import { MakeRoomExample } from "./examples/animation/MakeRoomExample";
@@ -54,12 +58,18 @@ import { SortExample } from "./examples/animation/SortExample";
 import sortExampleCode from "./examples/animation/SortExample.tsx?raw";
 import { SoundExample } from "./examples/animation/SoundExample";
 import soundExampleCode from "./examples/animation/SoundExample.tsx?raw";
+import { SpotlightExample } from "./examples/animation/SpotlightExample";
+import spotlightExampleCode from "./examples/animation/SpotlightExample.tsx?raw";
 import { SpringMenuExample } from "./examples/animation/SpringMenuExample";
 import springMenuExampleCode from "./examples/animation/SpringMenuExample.tsx?raw";
 import { StatusExample } from "./examples/animation/StatusExample";
 import statusExampleCode from "./examples/animation/StatusExample.tsx?raw";
 import { TempoExample } from "./examples/animation/TempoExample";
 import tempoExampleCode from "./examples/animation/TempoExample.tsx?raw";
+import { TickerExample } from "./examples/animation/TickerExample";
+import tickerExampleCode from "./examples/animation/TickerExample.tsx?raw";
+import { TitleCardExample } from "./examples/animation/TitleCardExample";
+import titleCardExampleCode from "./examples/animation/TitleCardExample.tsx?raw";
 import { ToastExample } from "./examples/animation/ToastExample";
 import toastExampleCode from "./examples/animation/ToastExample.tsx?raw";
 import { TrackingShotExample } from "./examples/animation/TrackingShotExample";
@@ -432,6 +442,41 @@ export const pages: Page[] = [
 					"A Shake that refs a camera shakes the view. Blocks land on the beat, each landing kicks the camera a little harder, and all the while it pushes in on the stack across the bar",
 				code: impactExampleCode,
 				element: <ImpactExample />,
+			},
+			{
+				title: "Clip: a lower third",
+				description:
+					"A Clip shows what is inside it only within its shape, the first child, which is never drawn. The name rises from behind the rule because its Enter slides it under a window that stays put. The role wipes on with a crop channel (from cropRight: 1), which cuts a mark by its own box and needs no Clip",
+				code: titleCardExampleCode,
+				element: <TitleCardExample />,
+			},
+			{
+				title: "Clip: an iris",
+				description:
+					"A motion on the shape moves the cut. The night scene sits in a Clip whose circle is centred on the button and scaled up from nothing, so it opens out of the button; a Phrase with alternate plays it there and back",
+				code: irisExampleCode,
+				element: <IrisExample />,
+			},
+			{
+				title: "Mask: a spotlight",
+				description:
+					"A Mask shows its content through the paint of its shape, and feather blurs that: a soft edge. The lit copy of the dashboard shows through a circle that a Travel carries from card to card over the dimmed copy",
+				code: spotlightExampleCode,
+				element: <SpotlightExample />,
+			},
+			{
+				title: "Clip: a ticker",
+				description:
+					"A long StackH slides behind a fixed window, one lap per loop. What a clip hides does not size the canvas, so the picture stays as wide as the bar",
+				code: tickerExampleCode,
+				element: <TickerExample />,
+			},
+			{
+				title: "Clip: before and after",
+				description:
+					"Two renderings of one chart share a moving edge: one shows inside a Clip, the other outside an inverse Clip, and a single Motion slides both shapes and the handle between them",
+				code: beforeAfterExampleCode,
+				element: <BeforeAfterExample />,
 			},
 			{
 				title: "Sorting, step by step",

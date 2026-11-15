@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { inflateSync } from "node:zlib";
 import { expect, type Page, test } from "@playwright/test";
 import {
 	along,
@@ -1630,4 +1631,626 @@ test("the Architecture tour example visits every stage on the beat", async ({
 	}
 	const back = (await at(6 * beat + 1.2, stages)).client.width;
 	expect(back).toBeCloseTo(wide, 0);
+});
+
+// --- clips and masks ---------------------------------------------------------
+
+type Rgb = [number, number, number];
+
+/**
+ * The pixels of one row of the page, from (x, y) rightwards: what was
+ * painted, which geometry cannot say for a clip.
+ */
+const rowAt = async (
+	page: Page,
+	x: number,
+	y: number,
+	width: number,
+): Promise<Rgb[]> => {
+	const png = await page.screenshot({ clip: { x, y, width, height: 1 } });
+	const chunks: Buffer[] = [];
+	let channels = 4;
+	for (let at = 8; at < png.length; ) {
+		const length = png.readUInt32BE(at);
+		const type = png.toString("latin1", at + 4, at + 8);
+		const data = png.subarray(at + 8, at + 8 + length);
+		// 8 bits a channel: truecolour, with alpha or without
+		if (type === "IHDR") channels = data[9] === 6 ? 4 : 3;
+		if (type === "IDAT") chunks.push(data);
+		at += length + 12;
+	}
+	const [filter, ...line] = inflateSync(Buffer.concat(chunks));
+	// One row has nothing above it, so every filter reads only leftwards
+	const left = (i: number) => (i >= channels ? line[i - channels] : 0);
+	for (let i = 0; i < line.length; i++)
+		line[i] =
+			(line[i] +
+				(filter === 1 || filter === 4
+					? left(i)
+					: filter === 3
+						? left(i) >> 1
+						: 0)) &
+			255;
+	return Array.from({ length: width }, (_, i) => [
+		line[i * channels],
+		line[i * channels + 1],
+		line[i * channels + 2],
+	]);
+};
+
+/** One pixel of the first svg on the page, in the svg's own pixels. */
+const pixelIn =
+	(page: Page, root = "svg") =>
+	async (x: number, y: number): Promise<Rgb> => {
+		const origin = await page.evaluate((within) => {
+			const r = (
+				document.querySelector(within) as Element
+			).getBoundingClientRect();
+			return { x: r.x, y: r.y };
+		}, root);
+		return (await rowAt(page, origin.x + x, origin.y + y, 1))[0];
+	};
+
+const RED: Rgb = [255, 0, 0];
+const WHITE: Rgb = [255, 255, 255];
+const red = (id: string, props: N = {}): N =>
+	rect(id, { x: 0, y: 0, width: 100, height: 20, fill: "#ff0000", ...props });
+const clipOf = (children: N[], props: N = {}, type = "Clip"): N => ({
+	type,
+	id: "c",
+	props,
+	children,
+});
+const windowRect = (props: N = {}): N =>
+	rect("window", { x: 0, y: 0, width: 100, height: 20, ...props });
+const move = (id: string, target: string, props: N): N => ({
+	type: "Motion",
+	id,
+	props,
+	children: [ref(target)],
+});
+// Holds the canvas open: content only counts where its clip can show it
+const room = (width: number, height: number): N =>
+	rect("room", { x: 0, y: 0, width, height, fill: "none" });
+const openWindow = move("open", "window", {
+	from: { width: 0 },
+	steps: [{ to: { width: 100 }, over: 1, ease: "linear" }],
+});
+
+test("a clip whose shape widens wipes its content on", async ({ page }) => {
+	await page.setContent(
+		svgOf([clipOf([windowRect(), red("inside")]), openWindow]),
+	);
+	const pixel = pixelIn(page);
+	await seek(page, 0);
+	expect(await pixel(10, 10)).toEqual(WHITE);
+	await seek(page, 0.5);
+	expect(await pixel(40, 10)).toEqual(RED);
+	expect(await pixel(60, 10)).toEqual(WHITE);
+	await seek(page, 1);
+	expect(await pixel(95, 10)).toEqual(RED);
+	// The shape itself is never drawn, and takes no room
+	expect(await page.locator("svg > rect").count()).toBe(0);
+});
+
+test("an iris opens about the centre of its circle", async ({ page }) => {
+	await page.setContent(
+		svgOf([
+			room(100, 100),
+			clipOf([
+				{ type: "Circle", id: "hole", props: { cx: 50, cy: 50, r: 40 } },
+				red("inside", { height: 100 }),
+			]),
+			{
+				type: "Enter",
+				id: "open",
+				props: { from: { scale: 0 }, over: 1, ease: "linear" },
+				children: [ref("hole")],
+			},
+		]),
+	);
+	const pixel = pixelIn(page);
+	await seek(page, 0.5);
+	// Half open: a circle of radius 20 round (50, 50)
+	for (const [dx, dy] of [
+		[1, 0],
+		[-1, 0],
+		[0, 1],
+		[0, -1],
+	]) {
+		expect(await pixel(50 + dx * 16, 50 + dy * 16)).toEqual(RED);
+		expect(await pixel(50 + dx * 24, 50 + dy * 24)).toEqual(WHITE);
+	}
+	await seek(page, 1);
+	expect(await pixel(50 + 36, 50)).toEqual(RED);
+	expect(await pixel(50, 50 - 36)).toEqual(RED);
+});
+
+test("an inverse clip shows what is outside its shape", async ({ page }) => {
+	await page.setContent(
+		svgOf([
+			clipOf([windowRect({ width: 40 }), red("inside")], { inverse: true }),
+		]),
+	);
+	const pixel = pixelIn(page);
+	expect(await pixel(20, 10)).toEqual(WHITE);
+	expect(await pixel(38, 10)).toEqual(WHITE);
+	expect(await pixel(42, 10)).toEqual(RED);
+	expect(await pixel(90, 10)).toEqual(RED);
+});
+
+test("a feather fades the content across the edge of the shape", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			room(100, 100),
+			clipOf(
+				[
+					windowRect({ width: 50, height: 100 }),
+					red("inside", { height: 100 }),
+				],
+				{ feather: 8 },
+			),
+		]),
+	);
+	const origin = await page.evaluate(() => {
+		const r = (
+			document.querySelector("svg") as Element
+		).getBoundingClientRect();
+		return { x: r.x, y: r.y };
+	});
+	// Red over white: green rises as the red goes
+	const green = (await rowAt(page, origin.x + 25, origin.y + 50, 50)).map(
+		(p) => p[1],
+	);
+	expect(green[0]).toBeLessThan(8);
+	expect(green[49]).toBeGreaterThan(247);
+	expect(green[25]).toBeGreaterThan(100);
+	expect(green[25]).toBeLessThan(155);
+	for (let i = 1; i < green.length; i++)
+		expect(green[i]).toBeGreaterThanOrEqual(green[i - 1] - 1);
+	// A slope, not a step
+	expect(green.filter((g) => g > 25 && g < 230).length).toBeGreaterThan(12);
+});
+
+test("a mask shows its content through the opacity of its shape", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			clipOf(
+				[windowRect({ fill: "#000000", width: 60 }), red("inside")],
+				{},
+				"Mask",
+			),
+			{
+				type: "Exit",
+				id: "fade",
+				props: { over: 1, ease: "linear" },
+				children: [ref("window")],
+			},
+		]),
+	);
+	const pixel = pixelIn(page);
+	await seek(page, 0);
+	expect(await pixel(30, 10)).toEqual(RED);
+	expect(await pixel(80, 10)).toEqual(WHITE);
+	await seek(page, 0.5);
+	const half = await pixel(30, 10);
+	expect(half[0]).toBe(255);
+	expect(half[1]).toBeGreaterThan(118);
+	expect(half[1]).toBeLessThan(138);
+	await seek(page, 1);
+	expect(await pixel(30, 10)).toEqual(WHITE);
+
+	// By luminance, white shows and black hides
+	await page.setContent(
+		svgOf([
+			clipOf(
+				[
+					{
+						type: "Group",
+						id: "shape",
+						children: [
+							windowRect({ fill: "#ffffff" }),
+							rect("hide", { x: 0, y: 0, width: 50, height: 20, fill: "#000" }),
+						],
+					},
+					red("inside"),
+				],
+				{ by: "luminance" },
+				"Mask",
+			),
+		]),
+	);
+	expect(await pixelIn(page)(25, 10)).toEqual(WHITE);
+	expect(await pixelIn(page)(75, 10)).toEqual(RED);
+});
+
+test("a Modulate resizes the window of a clip, and moves content under it", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			rect("wide", { x: 0, y: 30, width: 100, height: 4, fill: "#0000ff" }),
+			clipOf([windowRect({ width: 20 }), red("inside")]),
+			{
+				type: "Modulate",
+				id: "grow",
+				props: { at: 0, over: 1, ease: "linear" },
+				children: [{ type: "Span", children: [ref("wide"), ref("window")] }],
+			},
+		]),
+	);
+	const pixel = pixelIn(page);
+	await seek(page, 0);
+	expect(await pixel(10, 10)).toEqual(RED);
+	expect(await pixel(30, 10)).toEqual(WHITE);
+	await seek(page, 0.5);
+	expect(await pixel(50, 10)).toEqual(RED);
+	expect(await pixel(70, 10)).toEqual(WHITE);
+	await seek(page, 1);
+	expect(await pixel(95, 10)).toEqual(RED);
+
+	// Content that a Modulate moves is cut where the window is, not where it was
+	await page.setContent(
+		svgOf([
+			rect("post", { x: 60, y: 30, width: 10, height: 4, fill: "#0000ff" }),
+			clipOf([windowRect(), red("inside", { width: 30 })]),
+			{
+				type: "Modulate",
+				id: "shift",
+				props: { at: 0, over: 1, ease: "linear" },
+				children: [
+					{
+						type: "Align",
+						props: { alignment: "left" },
+						children: [ref("post"), ref("inside")],
+					},
+				],
+			},
+		]),
+	);
+	await seek(page, 1);
+	const after = pixelIn(page);
+	expect(await after(10, 10)).toEqual(WHITE);
+	expect(await after(75, 10)).toEqual(RED);
+});
+
+test("a wipe plays backwards in a retrograde phrase", async ({ page }) => {
+	await page.setContent(
+		svgOf([
+			clipOf([windowRect(), red("inside")]),
+			openWindow,
+			{
+				type: "Phrase",
+				id: "back",
+				props: { retrograde: true },
+				children: [ref("open")],
+			},
+		]),
+	);
+	const pixel = pixelIn(page);
+	await seek(page, 0);
+	expect(await pixel(95, 10)).toEqual(RED);
+	await seek(page, 0.5);
+	expect(await pixel(40, 10)).toEqual(RED);
+	expect(await pixel(60, 10)).toEqual(WHITE);
+	await seek(page, 1);
+	expect(await pixel(5, 10)).toEqual(WHITE);
+});
+
+test("reduced motion shows a clip as the still frame has it", async ({
+	page,
+}) => {
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	// Closing: the still is the last frame, which only the stylesheet shows
+	await page.setContent(
+		svgOf([
+			clipOf([windowRect(), red("inside")]),
+			move("close", "window", {
+				steps: [{ to: { width: 30 }, over: 1, ease: "linear" }],
+			}),
+		]),
+	);
+	await page.waitForTimeout(100);
+	const pixel = pixelIn(page);
+	expect(await pixel(20, 10)).toEqual(RED);
+	expect(await pixel(40, 10)).toEqual(WHITE);
+	expect(
+		await page.evaluate(
+			() =>
+				document.getAnimations().filter((a) => a.playState === "running")
+					.length,
+		),
+	).toBe(0);
+});
+
+test("a crop cuts a mark by its own box, and leaves its stroke at 0", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			rect("a", {
+				x: 2,
+				y: 2,
+				width: 100,
+				height: 20,
+				fill: "#ff0000",
+				stroke: "#0000ff",
+				"stroke-width": 4,
+			}),
+			move("wipe", "a", {
+				from: { cropRight: 0.5, cropTop: 0.5 },
+				steps: [{ to: { cropRight: 0, cropTop: 0 }, over: 1, ease: "linear" }],
+			}),
+		]),
+	);
+	const pixel = pixelIn(page);
+	await seek(page, 0);
+	// The stroke box is 104 by 24: cut at its middle, both ways
+	expect(await pixel(40, 18)).toEqual(RED);
+	expect(await pixel(50, 18)).toEqual(RED);
+	expect(await pixel(54, 18)).toEqual(WHITE);
+	expect(await pixel(40, 10)).toEqual(WHITE);
+	expect(await pixel(40, 14)).toEqual(RED);
+	await seek(page, 1);
+	expect(await pixel(90, 6)).toEqual(RED);
+	// The outer half of the stroke lies outside the box and is still drawn
+	expect(await pixel(103, 12)).toEqual([0, 0, 255]);
+	expect(await pixel(50, 1)).toEqual([0, 0, 255]);
+});
+
+test("a motion on a clip takes the cut and the content along as one", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgOf([
+			rect("room", { x: 0, y: 0, width: 200, height: 20, fill: "none" }),
+			clipOf([windowRect({ width: 40 }), red("inside")]),
+			move("slide", "c", {
+				steps: [{ to: { x: 100, opacity: 0.5 }, over: 1, ease: "linear" }],
+			}),
+		]),
+	);
+	const pixel = pixelIn(page);
+	await seek(page, 1);
+	expect(await pixel(20, 10)).toEqual(WHITE);
+	const moved = await pixel(120, 10);
+	expect(moved[0]).toBe(255);
+	expect(moved[1]).toBeGreaterThan(120);
+	expect(moved[1]).toBeLessThan(135);
+	// Still cut 40 wide
+	expect(await pixel(145, 10)).toEqual(WHITE);
+});
+
+test("a spring Travel on a smooth route carries the window of a mask", async ({
+	page,
+}) => {
+	const stop = (id: string, x: number, y: number): N =>
+		rect(id, { x, y, width: 10, height: 10, fill: "none" });
+	await page.setContent(
+		svgOf([
+			rect("floor", { x: 0, y: 0, width: 200, height: 120, fill: "#ff0000" }),
+			stop("bend", 95, 100),
+			stop("far", 180, 5),
+			clipOf(
+				[
+					{
+						type: "Circle",
+						id: "spot",
+						props: { cx: 15, cy: 15, r: 12, fill: "#000", stroke: "none" },
+					},
+					rect("lit", { x: 0, y: 0, width: 200, height: 120, fill: "#00ff00" }),
+				],
+				{},
+				"Mask",
+			),
+			{
+				type: "Travel",
+				id: "go",
+				props: { route: "smooth", over: 2, ease: "spring" },
+				children: [ref("spot"), ref("bend"), ref("far")],
+			},
+		]),
+	);
+	const pixel = pixelIn(page);
+	const GREEN: Rgb = [0, 255, 0];
+	await seek(page, 0);
+	expect(await pixel(15, 15)).toEqual(GREEN);
+	expect(await pixel(185, 10)).toEqual(RED);
+	await seek(page, 2);
+	expect(await pixel(185, 10)).toEqual(GREEN);
+	expect(await pixel(15, 15)).toEqual(RED);
+	// On the way it rounds the bend
+	const seen: boolean[] = [];
+	for (let t = 0.02; t < 0.8; t += 0.01) {
+		await seek(page, t);
+		seen.push((await pixel(100, 105))[1] === 255);
+	}
+	expect(seen).toContain(true);
+});
+
+test("a clip zooms with the camera's view", async ({ page }) => {
+	const scene = buildSceneFromJson({
+		type: "Group",
+		id: "root",
+		children: [
+			rect("stage", { x: 0, y: 0, width: 200, height: 100, fill: "none" }),
+			{
+				type: "Clip",
+				id: "c",
+				children: [
+					rect("window", { x: 80, y: 40, width: 20, height: 10 }),
+					rect("inside", {
+						x: 0,
+						y: 0,
+						width: 200,
+						height: 100,
+						fill: "#ff0000",
+					}),
+				],
+			},
+			{
+				type: "Camera",
+				id: "push",
+				props: { at: 0, over: 1, ease: "linear" },
+				children: [ref("window")],
+			},
+		],
+	});
+	await page.setContent(
+		layoutToSvg(solveLayout(scene), scene.nodes, 0, {
+			view: { width: 200, height: 100 },
+		}),
+	);
+	const pixel = pixelIn(page);
+	await seek(page, 0);
+	expect(await pixel(90, 45)).toEqual(RED);
+	expect(await pixel(70, 45)).toEqual(WHITE);
+	expect(await pixel(110, 45)).toEqual(WHITE);
+	// Framed, the 20 by 10 window fills the 200 by 100 view
+	await seek(page, 1);
+	for (const [x, y] of [
+		[5, 5],
+		[195, 5],
+		[5, 95],
+		[195, 95],
+		[100, 50],
+	])
+		expect(await pixel(x, y)).toEqual(RED);
+});
+
+const mountClips = async (page: Page) => {
+	const fixture = fileURLToPath(
+		new URL("./fixtures/clip.tsx", import.meta.url),
+	);
+	await page.goto("http://localhost:5173/");
+	await page.addScriptTag({ type: "module", url: `/@fs${fixture}` });
+	await page.waitForFunction(() => "mount" in window);
+	await page.evaluate(() => (window as never as { mount: () => void }).mount());
+	await page.waitForSelector("#state svg #inside");
+	const hold = (which: string, t: number | undefined) =>
+		page.evaluate(
+			([graphic, time]) =>
+				(
+					window as never as {
+						hold: (which: string, t?: number) => void;
+					}
+				).hold(graphic as string, (time as number | null) ?? undefined),
+			[which, t ?? null] as const,
+		);
+	return { hold, pixel: (graphic: string) => pixelIn(page, `#${graphic} svg`) };
+};
+
+test("Graphic's playhead holds a wipe, and two Graphics of one scene keep their own mattes", async ({
+	page,
+}) => {
+	const { hold, pixel } = await mountClips(page);
+	await hold("one", 0.5);
+	await hold("two", 1.5);
+	// A quarter open, and three quarters
+	await expect.poll(() => pixel("one")(20, 10)).toEqual(RED);
+	expect(await pixel("one")(30, 10)).toEqual(WHITE);
+	await expect.poll(() => pixel("two")(70, 10)).toEqual(RED);
+	expect(await pixel("two")(80, 10)).toEqual(WHITE);
+	const ids = await page.evaluate(() =>
+		[...document.querySelectorAll("#clips mask")].map((m) => m.id),
+	);
+	expect(new Set(ids).size).toBe(3);
+	await hold("one", 2);
+	await expect.poll(() => pixel("one")(95, 10)).toEqual(RED);
+	// The other one did not move
+	expect(await pixel("two")(80, 10)).toEqual(WHITE);
+});
+
+test("Graphic's transition tweens the shape of a clip", async ({ page }) => {
+	const { pixel } = await mountClips(page);
+	const at = pixel("state");
+	expect(await at(10, 10)).toEqual(RED);
+	expect(await at(30, 10)).toEqual(WHITE);
+	await page.evaluate(() =>
+		(window as never as { open: (w: number) => void }).open(100),
+	);
+	// Part of the way there before it is all the way
+	const seen: boolean[] = [];
+	for (let i = 0; i < 10; i++) {
+		await page.waitForTimeout(40);
+		seen.push((await at(90, 10))[1] === 0);
+	}
+	expect(seen[0]).toBe(false);
+	await page.waitForTimeout(500);
+	expect(await at(90, 10)).toEqual(RED);
+});
+
+test("the Ticker example stays the size of its bar while the strip rolls through", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/animation/");
+	const svg = page.locator("main svg:has([id='acme0Symbol'])");
+	await svg.waitFor();
+	expect(await svg.getAttribute("width")).toBe("480");
+	expect(await svg.getAttribute("height")).toBe("44");
+	const at = exampleAt(page, "acme0Symbol");
+	const first = (await at(0, ["acme0Symbol", "acme1Symbol"])).acme0Symbol;
+	// One lap on, the second lap's quote is where the first one's was
+	const lapped = (await at(8.999, ["acme0Symbol", "acme1Symbol"])).acme1Symbol;
+	expect(lapped.x).toBeCloseTo(first.x, 0);
+});
+
+test("the Title card example brings the name up from behind the rule", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/animation/");
+	const svg = page.locator("main svg:has([id='rule'])");
+	await svg.waitFor();
+	await svg.scrollIntoViewIfNeeded();
+	const at = exampleAt(page, "rule");
+	const rest = (await at(2.5, ["name", "rule"])).name;
+	const rising = (await at(0.75, ["name"])).name;
+	expect(rising.y).toBeGreaterThan(rest.y + 20);
+	// Still under the rule there: nothing of the name is painted below it
+	const box = await svg.boundingBox();
+	const rule = (await at(0.75, ["rule"])).rule;
+	const below = await rowAt(
+		page,
+		(box?.x ?? 0) + 34,
+		(box?.y ?? 0) + rule.y + 6,
+		150,
+	);
+	expect(below.every((p) => p[0] < 60)).toBe(true);
+	const above = await rowAt(
+		page,
+		(box?.x ?? 0) + 34,
+		(box?.y ?? 0) + rule.y - 6,
+		150,
+	);
+	expect(above.some((p) => p[0] > 200)).toBe(true);
+});
+
+test("the Before and after example cuts both charts on the handle", async ({
+	page,
+}) => {
+	await page.goto("http://localhost:5173/animation/");
+	const svg = page.locator("main svg:has([id='knob'])");
+	await svg.waitFor();
+	await svg.scrollIntoViewIfNeeded();
+	const at = exampleAt(page, "knob");
+	const box = await svg.boundingBox();
+	for (const t of [0.4, 1.8, 4.7]) {
+		const { knob } = await at(t, ["knob"]);
+		// The designed chart's blue or orange bars left of the line, the
+		// draft's grey ones right of it; sampled low, where every bar is
+		const y = (box?.y ?? 0) + 185;
+		const row = await rowAt(page, box?.x ?? 0, y, Math.round(box?.width ?? 0));
+		const grey = (p: Rgb) =>
+			Math.abs(p[0] - p[1]) < 6 && Math.abs(p[1] - p[2]) < 6 && p[0] < 200;
+		const vivid = (p: Rgb) => Math.max(...p) - Math.min(...p) > 80;
+		const cut = Math.round(knob.x);
+		expect(row.slice(0, cut - 3).some(grey), `left at ${t}`).toBe(false);
+		expect(row.slice(cut + 3).some(vivid), `right at ${t}`).toBe(false);
+		expect(row.slice(0, cut - 3).some(vivid), `left at ${t}`).toBe(true);
+		expect(row.slice(cut + 3).some(grey), `right at ${t}`).toBe(true);
+	}
 });
