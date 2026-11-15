@@ -1565,6 +1565,28 @@ test("Graphic's transition moves the view when what the camera frames changes", 
 	expect(other.y).toBeCloseTo(100, 0);
 });
 
+test("a change that leaves the camera alone does not hold a view that is moving", async ({
+	page,
+}) => {
+	const box = await mountViews(page);
+	await page.waitForTimeout(600);
+	const before = (await box("tint", "b")).width;
+	await page.evaluate(() =>
+		(window as never as { tint: (fill: string) => void }).tint("#ff0000"),
+	);
+	// A 10x push over four seconds: the mark grows 9% in every 150ms
+	const seen: number[] = [before];
+	for (let i = 0; i < 4; i++) {
+		await page.waitForTimeout(150);
+		seen.push((await box("tint", "b")).width);
+	}
+	for (let i = 1; i < seen.length; i++)
+		expect(seen[i] / seen[i - 1], `step ${i} of ${seen}`).toBeGreaterThan(1.04);
+	// And no step when the tween is over
+	for (let i = 1; i < seen.length; i++)
+		expect(seen[i] / seen[i - 1]).toBeLessThan(1.25);
+});
+
 const exampleAt = (page: Page, mark: string) => (t: number, ids: string[]) =>
 	page.evaluate(
 		([within, time, wanted]) => {
@@ -2182,6 +2204,15 @@ test("Graphic's transition tweens the shape of a clip", async ({ page }) => {
 	expect(seen[0]).toBe(false);
 	await page.waitForTimeout(500);
 	expect(await at(90, 10)).toEqual(RED);
+	// Closing, the matte keeps room for where the window comes from
+	await page.evaluate(() =>
+		(window as never as { open: (w: number) => void }).open(20),
+	);
+	await page.waitForTimeout(60);
+	expect(await at(50, 10)).toEqual(RED);
+	await page.waitForTimeout(900);
+	expect(await at(50, 10)).toEqual(WHITE);
+	expect(await at(10, 10)).toEqual(RED);
 });
 
 test("the Ticker example stays the size of its bar while the strip rolls through", async ({
@@ -2253,4 +2284,291 @@ test("the Before and after example cuts both charts on the handle", async ({
 		expect(row.slice(0, cut - 3).some(vivid), `left at ${t}`).toBe(true);
 		expect(row.slice(cut + 3).some(grey), `right at ${t}`).toBe(true);
 	}
+});
+
+// --- what a review of springs, the camera and clips found -------------------------
+
+const svgIn = (
+	children: N[],
+	opts: Parameters<typeof layoutToSvg>[3] = {},
+): string => {
+	const scene = buildSceneFromJson({ type: "Group", id: "root", children });
+	return layoutToSvg(solveLayout(scene), scene.nodes, 0, opts);
+};
+
+/** The furthest a mark's centre gets from the middle of the picture, seeking through a span. */
+const strays = (page: Page, id: string, from: number, to: number) =>
+	page.evaluate(
+		([mark, t0, t1]) => {
+			const svg = document.querySelector("svg") as SVGSVGElement;
+			const el = svg.querySelector(`[id="${mark}"]`) as Element;
+			const animations = document.getAnimations();
+			for (const a of animations) a.pause();
+			let worst = 0;
+			let at = 0;
+			for (let t = Number(t0); t <= Number(t1); t += 0.005) {
+				for (const a of animations) a.currentTime = t * 1000;
+				const [m, s] = [
+					el.getBoundingClientRect(),
+					svg.getBoundingClientRect(),
+				];
+				const off = Math.hypot(
+					m.x + m.width / 2 - (s.x + s.width / 2),
+					m.y + m.height / 2 - (s.y + s.height / 2),
+				);
+				if (off > worst) [worst, at] = [off, t];
+			}
+			return { worst, at };
+		},
+		[id, from, to] as const,
+	);
+
+test("a camera keeps a mark in the middle while a spring, a bounce or a bezier moves it", async ({
+	page,
+}) => {
+	for (const ease of ["bounce", "spring", "elastic", "inOut", "out"]) {
+		await page.setContent(
+			svgIn([
+				dot("a", 5, 5),
+				dot("b", 305, 105),
+				dot("m", 5, 5),
+				on("Enter", "slide", "m", { at: 1, over: 1, from: { x: -200 }, ease }),
+				camera("cam", { at: 0, over: 0, follow: true, padding: 10 }, "m"),
+			]),
+		);
+		const { worst, at } = await strays(page, "m", 0.9, 2.1);
+		expect(worst, `${ease} at ${at}`).toBeLessThan(1);
+	}
+	// The same through layout, with nothing told to follow
+	for (const ease of ["elastic", "spring", "inOut"]) {
+		await page.setContent(
+			svgIn([
+				{
+					type: "StackH",
+					id: "row",
+					props: { spacing: 10 },
+					children: [dot("p", 0, 0), dot("q", 0, 0), dot("m", 0, 0)],
+				},
+				{
+					type: "Modulate",
+					id: "spread",
+					props: { at: 1, over: 1, ease },
+					children: [
+						{
+							type: "StackH",
+							props: { spacing: 100 },
+							children: ["p", "q", "m"].map(ref),
+						},
+					],
+				},
+				camera("cam", { at: 0, over: 0, padding: 10 }, "m"),
+			]),
+		);
+		const { worst, at } = await strays(page, "m", 0.9, 2.1);
+		expect(worst, `Modulate ${ease} at ${at}`).toBeLessThan(1);
+	}
+});
+
+/** The pixels of a part of the page as rows of luminance. */
+const lumaOf = async (
+	page: Page,
+	clip: { x: number; y: number; width: number; height: number },
+): Promise<number[][]> => {
+	const png = await page.screenshot({ clip });
+	const chunks: Buffer[] = [];
+	let [width, height, channels] = [0, 0, 4];
+	for (let at = 8; at < png.length; ) {
+		const length = png.readUInt32BE(at);
+		const type = png.toString("latin1", at + 4, at + 8);
+		const data = png.subarray(at + 8, at + 8 + length);
+		if (type === "IHDR") {
+			width = data.readUInt32BE(0);
+			height = data.readUInt32BE(4);
+			channels = data[9] === 6 ? 4 : 3;
+		}
+		if (type === "IDAT") chunks.push(data);
+		at += length + 12;
+	}
+	const raw = inflateSync(Buffer.concat(chunks));
+	const stride = width * channels;
+	const rows: number[][] = [];
+	let above = new Uint8Array(stride);
+	for (let y = 0; y < height; y++) {
+		const filter = raw[y * (stride + 1)];
+		const line = Uint8Array.from(
+			raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)),
+		);
+		for (let i = 0; i < stride; i++) {
+			const [a, b, c] = [
+				i >= channels ? line[i - channels] : 0,
+				above[i],
+				i >= channels ? above[i - channels] : 0,
+			];
+			const p = a + b - c;
+			const [pa, pb, pc] = [Math.abs(p - a), Math.abs(p - b), Math.abs(p - c)];
+			const paeth = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+			line[i] += [0, a, b, (a + b) >> 1, paeth][filter] ?? 0;
+		}
+		rows.push(
+			Array.from(
+				{ length: width },
+				(_, x) =>
+					0.299 * line[x * channels] +
+					0.587 * line[x * channels + 1] +
+					0.114 * line[x * channels + 2],
+			),
+		);
+		above = line;
+	}
+	return rows;
+};
+
+/** How crisp edges are: the mean of the strongest 2% of steps between neighbours in a row. */
+const sharpness = (rows: number[][]): number => {
+	const steps = rows
+		.flatMap((row) => row.slice(1).map((v, i) => Math.abs(v - row[i])))
+		.sort((a, b) => b - a);
+	const top = steps.slice(0, Math.max(1, Math.round(steps.length * 0.02)));
+	return top.reduce((a, b) => a + b, 0) / top.length;
+};
+
+test("a zoomed view is as sharp while it plays as when it is held, with a clip in the scene", async ({
+	page,
+}) => {
+	const scene = (clipped: boolean): N[] => [
+		rect("room", { x: 0, y: 0, width: 400, height: 200, fill: "none" }),
+		{
+			type: "Text",
+			id: "free",
+			props: { x: 172, y: 100, "font-size": 9, text: "not clipped" },
+		},
+		rect("line", { x: 172, y: 96, width: 50, height: 0.4, fill: "black" }),
+		...(clipped
+			? [
+					clipOf([
+						rect("win", { x: 190, y: 112, width: 20, height: 4 }),
+						rect("in", {
+							x: 185,
+							y: 110,
+							width: 30,
+							height: 8,
+							fill: "#ffb0b0",
+						}),
+					]),
+				]
+			: []),
+		{ type: "Rest", id: "hold", props: { at: 0, over: 4 } },
+		camera("cam", { at: 0.3, over: 0, padding: 14 }, "free"),
+	];
+	const measure = async (clipped: boolean) => {
+		await page.setContent(svgIn(scene(clipped)));
+		const box = (await page.locator("svg").boundingBox()) ?? {
+			x: 0,
+			y: 0,
+			width: 400,
+			height: 200,
+		};
+		await page.waitForTimeout(1500);
+		const live = sharpness(await lumaOf(page, box));
+		await page.evaluate(() => {
+			for (const a of document.getAnimations()) a.pause();
+		});
+		await page.waitForTimeout(100);
+		const held = sharpness(await lumaOf(page, box));
+		return { live, held };
+	};
+	const plain = await measure(false);
+	const clipped = await measure(true);
+	// The clip costs the unclipped text nothing, playing or held
+	expect(clipped.live).toBeGreaterThan(plain.live * 0.85);
+	expect(clipped.live).toBeGreaterThan(clipped.held * 0.6);
+});
+
+test("an inverse clip shows content beyond the canvas wherever the viewport does", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgIn(
+			[
+				rect("room", { x: 0, y: 0, width: 200, height: 50, fill: "none" }),
+				clipOf(
+					[
+						dot("hole", 100, 25, 10),
+						rect("card", {
+							x: 60,
+							y: 10,
+							width: 80,
+							height: 30,
+							fill: "#ff0000",
+						}),
+					],
+					{ inverse: true },
+				),
+				on("Enter", "drop", "card", {
+					from: { y: -150 },
+					over: 1,
+					ease: "linear",
+				}),
+			],
+			{ view: { width: 200, height: 400 } },
+		),
+	);
+	const pixel = pixelIn(page);
+	// The canvas sits in the middle of the tall view: y 175 to 225
+	for (const t of [0, 0.2, 0.5]) {
+		await seek(page, t);
+		const y = 175 + 10 - 150 * (1 - t) + 15;
+		expect(await pixel(70, y), `card at ${t}`).toEqual(RED);
+	}
+	await seek(page, 1);
+	expect(await pixel(70, 200)).toEqual(RED);
+	expect(await pixel(100, 200)).toEqual(WHITE);
+});
+
+test("an oriented mover rests on the tangent at both ends of a curved route", async ({
+	page,
+}) => {
+	await page.setContent(
+		svgIn([
+			rect("room", { x: 0, y: 0, width: 100, height: 100, fill: "none" }),
+			{
+				type: "Arc",
+				id: "arc",
+				props: {
+					x: 30,
+					y: 30,
+					r: 12,
+					startAngle: 0,
+					endAngle: 180,
+					fill: "none",
+				},
+			},
+			rect("mover", { x: 0, y: 0, width: 10, height: 2 }),
+			{
+				type: "Travel",
+				id: "trip",
+				props: {
+					at: 0.5,
+					over: 1,
+					ease: "linear",
+					route: "along",
+					orient: true,
+				},
+				children: [ref("mover"), ref("arc")],
+			},
+		]),
+	);
+	const heading = () =>
+		page.evaluate(() => {
+			const m = (
+				document.querySelector("#mover") as SVGGraphicsElement
+			).getScreenCTM() as DOMMatrix;
+			return (Math.atan2(m.b, m.a) * 180) / Math.PI;
+		});
+	await seek(page, 0.2);
+	expect(Math.abs(await heading())).toBeLessThan(0.5);
+	await seek(page, 1);
+	expect(Math.abs((await heading()) - 90)).toBeLessThan(0.5);
+	await seek(page, 1.8);
+	expect(Math.abs(Math.abs(await heading()) - 180)).toBeLessThan(0.5);
 });

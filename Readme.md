@@ -90,8 +90,9 @@ heading, as a tape would. A curved route is written as sampled `translate`
 together than a 240Hz frame, so it is an ordinary motion to everything else:
 phrases retime it and connectors follow it. A route is read where layout has
 it at home: a `Travel` along something a modulation moves warns, as does one
-sent along a mark with no path (it passes through its centre), a path's
-second subpath or an `A` command (crossed in a straight line).
+sent along a mark with no path or a path that draws nothing (it passes
+through its centre), a path's second subpath or an `A` command (crossed in a
+straight line).
 
 Colors in `Motion` (`fill`, `stroke`) may be `{ ref: "id" }`: that node's
 solved color, so motions can animate to colors that `DistinctColors`,
@@ -105,7 +106,12 @@ bezier: `spring`, `bounce` (a ball landing on the target, never past it) and
 `{ kind: "spring", bounce: 0.3 }` (-0.9..0.9: how far it overshoots; below 0
 it only creeps in), `{ kind: "spring", stiffness: 180, damping: 14, mass: 1 }`,
 `{ kind: "bounce", bounces: 3, elasticity: 0.5 }`, `{ kind: "elastic", period: 0.3 }`.
-Numbers out of range warn and are read as the nearest allowed value.
+Numbers out of range warn and are read as the nearest allowed value, and a
+number that belongs to another kind (`bounces` on a spring, `bounce` on a
+`bounce`) warns and does nothing. A sampled curve is drawn with at most 32
+straight runs, so one with many swings (a spring `bounce` of 0.8, an elastic
+`period` of 0.15) is within about 1.5% of the distance moved rather than
+exact.
 
 ```tsx
 <enter ease="spring" from={{ scale: 0 }}>...</enter>
@@ -307,9 +313,10 @@ logs these warnings outside production builds, and the CLI prints them.
 In React, `Graphic` takes `transition` (tween marks from their previous solved
 geometry and color whenever state changes the solution; with a spring or an
 overshooting `ease`, geometry runs past and settles while colors ease out;
-the view tweens too, from where it is to where the new scene's camera has
-it, so a camera that cuts to whatever state says is in focus pans and zooms
-there), `view` (the size of the picture, see Camera), `playhead` (hold every motion at a time, for
+when the change is to what the camera does, the view tweens too, from where
+it is to where the new scene's camera has it, so a camera that cuts to
+whatever state says is in focus pans and zooms there; a camera the change
+leaves alone plays on), `view` (the size of the picture, see Camera), `playhead` (hold every motion at a time, for
 scrubbing; while it holds, changes apply at once, since the tweens share the
 held clock) and `onSolve`, which hands out the solved spans of every timed ref,
 the layout boxes, warnings and a live animation clock. `useCues(solution,
@@ -364,10 +371,14 @@ Between two framings the view rect moves in a straight line, as an animated
 pace instead of rushing at its end. Everything scales, strokes and text
 included; pass `vector-effect="non-scaling-stroke"` on a mark that should
 stay a hairline. The view is one group round every mark whose CSS
-`transform` is keyframed (sampled into straight pieces within half a pixel
-on screen), so it keeps time with the marks, loops, pauses on the
-reduced-motion still frame and follows `Graphic`'s `playhead` like
-everything else. The `<svg>` clips at the viewport; under `contain` in a
+`transform` is keyframed, so it keeps time with the marks, loops, pauses on
+the reduced-motion still frame and follows `Graphic`'s `playhead` like
+everything else. The keyframes are straight pieces, as many as it takes to
+stay within half a pixel on screen of the exact view, also while a spring,
+a bounce or a bezier moves what is framed; a push-in takes 60 to 130 of
+them. No
+piece is shorter than 1/40000 of the timeline, so on a timeline of many
+minutes a fast move is drawn more coarsely. The `<svg>` clips at the viewport; under `contain` in a
 viewport of another shape more of the scene shows, with no bars.
 
 Cameras are placed like motions (`Sequence`, `OnBeat`, `Stretch`, ...). A
@@ -380,15 +391,16 @@ the view from one another (the one that started last holds it), which warns.
 
 A motion that refs a camera moves the view itself, in screen pixels and
 about the middle of the viewport: a `Shake` for an impact, a `Motion` with
-`scale` for a punch-in. It takes `x`, `y`, `scale`, `rotate`, `opacity` and
-`blur`.
+`scale` for a punch-in. It takes `x`, `y`, `scale`, `rotate`, `opacity`, `blur`
+and the crop channels.
 
 The size of the picture is a document option, next to `margin` and
 `animation`: `layoutToSvg(layout, nodes, margin, { view })` with
 `view: { width?, height?, aspect? }` (`Graphic`'s `view` prop, the CLI's
-`--width` and `--height`). Both sides are taken as given; one side follows
-`aspect`, or the canvas's own shape; `aspect` alone gives the smallest
-viewport of that shape that holds the canvas. The canvas is fitted into it
+`--width`, `--height` and `--aspect`). Both sides are taken as given; one
+side follows `aspect`, or the canvas's own shape, to the nearest pixel;
+`aspect` alone gives the smallest viewport of that shape that holds the
+canvas. The canvas is fitted into it
 and centred. A scene with a `view` or a camera gets a `viewBox`; one with
 neither is written exactly as before.
 
@@ -463,8 +475,11 @@ or nothing inside, a shape that draws nothing or that holds the clip itself
 (the clip is then a plain group), content named by a `<ref>` after the shape
 (what shows must be declared inside, since it paints as one group), a mark
 that shapes two clips (give each a shape of its own and move both with one
-motion), a clip inside a shape (not applied there), and a `fill` or `stroke`
-motion on a `Clip`'s shape (a clip ignores paint; use a `Mask`). There is no
+motion), a mark inside one clip that is named as the shape of another (it
+is no longer drawn in the first), a clip inside a shape (not applied there),
+and a `fill` or `stroke` motion aimed at a `Clip`'s shape (a clip ignores
+paint; use a `Mask`. Aimed at the clip, the same motion recolours its
+content). There is no
 inverse `Mask` (paint the shape the other way round), a shape is not also
 drawn (declare a second mark and `Span` or `Align` it), and a clip inside a
 `Modulate` is read as declared outside it.
@@ -472,7 +487,17 @@ drawn (declare a second mark and `Span` or `Align` it), and a clip inside a
 In the SVG every clip is a `<mask>` in `<defs>` holding the shape's elements,
 and a `<g mask="url(#...)">` holding the content. A real `<clipPath>` would
 drop the wrapper groups that motions on the shape need, and a mask leaves
-hit-testing alone. Mattes are named after their content;
+hit-testing alone. A matte reaches no further than its shape does: the box
+round the shape through every motion and `Modulate` on it, cut to what the
+picture can show (the canvas and every view a camera takes of it). That
+matters under a camera: Chromium draws a layer that is being animated at a
+resolution that falls as the layer grows, so a matte over the whole picture
+would soften every zoom for as long as the timeline plays. An inverse clip,
+and a shape whose box does not say where it paints (text, a path, a
+connector), still get a matte over all the picture shows, and pay that
+price in a zoomed scene; so does any large filled mark, clip or no clip.
+With `transition`, a matte also keeps the room its shape tweens from.
+Mattes are named after their content;
 `layoutToSvg(layout, nodes, margin, { idPrefix })` names them otherwise, and
 `Graphic` gives every mounted graphic a prefix of its own, so two copies of
 one scene on a page never share a matte. With `transition`, a shape's
@@ -481,6 +506,9 @@ instead of fading out on top of it. In JSX `mask` is also React's name for
 the SVG element, whose type an intrinsic element cannot replace: `feather`
 and `zOrder` are added to that type, and `by` is checked when the scene is
 parsed rather than by TypeScript.
+
+Springs, routes, the camera, clips and masks are measured in Chromium only;
+Firefox and Safari are untested.
 
 ## Solver Architecture
 

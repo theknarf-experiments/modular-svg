@@ -8,6 +8,7 @@ type Hooks = {
 	mount: () => void;
 	frame: (id: string | null) => void;
 	hold: (t: number | undefined) => void;
+	tint: (fill: string) => void;
 };
 
 const marks = [
@@ -37,12 +38,21 @@ function Views() {
 	const hooks = window as unknown as Hooks;
 	hooks.frame = setFramed;
 	hooks.hold = setPlayhead;
+	const [fill, setFill] = useState("#888");
+	hooks.tint = setFill;
 	return (
 		<>
 			<Graphic id="focus" transition={{ duration: 0.6, ease: "linear" }}>
 				{marks}
 				<camera key="look" at={0} over={0}>
 					{framed !== null && <ref target={framed} />}
+				</camera>
+			</Graphic>
+			<Graphic id="tint" transition animation={{ stillAt: false }}>
+				{marks}
+				<rect key="lamp" x={180} y={90} width={20} height={10} fill={fill} />
+				<camera key="push" at={0} over={4} ease="linear">
+					<ref target="b" />
 				</camera>
 			</Graphic>
 			<Graphic id="scrub" playhead={playhead} animation={{ stillAt: false }}>
