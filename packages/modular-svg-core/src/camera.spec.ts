@@ -14,7 +14,7 @@ import {
 	viewKeys,
 	viewTransform,
 } from "./camera.ts";
-import { keysOf, resolveEase, sampleAt } from "./motion.ts";
+import { type Ease, easeAt, keysOf, resolveEase, sampleAt } from "./motion.ts";
 import { serializeToSvg } from "./output.ts";
 import { buildSceneFromJson, checkSolution } from "./parser.ts";
 import { solveLayout } from "./solver/index.ts";
@@ -248,6 +248,49 @@ describe("mixViews", () => {
 	});
 });
 
+/** The farthest a corner of the exact view lands from the viewport's, over the timeline. */
+const worstMiss = (
+	steps: readonly CameraStep[],
+	framings: readonly Framing[],
+	period: number,
+	count = 2000,
+): number => {
+	const moved = viewKeys(steps, framings, stage, period);
+	const keys = keysOf(moved.initial, moved.steps, period);
+	// A cut is one nudge wide in the keys: not a place to measure
+	const cuts = steps.flatMap((s) =>
+		s.ease.kind === "steps" && s.over > 0
+			? Array.from(
+					{ length: s.ease.count + 1 },
+					(_, j) =>
+						s.start +
+						(s.over * j) / (s.ease.kind === "steps" ? s.ease.count : 1),
+				)
+			: [s.start],
+	);
+	let worst = 0;
+	for (let i = 0; i <= count; i++) {
+		const t = (i / count) * period;
+		if (cuts.some((c) => Math.abs(t - c) < 1e-3)) continue;
+		const exact = viewAt(steps, framings, stage, t);
+		const got = sampleAt(keys, t);
+		const [x, y, k] = [Number(got.x), Number(got.y), Number(got.scale)];
+		worst = Math.max(
+			worst,
+			Math.hypot(exact.x * k + x, exact.y * k + y),
+			Math.hypot(
+				(exact.x + exact.width) * k + x - stage.width,
+				(exact.y + exact.height) * k + y - stage.height,
+			),
+		);
+	}
+	return worst;
+};
+const fixedAt = (x: number, y: number, width: number): Framing => ({
+	at: () => ({ x, y, width, height: width / 2 }),
+	breaks: [],
+});
+
 describe("viewKeys", () => {
 	it("stays within half a pixel of the exact view", () => {
 		const eases = ["linear", "inOut", "out", "spring", "steps(3)"] as const;
@@ -263,11 +306,7 @@ describe("viewKeys", () => {
 		fc.assert(
 			fc.property(
 				fc.array(target, { minLength: 1, maxLength: 4 }),
-				fc.array(fc.double({ min: 0, max: 1, noNaN: true }), {
-					minLength: 8,
-					maxLength: 8,
-				}),
-				(targets, probes) => {
+				(targets) => {
 					const period = 10;
 					const sorted = [...targets].sort((a, b) => a.start - b.start);
 					const steps: CameraStep[] = sorted.map((s, i) => ({
@@ -289,39 +328,38 @@ describe("viewKeys", () => {
 						}),
 						breaks: [],
 					}));
-					const moved = viewKeys(steps, framings, stage, period);
-					const keys = keysOf(moved.initial, moved.steps, period);
-					for (const u of probes) {
-						const t = u * period;
-						// A cut is one nudge wide in the keys: not a place to measure
-						if (steps.some((s) => Math.abs(t - s.start) < 1e-3)) continue;
-						if (
-							steps.some(
-								(s) =>
-									s.ease.kind === "steps" &&
-									s.over > 0 &&
-									[1, 2, 3].some(
-										(j) => Math.abs(t - s.start - (s.over * j) / 3) < 1e-3,
-									),
-							)
-						)
-							continue;
-						const exact = viewAt(steps, framings, stage, t);
-						const got = sampleAt(keys, t);
-						const [x, y, k] = [Number(got.x), Number(got.y), Number(got.scale)];
-						const corner = Math.max(
-							Math.hypot(exact.x * k + x, exact.y * k + y),
-							Math.hypot(
-								(exact.x + exact.width) * k + x - stage.width,
-								(exact.y + exact.height) * k + y - stage.height,
-							),
-						);
-						expect(corner).toBeLessThan(0.5);
-					}
+					expect(worstMiss(steps, framings, period, 700)).toBeLessThan(0.5);
 				},
 			),
 			{ numRuns: 200 },
 		);
+	});
+
+	it("holds that through the fast start of an eased move", () => {
+		const out = resolveEase("out");
+		const cut = { start: 0, over: 0, ease: resolveEase("linear"), framing: 0 };
+		// A cut in, then a pull-out; a pan; a slow pull-out
+		expect(
+			worstMiss(
+				[cut, { start: 0, over: 3, ease: out, framing: 1 }],
+				[fixedAt(0, 0, 100), fixedAt(0, 0, 176)],
+				10,
+			),
+		).toBeLessThan(0.5);
+		expect(
+			worstMiss(
+				[cut, { start: 2, over: 0.5, ease: out, framing: 1 }],
+				[fixedAt(0, 0, 100), fixedAt(300, 100, 100)],
+				10,
+			),
+		).toBeLessThan(0.5);
+		expect(
+			worstMiss(
+				[cut, { start: 2, over: 1.5, ease: out, framing: 1 }],
+				[fixedAt(0, 0, 100), fixedAt(0, 0, 400)],
+				10,
+			),
+		).toBeLessThan(0.5);
 	});
 });
 
@@ -539,6 +577,81 @@ describe("Camera", () => {
 		expect(turn.x).toBeGreaterThan(130);
 		expect(turn.y).toBeLessThan(30);
 		expect(lookingAt(ast, 2)).toMatchObject({ x: 190, y: 95 });
+	});
+
+	/** How far the middle of the viewport is from a point that moves, at its worst. */
+	const strays = (
+		ast: ReturnType<typeof render>["ast"],
+		at: (t: number) => { x: number; y: number },
+		[from, to]: readonly [number, number],
+	): number => {
+		let worst = 0;
+		for (let i = 0; i <= 600; i++) {
+			const t = from + ((to - from) * i) / 600;
+			const [seen, p] = [lookingAt(ast, t), at(t)];
+			worst = Math.max(
+				worst,
+				Math.hypot(seen.x - p.x, seen.y - p.y) * seen.scale,
+			);
+		}
+		return worst;
+	};
+
+	it("keeps a followed mark in the middle while an ease moves it", () => {
+		for (const ease of ["inOut", "out", "spring", "bounce", "elastic"]) {
+			const { ast } = render([
+				a,
+				box("far", 300, 100),
+				box("m", 200, 0),
+				{
+					type: "Enter",
+					id: "slide",
+					props: { at: 1, over: 1, from: { x: -200 }, ease },
+					children: [ref("m")],
+				},
+				camera("on", { at: 0, over: 0, follow: true, padding: 10 }, "m"),
+			]);
+			const shape = resolveEase(ease as Ease);
+			const stray = strays(
+				ast,
+				(t) => ({ x: 210 - 200 * (1 - easeAt(shape, t - 1)), y: 5 }),
+				[0.9, 2.1],
+			);
+			expect(stray, ease).toBeLessThan(0.5);
+		}
+	});
+
+	it("keeps a mark in the middle while a Modulate moves it on a spring", () => {
+		for (const ease of ["inOut", "spring", "elastic"]) {
+			const { ast } = render([
+				{
+					type: "StackH",
+					id: "row",
+					props: { spacing: 10 },
+					children: [box("p", 0, 0), box("q", 0, 0), box("m", 0, 0)],
+				},
+				{
+					type: "Modulate",
+					id: "spread",
+					props: { at: 1, over: 1, ease },
+					children: [
+						{
+							type: "StackH",
+							props: { spacing: 100 },
+							children: [ref("p"), ref("q"), ref("m")],
+						},
+					],
+				},
+				camera("on", { at: 0, over: 0, padding: 10 }, "m"),
+			]);
+			const shape = resolveEase(ease as Ease);
+			const stray = strays(
+				ast,
+				(t) => ({ x: 70 + 180 * easeAt(shape, t - 1), y: 5 }),
+				[0.9, 2.1],
+			);
+			expect(stray, ease).toBeLessThan(0.5);
+		}
 	});
 
 	it("is placed in time by Sequence and OnBeat like any timed leaf", () => {
@@ -898,7 +1011,7 @@ describe("a motion on a camera", () => {
 				},
 			]),
 		).toThrow(
-			"Camera(on) cannot animate fill; a motion on a camera takes x, y, scale, rotate, opacity or blur",
+			"Camera(on) cannot animate fill; a motion on a camera takes x, y, scale, rotate, opacity, blur or a crop",
 		);
 	});
 });

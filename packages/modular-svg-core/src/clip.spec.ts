@@ -292,6 +292,36 @@ describe("Clip and Mask in the parser", () => {
 		]);
 	});
 
+	it("lets a paint motion on the clip itself recolour its content", () => {
+		const tint = (target: string): N => ({
+			type: "Motion",
+			id: "tint",
+			props: { steps: [{ to: { fill: "blue" }, over: 1 }] },
+			children: [ref(target)],
+		});
+		const c = clip("c", [rect("s"), rect("x")]);
+		expect(warningsOf([c, tint("c")])).toEqual([]);
+		expect(
+			warningsOf([{ type: "Group", id: "g", children: [c] }, tint("g")]),
+		).toEqual([]);
+	});
+
+	it("warns about content of one clip that shapes another", () => {
+		const scene = sceneOf([
+			clip("c1", [rect("s1"), rect("k1")]),
+			clip("c2", [ref("k1"), rect("k2")]),
+		]);
+		expect(scene.warnings).toEqual([
+			"Clip(c2): its shape k1 is inside Clip(c1), and a shape is not drawn, so k1 no longer shows there; declare a second mark and Span or Align it",
+		]);
+		// A shape declared in its own clip, itself inside another, is no such thing
+		expect(
+			warningsOf([
+				clip("outer", [rect("s"), clip("inner", [rect("t"), rect("x")])]),
+			]),
+		).toEqual([]);
+	});
+
 	it("warns about props it cannot read", () => {
 		expect(
 			warningsOf([
@@ -386,13 +416,8 @@ describe("Clip and Mask in the document", () => {
 			attrs: { mask: `url(#${mask.id})` },
 		});
 		expect(ids([ast.children[1]])).toEqual(["a", "b"]);
-		// Three canvases, so what leaves the canvas is not cut at its edge
-		expect(mask).toMatchObject({
-			x: -ast.width,
-			y: -ast.height,
-			width: ast.width * 3,
-			height: ast.height * 3,
-		});
+		// No larger than where the shape is
+		expect(mask.width).toBeLessThan(110);
 	});
 
 	it("puts a white backdrop under a black shape when inverse", () => {
@@ -431,7 +456,7 @@ describe("Clip and Mask in the document", () => {
 		]);
 		const svg = layoutToSvg(layout, scene.nodes);
 		expect(svg).toMatch(
-			/<svg[^>]*><defs><mask id="ms\w+-m0" maskUnits="userSpaceOnUse" x="-40" y="-20" width="120" height="60" mask-type="alpha"><rect id="s"/,
+			/<svg[^>]*><defs><mask id="ms\w+-m0" maskUnits="userSpaceOnUse" x="0" y="0" width="40" height="20" mask-type="alpha"><rect id="s"/,
 		);
 		expect(
 			layoutToSvg(
@@ -726,5 +751,176 @@ describe("Clip and Mask in time", () => {
 		const ast = layoutToAst(layout, scene.nodes);
 		expect(ast.css).toContain("width:300px");
 		expect(shellsOf(ast.defs?.[0].children ?? [], "window")).toBe(0);
+	});
+});
+
+describe("a matte's region", () => {
+	const room = rect("room", { width: 400, height: 200, fill: "none" });
+	const win = rect("win", { x: 190, y: 112, width: 20, height: 4 });
+	const content = rect("in", { x: 185, y: 110, width: 30, height: 8 });
+	const inside = clip("c", [win, content]);
+	const outside = clip("c", [win, content], { inverse: true });
+	type Box = { x: number; y: number; width: number; height: number };
+	const regionOf = (
+		children: N[],
+		opts: Parameters<typeof layoutToAst>[3] = {},
+	): Box => {
+		const [{ x, y, width, height }] = astOf(children, opts).defs ?? [];
+		return { x, y, width, height };
+	};
+	const canvas = { x: 0, y: 0, width: 400, height: 200 };
+	const holds = (outer: Box, inner: Box, slack = Infinity) => {
+		const sides = [
+			inner.x - outer.x,
+			inner.y - outer.y,
+			outer.x + outer.width - inner.x - inner.width,
+			outer.y + outer.height - inner.y - inner.height,
+		];
+		expect(Math.min(...sides)).toBeGreaterThanOrEqual(0);
+		expect(Math.max(...sides)).toBeLessThanOrEqual(slack);
+	};
+	const move = (target: string, props: N, type = "Motion"): N => ({
+		type,
+		id: "move",
+		props,
+		children: [ref(target)],
+	});
+	const to = (values: N, from?: N): N => ({
+		...(from ? { from } : {}),
+		steps: [{ to: values, over: 1 }],
+	});
+
+	it("is the shape's own box, with a little room, when the shape stays put", () => {
+		holds(regionOf([room, inside]), win.props as Box, 4);
+		// A soft edge fades over more than its feather
+		const soft = regionOf([room, clip("c", [win, content], { feather: 5 })]);
+		holds(soft, { x: 180, y: 102, width: 40, height: 24 }, 12);
+	});
+
+	it("holds wherever a motion or a Modulate takes the shape", () => {
+		const slid = regionOf([room, inside, move("win", to({ x: 100, y: -50 }))]);
+		holds(slid, { x: 190, y: 62, width: 120, height: 54 }, 4);
+		const sprung = regionOf([
+			room,
+			inside,
+			move("win", { ...to({ x: 100 }), ease: "spring" }),
+		]);
+		holds(sprung, { x: 190, y: 112, width: 120, height: 4 }, 4);
+		const wiped = regionOf([
+			room,
+			inside,
+			move("win", to({ width: 150 }, { width: 0 })),
+		]);
+		holds(wiped, { x: 190, y: 112, width: 150, height: 4 }, 4);
+		const grown = regionOf([room, inside, move("win", to({ scale: 3 }))]);
+		holds(grown, { x: 170, y: 108, width: 60, height: 12 }, 4);
+		const turned = regionOf([room, inside, move("win", to({ rotate: 90 }))]);
+		holds(turned, { x: 190, y: 104, width: 20, height: 20 }, 4);
+		const spanned = regionOf([
+			rect("wide", { width: 300, height: 10, y: 150 }),
+			room,
+			inside,
+			{
+				type: "Modulate",
+				id: "grow",
+				props: { at: 0, over: 1 },
+				children: [{ type: "Span", children: [ref("wide"), ref("win")] }],
+			},
+		]);
+		holds(spanned, { x: 0, y: 112, width: 300, height: 4 }, 200);
+		expect(spanned.height).toBeLessThan(60);
+	});
+
+	it("is cut to what the picture shows", () => {
+		const iris = regionOf([room, inside, move("win", to({ scale: 60 }))]);
+		expect(iris).toEqual(canvas);
+	});
+
+	it("is not cut when the clip itself is moved, which brings other parts into view", () => {
+		const slide = { ...move("win", to({ x: -300 })), id: "slide" };
+		// Cut to the canvas while the clip stays where it is
+		expect(regionOf([room, inside, slide]).x).toBe(0);
+		const carried = regionOf([room, inside, slide, move("c", to({ x: 300 }))]);
+		holds(carried, { x: -110, y: 112, width: 320, height: 4 }, 4);
+	});
+
+	it("is all the picture shows for a shape whose box says little: text, a path, a connector", () => {
+		const text: N = { type: "Text", id: "t", props: { text: "CUT", x: 10 } };
+		expect(regionOf([room, clip("c", [text, content])])).toEqual(canvas);
+	});
+
+	it("is all the picture shows for an inverse clip", () => {
+		expect(regionOf([room, outside])).toEqual(canvas);
+	});
+
+	it("holds what a viewport of another shape shows round the canvas", () => {
+		const region = regionOf([room, outside], {
+			view: { width: 400, height: 800 },
+		});
+		expect(region).toEqual({ x: 0, y: -300, width: 400, height: 800 });
+	});
+
+	it("holds every view of a camera and no more", () => {
+		const camera = (props: N, ...targets: string[]): N => ({
+			type: "Camera",
+			id: "cam",
+			props,
+			children: targets.map(ref),
+		});
+		// Zoomed in: nothing shows beyond the canvas
+		expect(
+			regionOf([
+				room,
+				outside,
+				camera({ at: 0.3, over: 0.5, padding: 14 }, "in"),
+			]),
+		).toEqual(canvas);
+		// Padding takes the view past the canvas's edge
+		const corner = rect("corner", { x: 0, y: 0, width: 10, height: 10 });
+		const wide = regionOf([
+			room,
+			corner,
+			outside,
+			camera({ at: 0.3, over: 0.5, padding: 20 }, "corner"),
+		]);
+		expect(wide.x).toBeLessThanOrEqual(-20);
+		expect(wide.y).toBeLessThanOrEqual(-10);
+		expect(wide.x).toBeGreaterThan(-60);
+		expect(wide.width).toBeLessThan(470);
+	});
+
+	it("grows by what a motion on the camera shows past the view", () => {
+		const camera: N = {
+			type: "Camera",
+			id: "cam",
+			props: { at: 0, over: 0 },
+		};
+		const on = (type: string, props: N): N => ({
+			type,
+			id: "move",
+			props: { at: 0.2, over: 0.4, ...props },
+			children: [ref("cam")],
+		});
+		const shaken = regionOf([
+			room,
+			outside,
+			camera,
+			on("Shake", { amplitude: { x: 12 } }),
+		]);
+		expect(shaken.x).toBeLessThanOrEqual(-9);
+		expect(shaken.x + shaken.width).toBeGreaterThanOrEqual(409);
+		expect(shaken.width).toBeLessThan(440);
+		expect(shaken.height).toBe(200);
+		// Pulled back to half size, the viewport shows twice as much
+		const pulled = regionOf([
+			room,
+			outside,
+			camera,
+			on("Motion", { steps: [{ to: { scale: 0.5 }, over: 0.4 }] }),
+		]);
+		expect(pulled.x).toBeLessThanOrEqual(-200);
+		expect(pulled.y).toBeLessThanOrEqual(-100);
+		expect(pulled.width).toBeGreaterThanOrEqual(800);
+		expect(pulled.width).toBeLessThan(900);
 	});
 });

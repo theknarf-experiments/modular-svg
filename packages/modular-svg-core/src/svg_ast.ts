@@ -27,6 +27,7 @@ import {
 } from "./math.ts";
 import type { LayoutResult, Matte, NodeRecord } from "./solver/index.ts";
 import { lineEndpoints } from "./solver/index.ts";
+import type { LayoutBox } from "./solver/phases.ts";
 
 // Extra SVG attributes passed through from the scene
 export type PassthroughAttrs = Record<string, string | number>;
@@ -168,6 +169,34 @@ export type SvgDocument = {
 
 // A matte blurred by `feather` still shows this many feathers past its edge
 const FEATHER_REACH = 2;
+// Marks whose box is where they paint
+const BOXED = ["rect", "circle", "arc", "image"];
+
+const around = (a: LayoutBox, b: LayoutBox): LayoutBox => {
+	const [x, y] = [Math.min(a.x, b.x), Math.min(a.y, b.y)];
+	return {
+		x,
+		y,
+		width: Math.max(a.x + a.width, b.x + b.width) - x,
+		height: Math.max(a.y + a.height, b.y + b.height) - y,
+	};
+};
+const grown = (b: LayoutBox, by: number): LayoutBox => ({
+	x: b.x - by,
+	y: b.y - by,
+	width: b.width + by * 2,
+	height: b.height + by * 2,
+});
+const overlap = (a: LayoutBox, b: LayoutBox): LayoutBox | undefined => {
+	const [x, y] = [Math.max(a.x, b.x), Math.max(a.y, b.y)];
+	const [right, bottom] = [
+		Math.min(a.x + a.width, b.x + b.width),
+		Math.min(a.y + a.height, b.y + b.height),
+	];
+	return right > x && bottom > y
+		? { x, y, width: right - x, height: bottom - y }
+		: undefined;
+};
 
 /** Nodes that only exist in time take no space. */
 const isTimeOnly = (n: NodeRecord | undefined): boolean =>
@@ -764,19 +793,59 @@ export function layoutToAst(
 			.sort((a, b) => a.zOrder - b.zOrder || a.i - b.i)
 			.flatMap((g) => g.elements);
 
-	// A matte spans three canvases, so a shape or content that a motion takes
-	// off the canvas and back is not cut at its edge
-	const region = {
-		x: -Math.max(width, 1),
-		y: -Math.max(height, 1),
-		width: Math.max(width, 1) * 3,
-		height: Math.max(height, 1) * 3,
+	// A matte spans no more than it has to: the browser rasters an animated
+	// layer at a scale that falls with its bounds, so a matte over the whole
+	// picture would soften every zoom of a camera. What the picture can show
+	// is the canvas and every view of it
+	const shown = [
+		{ x: 0, y: 0, width: Math.max(width, 1), height: Math.max(height, 1) },
+		...(stage ? [everything(stage)] : []),
+		...(animation?.camera ? [animation.camera.reach] : []),
+	];
+	const visible = shown.reduce(around);
+	const moved = (id: string | undefined): boolean =>
+		id !== undefined &&
+		((animation?.marks.get(id)?.shells.length ?? 0) > 0 ||
+			moved(byId.get(id)?.within));
+	// A clip shows nothing outside its shape, so its matte need only reach
+	// where its shape gets to. Only a box that says where the mark paints
+	// can tell: text, paths and connectors do not
+	const regionOf = (node: NodeRecord, matte: Matte): LayoutBox => {
+		const boxes = matte.shapes.map((id) => {
+			const [mark, box] = [byId.get(id), layout[id]];
+			if (!mark || !box || !BOXED.includes(mark.type ?? "")) return undefined;
+			const reach = animation?.marks.get(id)?.reach ?? {
+				...box,
+				x: box.x + offset.x,
+				y: box.y + offset.y,
+			};
+			return grown(
+				reach,
+				(mark.strokeWidth ?? 3) / 2 + matte.feather * FEATHER_REACH + 1,
+			);
+		});
+		const reach =
+			!matte.inverse && boxes.length > 0 && boxes.every((b) => b !== undefined)
+				? (boxes as LayoutBox[]).reduce(around)
+				: undefined;
+		// Seen through a motion on the clip, other parts come into the picture
+		const cut =
+			reach && !moved(node.id) ? (overlap(reach, visible) ?? reach) : reach;
+		const { x, y, width, height } = cut ?? visible;
+		const [left, top] = [Math.floor(x), Math.floor(y)];
+		return {
+			x: left + 0,
+			y: top + 0,
+			width: Math.max(1, Math.ceil(x + width) - left),
+			height: Math.max(1, Math.ceil(y + height) - top),
+		};
 	};
 	const mattes = clips.map(({ node, matte }) => {
 		const drawn = painted(shapes.get(node.id) ?? []);
 		return {
 			by: matte.by,
 			inverse: matte.inverse,
+			region: regionOf(node, matte),
 			children:
 				matte.feather > 0
 					? [
@@ -791,9 +860,9 @@ export function layoutToAst(
 	});
 	const prefix =
 		opts.idPrefix ??
-		(clips.length > 0 ? `ms${hash(JSON.stringify([region, mattes]))}-` : "");
+		(clips.length > 0 ? `ms${hash(JSON.stringify(mattes))}-` : "");
 	const defs = mattes.map(
-		({ by, inverse, children }, k): MaskElement => ({
+		({ by, inverse, region, children }, k): MaskElement => ({
 			type: "mask",
 			id: `${prefix}m${k}`,
 			...region,

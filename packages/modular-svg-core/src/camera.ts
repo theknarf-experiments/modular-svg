@@ -5,6 +5,7 @@
 import {
 	type Expanded,
 	easeAt,
+	easeTurns,
 	type ResolvedEase,
 	ramerDouglasPeucker,
 	type Step,
@@ -44,8 +45,12 @@ export function stageOf(
 		(home.width > 0 && home.height > 0 ? home.width / home.height : 1);
 	if (width !== undefined && height !== undefined)
 		return { home, width, height };
-	if (width !== undefined) return { home, width, height: width / aspect };
-	if (height !== undefined) return { home, width: height * aspect, height };
+	// A side worked out from the other is a whole pixel, where it has one
+	const whole = (side: number): number => (side >= 1 ? Math.round(side) : side);
+	if (width !== undefined)
+		return { home, width, height: whole(width / aspect) };
+	if (height !== undefined)
+		return { home, width: whole(height * aspect), height };
 	if (view.aspect === undefined) return { home, ...home };
 	// The smallest viewport of that aspect that holds the canvas
 	return home.width >= home.height * aspect
@@ -235,22 +240,21 @@ export function viewAt(
 
 // How far a sampled view may stray from the exact one before a stretch is
 // halved, and how far thinning may move it again, in px on screen
-const MISS = 0.3;
+const MISS = 0.25;
 const THIN = 0.15;
-// The most halvings of one stretch between two breaks: 32 pieces
-const DEPTH = 5;
-// A stretch is not cut finer than this part of the timeline, so no two
-// keyframes share a percentage
-const FINEST = 1e-4;
+// Where between two samples the straight piece is held against the exact view
+const PROBES = [1, 2, 3, 4, 5, 6, 7].map((i) => i / 8);
+// A stretch is not cut finer than this part of the timeline: a piece shorter
+// than keysOf's nudge would be read as a cut
+const FINEST = 2.5e-5;
 
 type Sample = { t: number; v: [x: number, y: number, scale: number] };
 
 /**
  * The view as keyframes of its transform (`x`, `y`, `scale`): CSS moves
  * linearly between two keys, which gets neither the geometric zoom nor a
- * framing that itself moves, so each moving stretch is sampled into straight
- * pieces (32 at most) that stay within half a pixel of the exact view on
- * screen wherever that many can.
+ * framing that itself moves, so each moving stretch is halved into straight
+ * pieces until they stay within half a pixel of the exact view on screen.
  */
 export function viewKeys(
 	steps: readonly CameraStep[],
@@ -266,14 +270,8 @@ export function viewKeys(
 		times.add(s.start);
 		times.add(settled);
 		// An ease turns at its stops and jumps at its steps
-		const { ease } = s;
-		const turns =
-			ease.kind === "stops"
-				? ease.stops.map(([x]) => x)
-				: ease.kind === "steps"
-					? Array.from({ length: ease.count + 1 }, (_, j) => j / ease.count)
-					: [];
-		if (s.over > 0) for (const x of turns) times.add(s.start + s.over * x);
+		if (s.over > 0)
+			for (const x of easeTurns(s.ease)) times.add(s.start + s.over * x);
 		const within = (i: number, end: number): void => {
 			const framing = steps[i]?.framing ?? "everything";
 			if (framing === "everything") return;
@@ -300,11 +298,14 @@ export function viewKeys(
 	// How far the corners of the exact view land from the viewport's, shown
 	// by `v` instead
 	const miss = (exact: View, v: Sample["v"]): number =>
-		Math.max(
-			Math.hypot(exact.x * v[2] + v[0], exact.y * v[2] + v[1]),
-			Math.hypot(
-				(exact.x + exact.width) * v[2] + v[0] - stage.width,
-				(exact.y + exact.height) * v[2] + v[1] - stage.height,
+		Math.hypot(
+			Math.max(
+				Math.abs(exact.x * v[2] + v[0]),
+				Math.abs((exact.x + exact.width) * v[2] + v[0] - stage.width),
+			),
+			Math.max(
+				Math.abs(exact.y * v[2] + v[1]),
+				Math.abs((exact.y + exact.height) * v[2] + v[1] - stage.height),
 			),
 		);
 	const between = (a: Sample, b: Sample, u: number): Sample["v"] => [
@@ -313,10 +314,10 @@ export function viewKeys(
 		a.v[2] + (b.v[2] - a.v[2]) * u,
 	];
 	// The samples strictly between a and b that straight pieces need
-	const refine = (a: Sample, b: Sample, depth: number): Sample[] => {
+	const refine = (a: Sample, b: Sample): Sample[] => {
 		const half = (b.t - a.t) / 2;
-		if (depth >= DEPTH || half < finest) return [];
-		const far = [0.25, 0.5, 0.75].some(
+		if (half < finest) return [];
+		const far = PROBES.some(
 			(u) =>
 				miss(
 					viewAt(steps, framings, stage, a.t + (b.t - a.t) * u),
@@ -325,7 +326,7 @@ export function viewKeys(
 		);
 		if (!far) return [];
 		const mid = at(a.t + half);
-		return [...refine(a, mid, depth + 1), mid, ...refine(mid, b, depth + 1)];
+		return [...refine(a, mid), mid, ...refine(mid, b)];
 	};
 	// Where the far corners of the canvas (and half as much again around it)
 	// land: everything nearer moves less, so thinning by these is safe
@@ -371,7 +372,7 @@ export function viewKeys(
 		// A stretch too short to ramp over is a cut where it ends
 		if (t1 - t0 >= finest) {
 			const to = { ...(cut ? before : after), t: t1 };
-			run.push(...refine(from, to, 0), to);
+			run.push(...refine(from, to), to);
 		} else run.push({ ...from, t: t1 });
 		if (!cut && t1 - t0 >= finest) continue;
 		if (!jumped(run[run.length - 1], after)) continue;
@@ -386,4 +387,59 @@ export function viewKeys(
 	}
 	flush();
 	return { initial: values(first), steps: out };
+}
+
+/** The most a motion on the camera does to the picture: px it slides, degrees it turns, the smallest it scales. */
+export type Sway = { x: number; y: number; rotate: number; scale: number };
+
+/**
+ * The box round everything the viewport shows over the timeline, in canvas
+ * coordinates: every one of `views`, grown by what motions on the camera
+ * (outermost first) show past the view.
+ */
+export function reachOf(
+	views: readonly View[],
+	stage: Stage,
+	sways: readonly Sway[] = [],
+): LayoutBox {
+	// The viewport's half extents, seen back through each motion
+	let [across, down] = [stage.width / 2, stage.height / 2];
+	for (const sway of sways) {
+		across += Math.abs(sway.x);
+		down += Math.abs(sway.y);
+		const turn = (Math.min(Math.abs(sway.rotate), 90) * Math.PI) / 180;
+		// The widest a turning box gets is at the angle of its diagonal
+		const widest = (a: number, b: number): number =>
+			turn >= Math.atan2(b, a)
+				? Math.hypot(a, b)
+				: a * Math.cos(turn) + b * Math.sin(turn);
+		[across, down] = [widest(across, down), widest(down, across)];
+		const least = Math.max(sway.scale, 0.05);
+		across /= least;
+		down /= least;
+	}
+	const [fx, fy] = [across / (stage.width / 2), down / (stage.height / 2)];
+	let [x0, y0, x1, y1, wide, tall] = [
+		Infinity,
+		Infinity,
+		-Infinity,
+		-Infinity,
+		0,
+		0,
+	];
+	for (const v of views) {
+		x0 = Math.min(x0, v.x);
+		y0 = Math.min(y0, v.y);
+		x1 = Math.max(x1, v.x + v.width);
+		y1 = Math.max(y1, v.y + v.height);
+		wide = Math.max(wide, v.width);
+		tall = Math.max(tall, v.height);
+	}
+	const [gx, gy] = [(wide / 2) * (fx - 1), (tall / 2) * (fy - 1)];
+	return {
+		x: x0 - gx,
+		y: y0 - gy,
+		width: x1 - x0 + gx * 2,
+		height: y1 - y0 + gy * 2,
+	};
 }

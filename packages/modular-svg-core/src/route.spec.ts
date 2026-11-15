@@ -147,6 +147,23 @@ describe("along", () => {
 			expect(Math.abs(((angle - 360 * f + 540) % 360) - 180)).toBeLessThan(0.5);
 		}
 	});
+	it("heads along the tangent at both ends of an open curve", () => {
+		for (const r of [12, 80]) {
+			const half = routeOf(arcPoints(30, 30, r, 0, 180));
+			const total = half.lengths[half.lengths.length - 1];
+			expect(Math.abs(along(half, 0).angle)).toBeLessThan(0.1);
+			expect(Math.abs(along(half, total).angle - 180)).toBeLessThan(0.1);
+			expect(Math.abs(along(half, total / 2).angle - 90)).toBeLessThan(0.1);
+		}
+		// Straight to a corner: the first leg's own direction
+		const bent = routeOf([
+			{ x: 0, y: 0 },
+			{ x: 50, y: 0 },
+			{ x: 50, y: 50 },
+		]);
+		expect(along(bent, 0).angle).toBe(0);
+		expect(along(bent, 100).angle).toBe(90);
+	});
 });
 
 describe("arcPoints", () => {

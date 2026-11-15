@@ -5,7 +5,9 @@ import {
 	foldCameras,
 	INHERIT,
 	mergeCameraSteps,
+	reachOf,
 	type Stage,
+	type Sway,
 	viewKeys,
 } from "./camera.ts";
 import {
@@ -15,6 +17,7 @@ import {
 	clampEase,
 	type Expanded,
 	easeAt,
+	easeTurns,
 	expandMotion,
 	type Key,
 	keysOf,
@@ -79,6 +82,8 @@ export type MarkAnimation = {
 	smil: SmilAnimate[];
 	/** wrapper groups, outermost first, one per motion with nesting lanes */
 	shells: { class: string }[];
+	/** a box that holds the mark's own box through all of this, in canvas coordinates */
+	reach?: LayoutBox;
 	/**
 	 * For SMIL path morphs, which CSS cannot pause: the path data at the
 	 * reduced-motion still frame, and the classes that show either the moving
@@ -118,7 +123,12 @@ export type CompiledAnimation = {
 	 * The view: the class of the group round every mark, and the shells of the
 	 * motions on cameras, which wrap that group
 	 */
-	camera?: { class: string; shells: { class: string }[] };
+	camera?: {
+		class: string;
+		shells: { class: string }[];
+		/** the box round everything the viewport shows, in canvas coordinates */
+		reach: LayoutBox;
+	};
 };
 
 type Lane = {
@@ -604,6 +614,109 @@ const around = (a: LayoutBox, b: LayoutBox): LayoutBox => {
 };
 
 const TRANSLATE = (c: Channel): boolean => c === "x" || c === "y";
+
+/** The least and most each channel of a motion reaches, rest and overshoot included. */
+const spansOf = (e: Expanded): ((c: Channel) => [number, number]) => {
+	// How far past its ends an ease goes, as a part of the way
+	const past = Math.max(
+		0,
+		...e.steps.map(({ ease }) => {
+			const ys =
+				ease.kind === "stops"
+					? ease.stops.map(([, y]) => y)
+					: ease.kind === "bezier"
+						? [ease.points[1], ease.points[3]]
+						: [];
+			return Math.max(0, ...ys.map((y) => Math.max(-y, y - 1)));
+		}),
+	);
+	const all = [e.initial, ...e.steps.map((s) => s.values)];
+	return (c) => {
+		const rest = CHANNELS[c].identity ?? 0;
+		const values = all.flatMap((v) =>
+			typeof v[c] === "number" ? [v[c] as number] : [],
+		);
+		const [lo, hi] = [Math.min(rest, ...values), Math.max(rest, ...values)];
+		return [lo - (hi - lo) * past, hi + (hi - lo) * past];
+	};
+};
+
+/** The furthest a motion takes each of its transforms. */
+function swayOf(e: Expanded): Sway {
+	const span = spansOf(e);
+	const most = (c: Channel): number => Math.max(...span(c).map(Math.abs));
+	return {
+		x: most("x"),
+		y: most("y"),
+		rotate: most("rotate"),
+		scale: span("scale")[0],
+	};
+}
+
+/**
+ * A box that holds `box` through everything the motions and changes of
+ * layout on its mark do to it. Generous rather than exact: it bounds what a
+ * matte has to cover.
+ */
+function sweptBox(box: LayoutBox, list: readonly Contribution[]): LayoutBox {
+	let [x0, y0, x1, y1] = [box.x, box.y, box.x + box.width, box.y + box.height];
+	const take = (x: number, y: number): void => {
+		[x0, y0, x1, y1] = [
+			Math.min(x0, x),
+			Math.min(y0, y),
+			Math.max(x1, x),
+			Math.max(y1, y),
+		];
+	};
+	// Innermost first: the layout's shell, then the motions' from the last
+	for (const { expanded, pivot, origin } of [
+		...list.filter((c) => !c.layout),
+		...list.filter((c) => c.layout),
+	].reverse()) {
+		const has = touched(expanded);
+		const span = spansOf(expanded);
+		if ("width" in has) x1 = Math.max(x1, x0 + span("width")[1]);
+		if ("height" in has) y1 = Math.max(y1, y0 + span("height")[1]);
+		if ("r" in has) {
+			const [cx, cy, r] = [(x0 + x1) / 2, (y0 + y1) / 2, span("r")[1]];
+			take(cx - r, cy - r);
+			take(cx + r, cy + r);
+		}
+		const halo = 3 * span("blur")[1];
+		const [dx, dy] = [span("x"), span("y")];
+		[x0, y0, x1, y1] = [
+			x0 + dx[0] - halo,
+			y0 + dy[0] - halo,
+			x1 + dx[1] + halo,
+			y1 + dy[1] + halo,
+		];
+		// The pivot rides with its target as layout moves it
+		const drift = origin ? swayOf(origin) : { x: 0, y: 0 };
+		const corners = [
+			[x0, y0],
+			[x1, y1],
+		];
+		if ("scale" in has)
+			for (const k of span("scale"))
+				for (const [x, y] of corners)
+					for (const sign of [-1, 1])
+						take(
+							pivot.x + (x - pivot.x) * k + sign * Math.abs(1 - k) * drift.x,
+							pivot.y + (y - pivot.y) * k + sign * Math.abs(1 - k) * drift.y,
+						);
+		if ("rotate" in has) {
+			const far =
+				Math.max(
+					...[x0, x1].flatMap((x) =>
+						[y0, y1].map((y) => Math.hypot(x - pivot.x, y - pivot.y)),
+					),
+				) + Math.hypot(drift.x, drift.y);
+			take(pivot.x - far, pivot.y - far);
+			take(pivot.x + far, pivot.y + far);
+		}
+	}
+	return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
 
 const opposite = (e: Expanded): Expanded => {
 	const flip = (values: Values): Values =>
@@ -1338,7 +1451,7 @@ export function compileAnimation(
 				for (const c of Object.keys(touched(expanded)) as Channel[])
 					if (!CHANNELS[c].nest)
 						throw new Error(
-							`Camera(${target.id}) cannot animate ${c}; a motion on a camera takes x, y, scale, rotate, opacity or blur`,
+							`Camera(${target.id}) cannot animate ${c}; a motion on a camera takes x, y, scale, rotate, opacity, blur or a crop`,
 						);
 			const pivot = onCamera
 				? { x: stage.width / 2, y: stage.height / 2 }
@@ -1570,6 +1683,10 @@ export function compileAnimation(
 			attrs,
 			smil: smils,
 			shells,
+			reach: sweptBox(
+				{ ...box, x: box.x + offset.x, y: box.y + offset.y },
+				list,
+			),
 			...(stillD !== undefined
 				? {
 						still: {
@@ -1635,7 +1752,7 @@ export function compileAnimation(
 			if (camera.follow) carriers ??= carriersOf();
 			// Marks that stay put are framed once; the rest at every sample
 			const still: string[] = [];
-			const moving = new Map<string, (t: number) => LayoutBox>();
+			const tracked = new Map<string, (t: number) => LayoutBox>();
 			const breaks = new Set<number>();
 			for (const id of camera.frames) {
 				const box = layout[id];
@@ -1654,19 +1771,25 @@ export function compileAnimation(
 					moves,
 					carried.map((c) => c.played()),
 				);
+				// A framed mark turns wherever its keys do, and wherever their eases do
 				for (const { keys } of track.tracks)
-					for (const k of keys) breaks.add(k.t);
-				moving.set(id, track.at);
+					keys.forEach((k, i) => {
+						breaks.add(k.t);
+						if (!moving(keys, i)) return;
+						const over = keys[i + 1].t - k.t;
+						for (const x of easeTurns(k.ease)) breaks.add(k.t + over * x);
+					});
+				tracked.set(id, track.at);
 			}
 			const rest = framedBox(still, (id) => layout[id], byId);
-			if (moving.size === 0) {
+			if (tracked.size === 0) {
 				const fixed = fitted(rest, camera);
 				return { at: () => fixed, breaks: [] };
 			}
-			const ids = [...moving.keys()];
+			const ids = [...tracked.keys()];
 			return {
 				at: (t) => {
-					const moved = framedBox(ids, (id) => moving.get(id)?.(t), byId);
+					const moved = framedBox(ids, (id) => tracked.get(id)?.(t), byId);
 					return fitted(
 						rest && moved ? around(rest, moved) : (rest ?? moved),
 						camera,
@@ -1730,8 +1853,28 @@ export function compileAnimation(
 			declare: (v) =>
 				`transform:translate(${num(Number(v.x), 3)}px,${num(Number(v.y), 3)}px) scale(${num(Number(v.scale), 6)})`,
 		};
+		const views = [moved.initial, ...moved.steps.map((s) => s.values)].map(
+			(v): LayoutBox => {
+				const scale = Number(v.scale);
+				return {
+					x: -Number(v.x) / scale,
+					y: -Number(v.y) / scale,
+					width: stage.width / scale,
+					height: stage.height / scale,
+				};
+			},
+		);
 		view = {
 			class: classFor([lane], ";transform-origin:0 0"),
+			reach: reachOf(
+				views,
+				stage,
+				cameras.flatMap((c) =>
+					(contributions.get(c.id) ?? []).map(({ expanded }) =>
+						swayOf(expanded),
+					),
+				),
+			),
 			// Motions on cameras: their shells wrap the view, in screen px
 			shells: cameras.flatMap((c) => {
 				const shells = marks.get(c.id)?.shells ?? [];
@@ -1769,6 +1912,7 @@ export function compileAnimation(
 				};
 	}
 	const camera = view && {
+		...view,
 		class: named(view.class),
 		shells: view.shells.map((shell) => ({ class: named(shell.class) })),
 	};
@@ -1795,6 +1939,7 @@ function drawnRoute(
 	const box = layout[mark.id];
 	if (mark.type === "path" && box) {
 		const { points, closed } = flattenPath(mark.d ?? "");
+		if (points.length === 0) return undefined;
 		const [dx, dy] = [
 			box.x - (mark.dOrigin?.x ?? 0),
 			box.y - (mark.dOrigin?.y ?? 0),

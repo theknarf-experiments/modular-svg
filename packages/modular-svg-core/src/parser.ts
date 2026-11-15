@@ -1,5 +1,10 @@
 import { parseRgba, rgbToOklch } from "./color.ts";
-import { type Ease, easeProblems, namedChannels } from "./motion.ts";
+import {
+	type Ease,
+	easeProblems,
+	easeStrays,
+	namedChannels,
+} from "./motion.ts";
 import { flattenPath } from "./route.ts";
 import type {
 	AlignmentX,
@@ -184,17 +189,23 @@ function travelWarnings(
 		);
 	for (const mark of via) {
 		if (mark.type === "path") {
-			const { unread } = flattenPath(mark.d ?? "");
+			const { unread, points } = flattenPath(mark.d ?? "");
+			if (points.length === 0)
+				out.push(
+					`${name} cannot follow ${mark.id}: its path draws nothing, so it is passed through its centre`,
+				);
 			if (unread.includes("M"))
 				out.push(`${name} follows only the first subpath of ${mark.id}`);
 			if (unread.includes("A"))
 				out.push(
 					`${name}: ${mark.id} draws an arc (A), which is followed as a straight line; use C or an Arc`,
 				);
-		} else if (!["line", "curve", "arrow", "arc"].includes(mark.type ?? ""))
+		} else if (!["line", "curve", "arrow", "arc"].includes(mark.type ?? "")) {
+			const kind = mark.type ?? "group";
 			out.push(
-				`${name} cannot follow ${mark.id}: a ${mark.type ?? "group"} has no path, so it is passed through its centre`,
+				`${name} cannot follow ${mark.id}: ${/^[aeiou]/.test(kind) ? "an" : "a"} ${kind} has no path, so it is passed through its centre`,
 			);
+		}
 	}
 	return out;
 }
@@ -1016,6 +1027,11 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 		const paint = matte.inverse ? "black" : "white";
 		for (const id of matte.shapes) {
 			const mark = nodeMap.get(id) as NodeRecord;
+			// Taken out of the clip that showed it, unless it was declared in this one
+			if (mark.within !== undefined && !lineage(id).includes(c.rec.id))
+				targetWarnings.push(
+					`${c.name}: its shape ${id} is inside ${clipNames.get(mark.within)}, and a shape is not drawn, so ${id} no longer shows there; declare a second mark and Span or Align it`,
+				);
 			mark.shapes = c.rec.id;
 			delete mark.within;
 			if (matte.kind !== "clip") continue;
@@ -1090,10 +1106,11 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 				? t.props.steps.map((s) => (s as { ease?: unknown } | null)?.ease)
 				: []),
 		];
-		for (const problem of eases.flatMap(easeProblems))
-			targetWarnings.push(
-				`${t.type}(${t.rec.id}): ${problem}; using the nearest allowed value`,
-			);
+		for (const problem of eases.flatMap((e) => [
+			...easeProblems(e).map((p) => `${p}; using the nearest allowed value`),
+			...easeStrays(e),
+		]))
+			targetWarnings.push(`${t.type}(${t.rec.id}): ${problem}`);
 		if (t.rec.type !== "motion") continue;
 		// Travel moves its first child through the rest, which stay put
 		const travel = t.rec.motion?.kind === "travel";
@@ -1117,8 +1134,15 @@ export function buildSceneFromJson(json: Record<string, unknown>): JsonScene {
 					(c) => c === "fill" || c === "stroke",
 				)
 			: [];
+		// On the clip itself, or a group round it, the paint is for its content
 		for (const id of new Set(
-			paints.length > 0 ? t.rec.targets.flatMap((x) => x.marks) : [],
+			paints.length > 0
+				? t.rec.targets.flatMap((x) =>
+						x.marks.filter(
+							(m) => !x.under?.includes(nodeMap.get(m)?.shapes ?? ""),
+						),
+					)
+				: [],
 		)) {
 			const clip = nodeMap.get(nodeMap.get(id)?.shapes ?? "");
 			if (clip?.matte?.kind === "clip")

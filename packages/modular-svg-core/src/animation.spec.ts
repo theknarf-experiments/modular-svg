@@ -2017,6 +2017,18 @@ describe("Travel along a route", () => {
 		expect(translates(ast.css)[0]).toContainEqual([50, 100, 0]);
 	});
 
+	it("passes a path that draws nothing through its centre", () => {
+		for (const props of [{ d: "" }, { d: "  " }, {}])
+			for (const orient of [undefined, true]) {
+				const { ast } = render([
+					...stops,
+					{ type: "Path", id: "blank", props },
+					travel({ route: "along", ...(orient ? { orient } : {}) }, ["blank"]),
+				]);
+				expect(ast.css).toBeDefined();
+			}
+	});
+
 	const startOf = (route: N, extra: N[] = []) => {
 		const { ast } = render([
 			...stops,
@@ -2157,5 +2169,49 @@ describe("Travel along a route", () => {
 		expect(back[0].slice(1)).toEqual(forward.at(-1)?.slice(1));
 		expect(back.at(-1)?.slice(1)).toEqual([0, 0]);
 		expect(back).toHaveLength(forward.length);
+	});
+});
+describe("a short motion on a long timeline", () => {
+	const dot = (id: string, x: number, y: number): N => ({
+		type: "Circle",
+		id,
+		props: { r: 5, x, y },
+	});
+	const scene = (props: Record<string, unknown>): N[] => [
+		dot("a", 0, 100),
+		dot("w1", 200, 0),
+		dot("w2", 300, 200),
+		dot("m", 0, 0),
+		{ type: "Line", id: "link", children: [ref("a"), ref("m")] },
+		{
+			type: "Travel",
+			id: "t",
+			props: { over: 0.3, ease: "spring", ...props },
+			children: [ref("m"), ref("w1"), ref("w2")],
+		},
+	];
+	/** The keyframe percentages of every animation, list by list. */
+	const lists = (css: string | undefined): number[][] =>
+		[...(css ?? "").matchAll(/@keyframes [^{]+\{(.*)\}\n/g)].map((m) =>
+			[...m[1].matchAll(/(?:^|\})([\d.]+)%\{/g)].map((k) => Number(k[1])),
+		);
+
+	it("keeps every list of keyframes in order", () => {
+		for (const duration of [20, 170, 600, 3600])
+			for (const route of ["straight", "smooth"]) {
+				const { ast } = render(scene({ route }), { duration });
+				const found = lists(ast.css);
+				expect(found.length).toBeGreaterThan(1);
+				for (const list of found)
+					for (let i = 1; i < list.length; i++)
+						expect(list[i], `${route} over ${duration}s`).toBeGreaterThan(
+							list[i - 1],
+						);
+			}
+	});
+
+	it("still starts the mover where it rests", () => {
+		const { ast } = render(scene({ route: "smooth" }), { duration: 3600 });
+		expect(ast.css).toContain("0%{translate:0px 0px");
 	});
 });

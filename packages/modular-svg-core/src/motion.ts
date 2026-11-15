@@ -238,6 +238,41 @@ export function easeProblems(ease: unknown): string[] {
 	return out;
 }
 
+const EASE_TAKES: Record<string, { takes: string; names: string[] }> = {
+	spring: {
+		takes: "a spring ease takes bounce, or stiffness, damping and mass",
+		names: ["bounce", "stiffness", "damping", "mass"],
+	},
+	physical: {
+		takes: "a spring ease with stiffness and damping takes mass",
+		names: ["stiffness", "damping", "mass"],
+	},
+	bounce: {
+		takes: "a bounce ease takes bounces and elasticity",
+		names: ["bounces", "elasticity"],
+	},
+	elastic: { takes: "an elastic ease takes period", names: ["period"] },
+};
+
+/** The numbers on an ease that its kind does not read, in words: they do nothing. */
+export function easeStrays(ease: unknown): string[] {
+	if (typeof ease !== "object" || ease === null || Array.isArray(ease))
+		return [];
+	const e = ease as Record<string, unknown>;
+	const physical = e.kind === "spring" && ("stiffness" in e || "damping" in e);
+	const known = EASE_TAKES[physical ? "physical" : String(e.kind)];
+	if (!known) return [];
+	const strays = Object.keys(e).filter(
+		(k) => k !== "kind" && !known.names.includes(k),
+	);
+	if (strays.length === 0) return [];
+	const listed =
+		strays.length > 1
+			? `${strays.slice(0, -1).join(", ")} and ${strays[strays.length - 1]} are`
+			: `${strays[0]} is`;
+	return [`${known.takes}; ${listed} ignored`];
+}
+
 /** Progress (0..1, may overshoot) of an ease at x in [0, 1]. */
 export function easeAt(ease: ResolvedEase, x: number): number {
 	if (x <= 0) return 0;
@@ -273,6 +308,14 @@ export function easeAt(ease: ResolvedEase, x: number): number {
 	}
 	return bez(y1, y2, (lo + hi) / 2);
 }
+
+/** Where in 0..1 an ease turns a corner or jumps: between them it is smooth. */
+export const easeTurns = (ease: ResolvedEase): number[] =>
+	ease.kind === "stops"
+		? ease.stops.map(([x]) => x)
+		: ease.kind === "steps"
+			? Array.from({ length: ease.count + 1 }, (_, j) => j / ease.count)
+			: [];
 
 /** A bezier that leaves 0..1, which SMIL's keySplines cannot say. */
 export const overshoots = (ease: ResolvedEase): boolean =>
@@ -1190,7 +1233,28 @@ export function keysOf(
 	const keys: Key[] = [{ t: 0, values: initial, ease: NAMED.out }];
 	const nudge = period * NUDGE;
 	let current = initial;
+	// A ramp too short to show is joined to the one that follows on from it.
+	// Each would otherwise be a cut one nudge after the last, and a sampled
+	// motion on a long timeline would run ahead of the keys still to come
+	const joined: Step[] = [];
 	for (const segment of [...segments].sort((a, b) => a.start - b.start)) {
+		const last = joined[joined.length - 1];
+		if (
+			last &&
+			last.over > 0 &&
+			last.over < nudge &&
+			segment.over > 0 &&
+			Math.abs(segment.start - last.start - last.over) < 1e-9
+		)
+			joined[joined.length - 1] = {
+				start: last.start,
+				over: segment.start + segment.over - last.start,
+				ease: segment.ease,
+				values: { ...last.values, ...segment.values },
+			};
+		else joined.push(segment);
+	}
+	for (const segment of joined) {
 		const next = { ...current, ...segment.values };
 		const last = keys[keys.length - 1];
 		const contiguous = segment.start < last.t + nudge;

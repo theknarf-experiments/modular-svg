@@ -233,6 +233,25 @@ describe("post-solve checks", () => {
 			"Travel(trip) follows only the first subpath of two",
 			"Travel(trip): two draws an arc (A), which is followed as a straight line; use C or an Arc",
 		]);
+		const blank = (d?: string) =>
+			check([
+				rect("dot", { width: 4, height: 4 }),
+				{ type: "Path", id: "p", props: d === undefined ? {} : { d } },
+				travel({ route: "along" }, "p"),
+			]);
+		for (const d of ["", "   ", undefined])
+			expect(blank(d)).toEqual([
+				"Travel(trip) cannot follow p: its path draws nothing, so it is passed through its centre",
+			]);
+		expect(
+			check([
+				rect("dot", { width: 4, height: 4 }),
+				{ type: "Image", id: "img", props: { width: 10, height: 10 } },
+				travel({ route: "along" }, "img"),
+			]),
+		).toEqual([
+			"Travel(trip) cannot follow img: an image has no path, so it is passed through its centre",
+		]);
 		expect(scene({ orient: "yes" }, "a")).toEqual([
 			'Travel(trip): orient must be true or an angle in degrees, got "yes"',
 		]);
@@ -243,6 +262,30 @@ describe("post-solve checks", () => {
 		expect(scene({ route: "smooth", orient: -90, pace: "leg" }, "a")).toEqual(
 			[],
 		);
+	});
+
+	it("names an ease's numbers that belong to another kind of ease", () => {
+		const eased = (ease: unknown) =>
+			check([
+				row(["a", "b"]),
+				{ type: "Enter", id: "in", props: { ease }, children: [ref("a")] },
+			]);
+		expect(eased({ kind: "spring", bounces: 3, elasticity: 0.2 })).toEqual([
+			"Enter(in): a spring ease takes bounce, or stiffness, damping and mass; bounces and elasticity are ignored",
+		]);
+		expect(eased({ kind: "bounce", bounce: 0.9 })).toEqual([
+			"Enter(in): a bounce ease takes bounces and elasticity; bounce is ignored",
+		]);
+		expect(eased({ kind: "elastic", bounce: 0.2, period: 0.3 })).toEqual([
+			"Enter(in): an elastic ease takes period; bounce is ignored",
+		]);
+		expect(
+			eased({ kind: "spring", stiffness: 100, damping: 10, bounce: 0.2 }),
+		).toEqual([
+			"Enter(in): a spring ease with stiffness and damping takes mass; bounce is ignored",
+		]);
+		expect(eased({ kind: "spring", bounce: 0.2 })).toEqual([]);
+		expect(eased({ kind: "bounce", bounces: 2, elasticity: 0.4 })).toEqual([]);
 	});
 
 	it("names an ease whose numbers are out of range, on motions, steps and modulations", () => {

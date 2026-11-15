@@ -308,8 +308,11 @@ export function along(route: Route, s: number): Point & { angle: number } {
 		const other = nearestTurn(degrees(points[j], points[j + 1]), own);
 		return Math.abs(other - own) > CORNER ? own : (own + other) / 2;
 	};
-	const before = toward(run(i - 1, -1));
-	const after = toward(run(i + 1, 1));
+	const [prev, next] = [run(i - 1, -1), run(i + 1, 1)];
+	// The first and last run of a curve have one neighbour: they turn as much
+	// towards their open end as away from it, which is the curve's tangent there
+	const before = prev === undefined ? 2 * own - toward(next) : toward(prev);
+	const after = next === undefined ? 2 * own - toward(prev) : toward(next);
 	const within = Math.min(1, Math.max(0, u));
 	return {
 		x: a.x + (b.x - a.x) * u,
