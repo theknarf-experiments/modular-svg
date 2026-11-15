@@ -138,15 +138,21 @@
 				},
 				"route": {
 					"type": "string",
-					"enum": ["straight", "smooth", "along"]
+					"examples": ["straight", "smooth", "along"]
 				},
-				"pace": { "type": "string", "enum": ["leg", "trip"] },
-				"orient": { "type": ["boolean", "number"] },
-				"fit": { "type": "string", "enum": ["contain", "cover"] },
+				"pace": { "type": "string", "examples": ["leg", "trip"] },
+				"orient": {
+					"description": "true to face along the route, or an angle in degrees added to that heading",
+					"examples": [true, 90]
+				},
+				"fit": { "type": "string", "examples": ["contain", "cover"] },
 				"follow": { "type": "boolean" },
 				"inverse": { "type": "boolean" },
-				"feather": { "type": "number", "minimum": 0 },
-				"by": { "type": "string", "enum": ["alpha", "luminance"] }
+				"feather": {
+					"type": "number",
+					"description": "px the matte is blurred by; 0 or more"
+				},
+				"by": { "type": "string", "examples": ["alpha", "luminance"] }
 			},
 			"additionalProperties": true
 		},

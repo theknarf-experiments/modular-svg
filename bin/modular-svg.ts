@@ -32,14 +32,17 @@ program
 	.option("-l, --loop", "replay the animation forever")
 	.option("--width <px>", "output width; the canvas is fitted into it")
 	.option("--height <px>", "output height; the canvas is fitted into it")
+	.option("--aspect <ratio>", "output width over height, as a number")
 	.action(
 		async (input: string | undefined, output: string | undefined, opts) => {
 			const raw = await readInput(input);
 			const data = JSON.parse(raw);
 			try {
-				validate(data);
+				await validate(data);
 			} catch (err) {
-				console.error("Invalid scene:", err);
+				console.error(
+					`Invalid scene: ${err instanceof Error ? err.message : err}`,
+				);
 				process.exit(1);
 			}
 			const scene = buildSceneFromJson(data);
@@ -51,12 +54,13 @@ program
 					loop: !!opts.loop,
 					...(opts.duration ? { duration: Number(opts.duration) } : {}),
 				},
-				...(opts.width || opts.height
+				...(opts.width || opts.height || opts.aspect
 					? {
-							view: {
-								...(opts.width ? { width: Number(opts.width) } : {}),
-								...(opts.height ? { height: Number(opts.height) } : {}),
-							},
+							view: Object.fromEntries(
+								(["width", "height", "aspect"] as const)
+									.filter((side) => opts[side])
+									.map((side) => [side, Number(opts[side])]),
+							),
 						}
 					: {}),
 			});
