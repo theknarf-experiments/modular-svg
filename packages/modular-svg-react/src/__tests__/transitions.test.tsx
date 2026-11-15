@@ -1,4 +1,9 @@
-import type { SvgDocument } from "@modular-svg/core";
+import {
+	buildSceneFromJson,
+	layoutToAst,
+	type SvgDocument,
+	solveLayout,
+} from "@modular-svg/core";
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Graphic } from "../Graphic";
@@ -9,6 +14,7 @@ import {
 	type Transition,
 	tweenAttributes,
 	viewFrames,
+	viewSignature,
 } from "../transitions";
 
 const doc = (children: SvgDocument["children"]): SvgDocument => ({
@@ -334,6 +340,53 @@ describe("the view", () => {
 		expect(cssEasing(undefined)).toBe("cubic-bezier(0.23,1,0.32,1)");
 		expect(cssEasing("linear")).toBe("linear");
 		expect(cssEasing("spring")).toMatch(/^linear\(0,/);
+	});
+});
+
+describe("viewSignature", () => {
+	const scene = (fill: string, framed: string) => {
+		const built = buildSceneFromJson({
+			type: "Group",
+			id: "root",
+			children: [
+				{ type: "Rect", id: "a", props: { width: 40, height: 20, fill } },
+				{
+					type: "Rect",
+					id: "b",
+					props: { x: 300, y: 100, width: 40, height: 20 },
+				},
+				{
+					type: "Motion",
+					id: "tint",
+					props: { steps: [{ to: { fill }, over: 1 }] },
+					children: [{ type: "Ref", target: "a" }],
+				},
+				{
+					type: "Camera",
+					id: "cam",
+					props: { over: 2 },
+					children: [{ type: "Ref", target: framed }],
+				},
+			],
+		});
+		return layoutToAst(solveLayout(built), built.nodes, 0);
+	};
+
+	it("is the same when only the marks change, and differs when the view does", () => {
+		const [red, blue, other] = [
+			scene("#f00", "b"),
+			scene("#00f", "b"),
+			scene("#f00", "a"),
+		];
+		// Every name in the stylesheet changed with the fill
+		expect(red.css).not.toBe(blue.css);
+		expect(viewSignature(red)).toBeDefined();
+		expect(viewSignature(red)).toBe(viewSignature(blue));
+		expect(viewSignature(red)).not.toBe(viewSignature(other));
+	});
+
+	it("is undefined without a view", () => {
+		expect(viewSignature(doc([]))).toBeUndefined();
 	});
 });
 

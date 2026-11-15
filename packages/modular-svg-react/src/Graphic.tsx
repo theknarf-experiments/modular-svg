@@ -25,6 +25,7 @@ import {
 	type TransitionOptions,
 	tweenAttributes,
 	viewFrames,
+	viewSignature,
 } from "./transitions";
 
 export type GraphicProps = React.HTMLAttributes<HTMLDivElement> & {
@@ -368,16 +369,20 @@ function SvgElementRenderer({ element }: { element: SvgElement }) {
 
 // The matte of a clip or mask: its shape's elements, which tween and play
 // like any other
-function MaskRenderer({ mask }: { mask: MaskElement }) {
+type Region = Pick<MaskElement, "x" | "y" | "width" | "height">;
+
+function MaskRenderer({ mask, from }: { mask: MaskElement; from?: Region }) {
+	// While its shape tweens, a matte also spans where the shape comes from
+	const { x, y, width, height } = from ? regionAround(mask, from) : mask;
 	return React.createElement(
 		"mask",
 		{
 			id: mask.id,
 			maskUnits: "userSpaceOnUse",
-			x: mask.x,
-			y: mask.y,
-			width: mask.width,
-			height: mask.height,
+			x,
+			y,
+			width,
+			height,
 			...(mask.by === "alpha" ? { style: { maskType: "alpha" } } : {}),
 		},
 		mask.children.map((child, index) => (
@@ -388,6 +393,16 @@ function MaskRenderer({ mask }: { mask: MaskElement }) {
 		)),
 	);
 }
+
+const regionAround = (a: Region, b: Region): Region => {
+	const [x, y] = [Math.min(a.x, b.x), Math.min(a.y, b.y)];
+	return {
+		x,
+		y,
+		width: Math.max(a.x + a.width, b.x + b.width) - x,
+		height: Math.max(a.y + a.height, b.y + b.height) - y,
+	};
+};
 
 // Graphics mounted so far by this copy of the module
 let mounted = 0;
@@ -424,6 +439,8 @@ function GraphicImpl({
 	const [room, setRoom] = React.useState<{
 		width: number;
 		height: number;
+		/** the regions the mattes had, by id */
+		mattes: Map<string, Region>;
 	} | null>(null);
 	const transitionRef = React.useRef(transition);
 	transitionRef.current = transition;
@@ -502,15 +519,27 @@ function GraphicImpl({
 					const svg = svgRef.current;
 					const prev = committedRef.current;
 					// A viewport is a fixed stage: nothing to make room in
-					setRoom(
-						svgAst.viewBox
+					setRoom((last) => ({
+						...(svgAst.viewBox
 							? { width: svgAst.width, height: svgAst.height }
 							: {
 									width: Math.max(prev.width, svgAst.width),
 									height: Math.max(prev.height, svgAst.height),
-								},
-					);
-					const group = viewGroup(svg);
+								}),
+						// A change in the middle of a tween keeps the room it had too
+						mattes: new Map(
+							(prev.defs ?? []).map((mask) => {
+								const before = last?.mattes.get(mask.id);
+								return [mask.id, before ? regionAround(mask, before) : mask];
+							}),
+						),
+					}));
+					// Only a camera that changed is tweened to: one still playing
+					// the same move would be held for the tween and then jump
+					const group =
+						viewSignature(prev) !== viewSignature(svgAst)
+							? viewGroup(svg)
+							: null;
 					viewFromRef.current = group
 						? getComputedStyle(group).transform
 						: undefined;
@@ -678,7 +707,11 @@ function GraphicImpl({
 					{ast.defs && (
 						<defs>
 							{ast.defs.map((mask) => (
-								<MaskRenderer key={mask.id} mask={mask} />
+								<MaskRenderer
+									key={mask.id}
+									mask={mask}
+									from={room?.mattes.get(mask.id)}
+								/>
 							))}
 						</defs>
 					)}

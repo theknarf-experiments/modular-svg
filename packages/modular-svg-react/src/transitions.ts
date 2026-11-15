@@ -296,3 +296,47 @@ export function viewFrames(
 		return { transform: `translate(${x}px, ${y}px) scale(${scale})` };
 	});
 }
+
+/**
+ * What the camera of a document does, whatever its stylesheet names things:
+ * the keyframes of the view's group and of the shells round it. Undefined
+ * for a document with no view.
+ */
+export function viewSignature(doc: SvgDocument): string | undefined {
+	const classes: string[] = [];
+	let found: SvgElement | undefined;
+	let level: readonly SvgElement[] = doc.children;
+	while (!found) {
+		const group = level.find((el) => el.type === "g");
+		if (group?.type !== "g") return undefined;
+		classes.push(String(group.attrs?.class ?? ""));
+		if (group.attrs?.["data-camera"] !== undefined) found = group;
+		level = group.children;
+	}
+	const css = doc.css ?? "";
+	const rule = (selector: string): string => {
+		const at = css.indexOf(`${selector}{`);
+		if (at < 0) return "";
+		const end = css.indexOf("\n", at);
+		return css.slice(at + selector.length, end < 0 ? undefined : end);
+	};
+	const moves = classes.flatMap((list) =>
+		list
+			.split(" ")
+			.filter(Boolean)
+			.map((name) => {
+				const body = rule(`.${name}`);
+				const names = /animation-name:([^;}]+)/.exec(body)?.[1].split(",");
+				return [
+					body.replace(/animation-name:[^;}]+/, ""),
+					...(names ?? []).map((n) => rule(`@keyframes ${n}`)),
+				].join("");
+			}),
+	);
+	return JSON.stringify([
+		doc.viewBox,
+		found.attrs?.transform,
+		doc.duration,
+		moves,
+	]);
+}
