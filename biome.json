@@ -35,6 +35,18 @@
 			}
 		}
 	},
+	"overrides": [
+		{
+			"includes": ["packages/docs/**"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"useJsxKeyInIterable": "off"
+					}
+				}
+			}
+		}
+	],
 	"javascript": {
 		"formatter": {
 			"quoteStyle": "double"

@@ -8,8 +8,8 @@ export function ExampleSection({
 	children,
 }: {
 	title: string;
-	description?: string;
-	code: string;
+	description?: React.ReactNode;
+	code?: string;
 	children?: React.ReactNode;
 }) {
 	return (
@@ -18,20 +18,22 @@ export function ExampleSection({
 			{description && (
 				<p style={{ color: "#666", fontSize: "14px" }}>{description}</p>
 			)}
-			<div
-				style={{
-					display: "grid",
-					gridTemplateColumns: children
-						? "minmax(0, 1fr) minmax(0, 1fr)"
-						: "minmax(0, 1fr)",
-					gap: "1.5rem",
-					alignItems: "start",
-					marginTop: "1rem",
-				}}
-			>
-				<CodeBlock code={code} />
-				{children && <div>{children}</div>}
-			</div>
+			{(code || children) && (
+				<div
+					style={{
+						display: "grid",
+						gridTemplateColumns: children
+							? "minmax(0, 1fr) minmax(0, 1fr)"
+							: "minmax(0, 1fr)",
+						gap: "1.5rem",
+						alignItems: "start",
+						marginTop: "1rem",
+					}}
+				>
+					{code && <CodeBlock code={code} />}
+					{children && <div>{children}</div>}
+				</div>
+			)}
 		</section>
 	);
 }

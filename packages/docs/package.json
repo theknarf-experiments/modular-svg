@@ -8,10 +8,13 @@
 		"build": "tsc --noEmit && NODE_ENV=production ./ssg.tsx",
 		"typecheck": "tsc --noEmit",
 		"preview": "vite preview --outDir dist",
-		"build:spa": "vite build"
+		"build:spa": "vite build",
+		"test": "vitest run"
 	},
 	"dependencies": {
+		"@modular-svg/core": "workspace:*",
 		"@modular-svg/react": "workspace:*",
+		"dragology": "0.2.0",
 		"react": "^19.2.7",
 		"react-dom": "^19.2.7",
 		"react-router": "^8.1.0",

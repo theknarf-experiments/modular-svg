@@ -89,6 +89,16 @@ import { CustomStyling } from "./examples/CustomStyling";
 import customStylingCode from "./examples/CustomStyling.tsx?raw";
 import { DistinctColorsExample } from "./examples/DistinctColorsExample";
 import distinctColorsExampleCode from "./examples/DistinctColorsExample.tsx?raw";
+import { DragDirection } from "./examples/dragging/DragDirection";
+import dragDirectionCode from "./examples/dragging/DragDirection.tsx?raw";
+import { DragFlowchart } from "./examples/dragging/DragFlowchart";
+import dragFlowchartCode from "./examples/dragging/DragFlowchart.tsx?raw";
+import { DragKanban } from "./examples/dragging/DragKanban";
+import dragKanbanCode from "./examples/dragging/DragKanban.tsx?raw";
+import { DragPlanets } from "./examples/dragging/DragPlanets";
+import dragPlanetsCode from "./examples/dragging/DragPlanets.tsx?raw";
+import { DragReorder } from "./examples/dragging/DragReorder";
+import dragReorderCode from "./examples/dragging/DragReorder.tsx?raw";
 import { EventHandlers } from "./examples/EventHandlers";
 import eventHandlersCode from "./examples/EventHandlers.tsx?raw";
 import gitGraphCode from "./examples/GitGraph.tsx?raw";
@@ -127,8 +137,8 @@ import vennDiagramExampleCode from "./examples/VennDiagramExample.tsx?raw";
 
 type Section = {
 	title: string;
-	description: string;
-	code: string;
+	description: React.ReactNode;
+	code?: string;
 	element?: React.ReactNode;
 };
 
@@ -219,6 +229,63 @@ export const pages: Page[] = [
 					"React contexts automatically flow into Graphic children - no special setup required",
 				code: contextForwardingCode,
 				element: <ContextForwarding />,
+			},
+		],
+	},
+	{
+		path: "/dragging/",
+		title: "Dragging",
+		sections: [
+			{
+				title: "Dragging with Dragology",
+				description: (
+					<>
+						<a href="https://declarative-dragging.github.io/">Dragology</a>{" "}
+						makes an SVG draggable by asking which states a drag can reach,
+						rendering each one and blending between them. Its render function
+						must be synchronous and position everything by transform, so instead
+						of a Graphic these examples lay out the same scene JSX with{" "}
+						<code>solveScene</code>, which solves it right away and hands back
+						the boxes and the marks as plain SVG elements, positioned by
+						transform. modular-svg says where things go in a state; Dragology
+						says which states a drag leads to
+					</>
+				),
+			},
+			{
+				title: "Between two layouts",
+				description:
+					"d.between blends two solved layouts: drag the cyan box down and the stack turns from a row into a column, every box gliding between where the solver put it in each",
+				code: dragDirectionCode,
+				element: <DragDirection />,
+			},
+			{
+				title: "Reordering chips",
+				description:
+					"d.closest(...).withFloating() previews every order: each one is laid out by a stackH, so chips as wide as their words make room for the one being dragged",
+				code: dragReorderCode,
+				element: <DragReorder />,
+			},
+			{
+				title: "A board",
+				description:
+					"Cards move between columns; each candidate board is solved, so the column a card would land in grows to take it and the one it leaves shrinks",
+				code: dragKanbanCode,
+				element: <DragKanban />,
+			},
+			{
+				title: "A flowchart",
+				description:
+					"d.vary searches the label positions continuously; for every guess the solver re-wraps the node and re-routes its arrows, so the edges follow the drag",
+				code: dragFlowchartCode,
+				element: <DragFlowchart />,
+			},
+			{
+				title: "Planets",
+				description:
+					"The planet diagram from the Diagrams page, unchanged but for its state: drag the label onto another planet and the align, distribute and arrow relations preview it there; drag a planet to reorder the row and the label stays on it",
+				code: dragPlanetsCode,
+				element: <DragPlanets />,
 			},
 		],
 	},
