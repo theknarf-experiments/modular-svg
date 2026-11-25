@@ -2,7 +2,7 @@ import type { JsonScene } from "@modular-svg/core";
 import { buildSceneFromJson, emptyScene } from "@modular-svg/core";
 import * as React from "react";
 import Reconciler from "react-reconciler";
-import { DefaultEventPriority } from "react-reconciler/constants";
+import { DefaultEventPriority, LegacyRoot } from "react-reconciler/constants";
 
 // Event handlers that can be attached to SVG elements
 export type EventHandlers = {
@@ -28,12 +28,11 @@ type Instance = {
 // This survives across reconciler updates
 const eventHandlerMap = new Map<string, EventHandlers>();
 
-// Counter for auto-generated IDs (deterministic per reconciler session)
-let idCounter = 0;
-
 // Container holds the root instances (can be multiple for fragments)
 type Container = {
 	rootInstances: Instance[];
+	/** next auto-generated id, counted per root so ids repeat across roots */
+	nextId: number;
 };
 
 // Text instance (we don't support text nodes in our scene)
@@ -136,7 +135,7 @@ const hostConfig: Reconciler.HostConfig<
 	createInstance(
 		type: Type,
 		props: Props,
-		_rootContainer: Container,
+		rootContainer: Container,
 		_hostContext: HostContext,
 		internalHandle: Reconciler.OpaqueHandle,
 	): Instance {
@@ -146,7 +145,8 @@ const hostConfig: Reconciler.HostConfig<
 
 		// Generate stable ID for this instance
 		// Use user-provided key, or auto-generate with counter
-		const id = typeof key === "string" ? key : `${type}_${idCounter++}`;
+		const id =
+			typeof key === "string" ? key : `${type}_${rootContainer.nextId++}`;
 
 		// Extract event handlers from props
 		const {
@@ -351,8 +351,7 @@ const hostConfig: Reconciler.HostConfig<
 	// Clearing
 	clearContainer(container: Container): void {
 		container.rootInstances = [];
-		// Reset ID counter for deterministic IDs in tests
-		idCounter = 0;
+		container.nextId = 0;
 	},
 
 	// Text content
@@ -522,11 +521,11 @@ export type ReconcilerRoot = {
 
 // Create root function
 export function createRoot(): ReconcilerRoot {
-	const container: Container = { rootInstances: [] };
+	const container: Container = { rootInstances: [], nextId: 0 };
 
 	const fiberRoot = reconciler.createContainer(
 		container,
-		0, // ConcurrentRoot
+		LegacyRoot,
 		null, // hydration callbacks
 		false, // isStrictMode
 		null, // concurrentUpdatesByDefaultOverride
@@ -568,26 +567,51 @@ export function createRoot(): ReconcilerRoot {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 		},
 
-		getScene(): JsonScene {
-			if (container.rootInstances.length === 0) return emptyScene();
-
-			// If we have multiple root instances (e.g., from fragment), wrap in Group
-			let json: Record<string, unknown>;
-			if (container.rootInstances.length === 1) {
-				json = instanceToJson(container.rootInstances[0]);
-			} else {
-				// Multiple children - wrap in a Group
-				json = {
-					type: "Group",
-					props: {},
-					children: container.rootInstances.map(instanceToJson),
-				};
-			}
-
-			// Use core library to build scene
-			return buildSceneFromJson(json);
-		},
+		getScene: () => sceneOf(container),
 	};
+}
+
+function sceneOf(container: Container): JsonScene {
+	const roots = container.rootInstances;
+	if (roots.length === 0) return emptyScene();
+	// Several roots (a fragment) are wrapped in a Group
+	return buildSceneFromJson(
+		roots.length === 1
+			? instanceToJson(roots[0])
+			: { type: "Group", props: {}, children: roots.map(instanceToJson) },
+	);
+}
+
+/**
+ * Render scene JSX to a scene right away, for callers that cannot wait for
+ * Graphic's asynchronous commit: Dragology, say, which renders every state a
+ * drag could reach while laying out the current one. Safe to call during
+ * another renderer's render.
+ */
+export function renderScene(element: React.ReactNode): JsonScene {
+	const container: Container = { rootInstances: [], nextId: 0 };
+	const root = reconciler.createContainer(
+		container,
+		LegacyRoot,
+		null,
+		false,
+		null,
+		"",
+		(error) => {
+			throw error;
+		},
+		(error) => {
+			throw error;
+		},
+		() => {},
+		() => {},
+	);
+	reconciler.updateContainerSync(element, root, null, null);
+	reconciler.flushSyncWork();
+	const scene = sceneOf(container);
+	reconciler.updateContainerSync(null, root, null, null);
+	reconciler.flushSyncWork();
+	return scene;
 }
 
 // Export act helper for testing

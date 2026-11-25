@@ -17,6 +17,7 @@ import {
 	getEventHandlers,
 	type ReconcilerRoot,
 } from "./reconciler";
+import { svgElement } from "./svgElement";
 import {
 	cssEasing,
 	diffTransitions,
@@ -143,27 +144,6 @@ function align(svg: SVGSVGElement): () => void {
 
 // React DOM wants camelCase SVG attribute names (fontSize, strokeDasharray);
 // scene attrs use the SVG spellings. data-* and aria-* stay as-is.
-function reactifyAttrs(
-	attrs: Record<string, string | number> | undefined,
-): Record<string, string | number> | undefined {
-	if (!attrs) return undefined;
-	const out: Record<string, string | number> = {};
-	for (const [k, v] of Object.entries(attrs)) {
-		if (k === "class") {
-			out.className = v;
-		} else if (
-			k.startsWith("data-") ||
-			k.startsWith("aria-") ||
-			!k.includes("-")
-		) {
-			out[k] = v;
-		} else {
-			out[k.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())] = v;
-		}
-	}
-	return out;
-}
-
 // The group every mark is in when the scene is seen through a viewport
 const viewGroup = (svg: SVGSVGElement | null): SVGGElement | null =>
 	svg?.querySelector<SVGGElement>("[data-camera]") ?? null;
@@ -216,155 +196,19 @@ function useTweens(id: string | undefined): React.ReactNode {
 	);
 }
 
-// Component to render a single SVG element with event handlers
+// One element with its event handlers and the tweens from its last solve
 function SvgElementRenderer({ element }: { element: SvgElement }) {
-	const handlers = element.id ? getEventHandlers(element.id) : undefined;
-	const attrs = reactifyAttrs(element.attrs);
 	const tweens = useTweens(element.id);
-
-	if (element.type === "circle") {
-		return (
-			<circle
-				id={element.id}
-				cx={element.cx}
-				cy={element.cy}
-				r={element.r}
-				fill={element.fill}
-				stroke={element.stroke}
-				strokeWidth={element.strokeWidth}
-				{...attrs}
-				{...handlers}
-			>
-				{tweens}
-			</circle>
-		);
-	}
-
-	if (element.type === "rect") {
-		return (
-			<rect
-				id={element.id}
-				x={element.x}
-				y={element.y}
-				width={element.width}
-				height={element.height}
-				fill={element.fill}
-				stroke={element.stroke}
-				strokeWidth={element.strokeWidth}
-				{...attrs}
-				{...handlers}
-			>
-				{tweens}
-			</rect>
-		);
-	}
-
-	if (element.type === "text") {
-		return (
-			<text
-				id={element.id}
-				x={element.x}
-				y={element.y}
-				dominantBaseline="hanging"
-				fontFamily="sans-serif"
-				fill={element.fill}
-				stroke={element.stroke}
-				strokeWidth={element.strokeWidth}
-				{...attrs}
-				{...handlers}
-			>
-				{element.text}
-				{tweens}
-			</text>
-		);
-	}
-
-	if (element.type === "line") {
-		return (
-			<line
-				id={element.id}
-				x1={element.x1}
-				y1={element.y1}
-				x2={element.x2}
-				y2={element.y2}
-				stroke={element.stroke}
-				strokeWidth={element.strokeWidth}
-				{...attrs}
-				{...handlers}
-			>
-				{tweens}
-			</line>
-		);
-	}
-
-	if (element.type === "polygon") {
-		return (
-			<polygon
-				id={element.id}
-				points={element.points}
-				transform={element.transform}
-				fill={element.fill}
-				stroke={element.stroke}
-				strokeWidth={element.strokeWidth}
-				{...attrs}
-				{...handlers}
-			>
-				{tweens}
-			</polygon>
-		);
-	}
-
-	if (element.type === "path") {
-		return (
-			<path
-				id={element.id}
-				d={element.d}
-				transform={element.transform}
-				fill={element.fill}
-				stroke={element.stroke}
-				strokeWidth={element.strokeWidth}
-				{...attrs}
-				{...handlers}
-			>
-				{element.animate?.map((a) => (
-					<animate key={a.attributeName} {...reactifyAttrs(a)} />
-				))}
-				{tweens}
-			</path>
-		);
-	}
-
-	if (element.type === "g") {
-		return (
-			<g id={element.id} {...attrs}>
-				{element.children.map((child, index) => (
-					<SvgElementRenderer
-						key={child.id ?? `element-${index}`}
-						element={child}
-					/>
-				))}
-			</g>
-		);
-	}
-
-	if (element.type === "image") {
-		return (
-			<image
-				id={element.id}
-				x={element.x}
-				y={element.y}
-				width={element.width}
-				height={element.height}
-				href={element.href}
-				{...attrs}
-				{...handlers}
-			>
-				{tweens}
-			</image>
-		);
-	}
-
-	return null;
+	return svgElement(element, {
+		props: (el) => (el.id ? getEventHandlers(el.id) : undefined),
+		children: () => tweens,
+		child: (child, index) => (
+			<SvgElementRenderer
+				key={child.id ?? `element-${index}`}
+				element={child}
+			/>
+		),
+	});
 }
 
 // The matte of a clip or mask: its shape's elements, which tween and play

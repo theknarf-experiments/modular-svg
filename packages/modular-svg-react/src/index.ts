@@ -25,5 +25,13 @@ export type { GraphicProps } from "./Graphic";
 export { Graphic } from "./Graphic";
 // Reconciler exports for advanced usage and testing
 export type { ReconcilerRoot } from "./reconciler";
-export { act, createRoot } from "./reconciler";
+export { act, createRoot, renderScene } from "./reconciler";
+export type { SolvedScene, SolveSceneOptions } from "./solveScene";
+export { solveScene } from "./solveScene";
+export type {
+	AnySvgElement,
+	SvgElementOptions,
+	SvgReactElement,
+} from "./svgElement";
+export { svgElement } from "./svgElement";
 export type { TransitionOptions } from "./transitions";
